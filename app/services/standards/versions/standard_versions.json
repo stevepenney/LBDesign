@@ -1,0 +1,46 @@
+{
+  "new_zealand": {
+    "AS/NZS1170": {
+      "current_version": "2002",
+      "versions": [
+        {
+          "version": "2002",
+          "effective_date": "2002-01-01",
+          "status": "active"
+        }
+      ]
+    },
+    "NZS3603": {
+      "current_version": "1993",
+      "versions": [
+        {
+          "version": "1993",
+          "effective_date": "1993-01-01",
+          "status": "active"
+        }
+      ]
+    }
+  },
+  "australia": {
+    "AS1170": {
+      "current_version": "2021",
+      "versions": [
+        {
+          "version": "2021",
+          "effective_date": "2021-01-01",
+          "status": "active"
+        }
+      ]
+    },
+    "AS1684": {
+      "current_version": "2010",
+      "versions": [
+        {
+          "version": "2010",
+          "effective_date": "2010-01-01",
+          "status": "active"
+        }
+      ]
+    }
+  }
+}
