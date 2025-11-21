@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="hero">
+    <h2>Welcome to LBDesign</h2>
+    <p class="subtitle">Structural design calculator for engineered wood products</p>
+    
+    <div class="demo-section">
+        <h3>API Test</h3>
+        <button id="testButton" class="btn btn-primary">Test Hello World API</button>
+        <div id="response" class="response-box"></div>
+    </div>
+    
+    <div class="info-section">
+        <div class="info-card">
+            <h4>Floor & Roof Members</h4>
+            <p>Design floor joists, rafters, and beams to NZ standards</p>
+        </div>
+        <div class="info-card">
+            <h4>Product Recommendations</h4>
+            <p>Get ranked recommendations from our product range</p>
+        </div>
+        <div class="info-card">
+            <h4>Standards Compliant</h4>
+            <p>Calculations based on AS/NZS1170 and NZS3603</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/api-test.js') }}"></script>
+{% endblock %}

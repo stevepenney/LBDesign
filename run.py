@@ -1,5 +1,5 @@
 """
-Application entry point
+Application entry point for LBDesign
 """
 from app import create_app
 

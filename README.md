@@ -1,51 +1,69 @@
-# Beam Selector Application
+# LBDesign - Lumberbank Design Calculator
 
-Engineering calculation and product selection system for structural beams.
+## Quick Start Guide
 
-## Features
+### 1. Install Dependencies
 
-- Multi-region support (New Zealand, Australia)
-- Standards-based calculations (AS/NZS1170, NZS3603, etc.)
-- User role hierarchy (User, Detailer, Admin, Superuser)
-- RESTful API for integrations
-- Database agnostic (MySQL, SQL Server, SQLite)
-
-## Setup
-
-1. Install dependencies:
 ```bash
-pip install -r requirements.txt
+pip install Flask
 ```
 
-2. Configure environment:
-```bash
-cp .env.example .env
-# Edit .env with your database credentials
-```
+(Or use the full requirements.txt when ready)
 
-3. Initialize database:
-```bash
-flask db upgrade
-```
+### 2. Run the Application
 
-4. Run application:
 ```bash
 python run.py
 ```
 
+### 3. Open in Browser
+
+Navigate to: `http://localhost:5000`
+
+### 4. Test the API
+
+Click the "Test Hello World API" button on the landing page. You should see a JSON response appear below the button.
+
+You can also test the API directly:
+```bash
+curl http://localhost:5000/api/v1/hello
+```
+
 ## Project Structure
 
-- `app/` - Main application code
-- `app/models/` - Database models
-- `app/routes/` - Web and API routes
-- `app/services/` - Business logic and calculation engine
-- `app/database/` - Database abstraction layer
-- `app/auth/` - Authentication and authorization
-- `tests/` - Test suite
+```
+LBDesign/
+├── app/
+│   ├── __init__.py          # Flask app factory
+│   ├── config.py            # Configuration
+│   ├── routes/
+│   │   ├── __init__.py
+│   │   ├── web.py           # Web page routes
+│   │   └── api.py           # API endpoints
+│   ├── templates/
+│   │   ├── base.html        # Base template
+│   │   └── index.html       # Landing page
+│   └── static/
+│       ├── css/
+│       │   └── main.css     # Lumberbank styling
+│       └── js/
+│           ├── main.js
+│           └── api-test.js  # API test functionality
+└── run.py                   # Application entry point
+```
 
-## Development
+## What's Working
 
-See `docs/` for detailed documentation on:
-- API endpoints
-- Standards implementation
-- Database schema
+- ✅ Flask application running
+- ✅ Landing page with Lumberbank branding
+- ✅ API endpoint (`/api/v1/hello`)
+- ✅ JavaScript calling API endpoint
+- ✅ Response displayed on page
+
+## Next Steps
+
+- Add database connection
+- Implement user authentication
+- Create project management
+- Build calculation engine
+- Add beam design interface
