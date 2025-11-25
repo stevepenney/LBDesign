@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}My Projects{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h1>My Projects</h1>
+    <a href="{{ url_for('projects.create') }}" class="btn btn-primary">+ New Project</a>
+</div>
+
+{% if projects %}
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Project Name</th>
+                    <th>Client</th>
+                    <th>Region</th>
+                    <th>Type</th>
+                    <th>Last Updated</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for project in projects %}
+                <tr>
+                    <td><strong>{{ project.name }}</strong></td>
+                    <td>{{ project.client or '-' }}</td>
+                    <td>{{ project.region|replace('_', ' ')|title }}</td>
+                    <td>{{ project.project_type or '-' }}</td>
+                    <td>{{ project.updated_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>
+                        <a href="{{ url_for('projects.detail', project_id=project.id) }}" class="btn-link">View</a> |
+                        <a href="{{ url_for('projects.edit', project_id=project.id) }}" class="btn-link">Edit</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <div class="card text-center">
+        <p style="margin: 2rem 0; color: #666;">No projects yet. Create your first project to get started!</p>
+        <a href="{{ url_for('projects.create') }}" class="btn btn-primary">Create Project</a>
+    </div>
+{% endif %}
+{% endblock %}

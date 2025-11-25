@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Edit User' if user else 'Create User' }}{% endblock %}
+
+{% block content %}
+<h1>{{ 'Edit User' if user else 'Create New User' }}</h1>
+
+<div class="card" style="max-width: 600px;">
+    <form method="POST" action="{{ url_for('user_admin.edit_user', user_id=user.id) if user else url_for('user_admin.create_user') }}">
+        <div class="form-group">
+            <label for="username">Username *</label>
+            <input type="text" id="username" name="username" 
+                   value="{{ user.username if user else '' }}" 
+                   {% if user %}disabled{% else %}required{% endif %}
+                   autofocus>
+            {% if user %}
+            <small style="color: #666;">Username cannot be changed</small>
+            {% endif %}
+        </div>
+        
+        <div class="form-group">
+            <label for="email">Email *</label>
+            <input type="email" id="email" name="email" 
+                   value="{{ user.email if user else '' }}" 
+                   required>
+        </div>
+        
+        <div class="form-group">
+            <label for="password">Password {{ '*' if not user else '' }}</label>
+            <input type="password" id="password" name="password" 
+                   {% if not user %}required{% endif %}
+                   minlength="6">
+            {% if user %}
+            <small style="color: #666;">Leave blank to keep current password</small>
+            {% endif %}
+        </div>
+        
+        <div class="form-group">
+            <label for="role">Role *</label>
+            <select id="role" name="role" required>
+                <option value="USER" {% if user and user.role == 'USER' %}selected{% endif %}>
+                    USER - View only
+                </option>
+                <option value="DETAILER" {% if user and user.role == 'DETAILER' %}selected{% elif not user %}selected{% endif %}>
+                    DETAILER - Create and edit projects/beams
+                </option>
+                <option value="ADMIN" {% if user and user.role == 'ADMIN' %}selected{% endif %}>
+                    ADMIN - User management
+                </option>
+                {% if current_user.has_role('SUPERUSER') %}
+                <option value="SUPERUSER" {% if user and user.role == 'SUPERUSER' %}selected{% endif %}>
+                    SUPERUSER - Full system access
+                </option>
+                {% endif %}
+            </select>
+        </div>
+        
+        {% if user %}
+        <div class="form-group">
+            <label style="display: flex; align-items: center; gap: 0.5rem;">
+                <input type="checkbox" name="is_active" 
+                       {% if user.is_active %}checked{% endif %}
+                       style="width: auto; margin: 0;">
+                <span>Account is active</span>
+            </label>
+        </div>
+        {% endif %}
+        
+        <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+            <button type="submit" class="btn btn-primary">
+                {{ 'Update User' if user else 'Create User' }}
+            </button>
+            <a href="{{ url_for('user_admin.users') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+{% if user %}
+<div class="card" style="max-width: 600px; margin-top: 2rem;">
+    <h2>User Information</h2>
+    <p><strong>Created:</strong> {{ user.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+    <p><strong>Last Login:</strong> {{ user.last_login.strftime('%Y-%m-%d %H:%M') if user.last_login else 'Never' }}</p>
+    <p><strong>Projects:</strong> {{ user.projects.count() }}</p>
+</div>
+{% endif %}
+{% endblock %}

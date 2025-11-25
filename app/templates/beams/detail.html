@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}{{ beam.name }}{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <div>
+        <h1>{{ beam.name }}</h1>
+        <p style="color: #666;">
+            <a href="{{ url_for('projects.detail', project_id=project.id) }}">{{ project.name }}</a>
+            {% if beam.reference %} - Reference: {{ beam.reference }}{% endif %}
+        </p>
+    </div>
+    <div style="display: flex; gap: 1rem;">
+        <a href="{{ url_for('beams.edit', beam_id=beam.id) }}" class="btn btn-secondary">Edit Beam</a>
+        <a href="{{ url_for('projects.detail', project_id=project.id) }}" class="btn btn-secondary">Back to Project</a>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Member Properties</h2>
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+        <div>
+            <p><strong>Type:</strong> {{ beam.member_type|replace('_', ' ')|title }}</p>
+        </div>
+        <div>
+            <p><strong>Span:</strong> {{ "%.2f"|format(beam.span) }} m</p>
+        </div>
+        <div>
+            <p><strong>Spacing:</strong> {{ ("%.2f m"|format(beam.spacing)) if beam.spacing else 'N/A' }}</p>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Loading</h2>
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+        <div>
+            <p><strong>Dead Load:</strong> {{ ("%.2f"|format(beam.dead_load)) if beam.dead_load else '-' }}</p>
+        </div>
+        <div>
+            <p><strong>Live Load:</strong> {{ ("%.2f"|format(beam.live_load)) if beam.live_load else '-' }}</p>
+        </div>
+        <div>
+            <p><strong>Total UDL:</strong> {{ ("%.2f"|format(beam.total_udl)) if beam.total_udl else '-' }}</p>
+        </div>
+    </div>
+    
+    {% if beam.point_load_1 or beam.point_load_2 %}
+    <h3 class="mt-2">Point Loads</h3>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        {% if beam.point_load_1 %}
+        <div>
+            <p><strong>Point Load 1:</strong> {{ "%.2f"|format(beam.point_load_1) }} kN 
+               at {{ "%.2f"|format(beam.point_load_1_position) }} m</p>
+        </div>
+        {% endif %}
+        
+        {% if beam.point_load_2 %}
+        <div>
+            <p><strong>Point Load 2:</strong> {{ "%.2f"|format(beam.point_load_2) }} kN 
+               at {{ "%.2f"|format(beam.point_load_2_position) }} m</p>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+{% if beam.max_moment or beam.max_shear %}
+<div class="card">
+    <h2>Calculation Results</h2>
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+        {% if beam.calculation_standard %}
+        <div>
+            <p><strong>Standard:</strong> {{ beam.calculation_standard }}</p>
+        </div>
+        {% endif %}
+        
+        {% if beam.max_moment %}
+        <div>
+            <p><strong>Max Moment:</strong> {{ "%.2f"|format(beam.max_moment) }} kNm</p>
+        </div>
+        {% endif %}
+        
+        {% if beam.max_shear %}
+        <div>
+            <p><strong>Max Shear:</strong> {{ "%.2f"|format(beam.max_shear) }} kN</p>
+        </div>
+        {% endif %}
+        
+        {% if beam.deflection_limit %}
+        <div>
+            <p><strong>Deflection Limit:</strong> {{ "%.2f"|format(beam.deflection_limit) }} mm</p>
+        </div>
+        {% endif %}
+    </div>
+    
+    {% if beam.selected_product_code %}
+    <h3 class="mt-2">Selected Product</h3>
+    <p><strong>Product:</strong> {{ beam.selected_product_code }}</p>
+    {% endif %}
+</div>
+{% else %}
+<div class="card" style="background-color: #fff3cd; border-left: 4px solid #F69321;">
+    <p style="margin: 0;">
+        <strong>Note:</strong> This beam has not been calculated yet. 
+        The calculation engine will be implemented in the next phase.
+    </p>
+</div>
+{% endif %}
+
+<div style="margin-top: 2rem;">
+    <form method="POST" action="{{ url_for('beams.delete', beam_id=beam.id) }}" 
+          onsubmit="return confirm('Are you sure you want to delete this beam?');">
+        <button type="submit" class="btn btn-danger">Delete Beam</button>
+    </form>
+</div>
+{% endblock %}

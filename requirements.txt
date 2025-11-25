@@ -1,19 +1,21 @@
 # Flask Core
 Flask==3.0.0
 Flask-SQLAlchemy==3.1.1
+Flask-Login==0.6.3
 Flask-Migrate==4.0.5
-Werkzeug==3.0.1
+Flask-WTF==1.2.1
+WTForms==3.1.1
+
+# Admin Interface (optional)
+Flask-Admin==1.6.1
 
 # Database Drivers
-PyMySQL==1.1.0          # For MySQL
-# pyodbc==5.0.1         # For SQL Server - install separately if needed
-cryptography==41.0.7    # Required by PyMySQL
+PyMySQL==1.1.0
+# pyodbc==5.0.1  # Uncomment for SQL Server support (requires ODBC driver)
 
-# For development (SQLite support is built into Python)
-# No additional driver needed for SQLite
-
-# Utilities
+# Security
+bcrypt==4.1.2
 python-dotenv==1.0.0
 
-# Optional but recommended for production
-gunicorn==21.2.0        # Production WSGI server (Linux/Mac only)
+# Utilities
+python-dateutil==2.8.2

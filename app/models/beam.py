@@ -1,63 +1,59 @@
 """
-Beam model for structural member designs
+Beam model
 """
-from app.extensions import db
 from datetime import datetime
+from app.extensions import db
 
 
 class Beam(db.Model):
-    """Individual beam design within a project"""
+    """Beam model for structural member designs"""
     __tablename__ = 'beams'
     
     id = db.Column(db.Integer, primary_key=True)
-    reference = db.Column(db.String(100), nullable=False)  # User's reference (e.g., "B1", "Floor Joist 1")
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), 
+                          nullable=False, index=True)
+    name = db.Column(db.String(100), nullable=False)
+    reference = db.Column(db.String(50))  # User's reference code (e.g., "J1", "R2")
     
-    # Foreign keys
-    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
-    selected_product_id = db.Column(db.Integer, db.ForeignKey('products.id'))
+    # Member properties
+    member_type = db.Column(db.String(50), nullable=False)  # floor_joist, rafter, beam
+    span = db.Column(db.Float, nullable=False)  # meters
+    spacing = db.Column(db.Float)  # meters (for joists/rafters)
     
-    # Beam type and dimensions
-    member_type = db.Column(db.String(50), nullable=False)  # 'floor_joist', 'rafter', 'beam', etc.
-    span = db.Column(db.Numeric(10, 3), nullable=False)  # meters
-    spacing = db.Column(db.Numeric(10, 3))  # meters (if applicable)
+    # Load parameters (stored as JSON)
+    # For now we'll use separate columns, can migrate to JSON later
+    dead_load = db.Column(db.Float)  # kPa or kN/m
+    live_load = db.Column(db.Float)  # kPa or kN/m
+    point_load_1 = db.Column(db.Float)  # kN
+    point_load_1_position = db.Column(db.Float)  # meters from left support
+    point_load_2 = db.Column(db.Float)  # kN
+    point_load_2_position = db.Column(db.Float)  # meters from left support
     
-    # Load parameters (JSON stored as text)
-    load_parameters = db.Column(db.Text, nullable=False)
-    # JSON: {
-    #   "dead_load": 0.5,
-    #   "live_load": 1.5,
-    #   "point_loads": [{"location": 2.5, "magnitude": 5.0}],
-    #   "distributed_loads": [...]
-    # }
-    
-    # Calculation results (JSON stored as text)
-    calculation_results = db.Column(db.Text)
-    # JSON: {
-    #   "standard_used": "NZS3603:1993",
-    #   "standard_version": "1993",
-    #   "max_moment": 25.5,
-    #   "max_shear": 12.3,
-    #   "deflection": 12.5,
-    #   "recommended_products": [...]
-    # }
-    
-    # Calculation metadata
+    # Calculation results (to be populated by calculation engine)
     calculation_standard = db.Column(db.String(50))
     calculation_version = db.Column(db.String(20))
-    calculated_at = db.Column(db.DateTime)
+    max_moment = db.Column(db.Float)  # kNm
+    max_shear = db.Column(db.Float)  # kN
+    deflection_limit = db.Column(db.Float)  # mm
     
-    # Status and timestamps
-    is_complete = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # Product selection
+    recommended_products = db.Column(db.JSON)  # Store recommendations as JSON
+    selected_product_code = db.Column(db.String(50))
     
-    # Relationship
-    selected_product = db.relationship('Product', backref='beams')
+    # Metadata
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, 
+                          onupdate=datetime.utcnow, nullable=False)
     
-    def __repr__(self):
-        return f'<Beam {self.reference}>'
+    # Relationships
+    project = db.relationship('Project', back_populates='beams')
     
     @property
-    def has_results(self):
-        """Check if beam has calculation results"""
-        return self.calculation_results is not None
+    def total_udl(self):
+        """Calculate total uniformly distributed load"""
+        dead = self.dead_load or 0
+        live = self.live_load or 0
+        return dead + live
+    
+    def __repr__(self):
+        return f'<Beam {self.name} in Project {self.project_id}>'

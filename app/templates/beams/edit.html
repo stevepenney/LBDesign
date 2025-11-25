@@ -1,37 +1,34 @@
 {% extends "base.html" %}
 
-{% block title %}New Beam - {{ project.name }}{% endblock %}
+{% block title %}Edit {{ beam.name }}{% endblock %}
 
 {% block content %}
-<h1>Add Beam to {{ project.name }}</h1>
+<h1>Edit Beam</h1>
 
 <div class="card" style="max-width: 800px;">
-    <form method="POST" action="{{ url_for('beams.create', project_id=project.id) }}">
+    <form method="POST" action="{{ url_for('beams.edit', beam_id=beam.id) }}">
         <h2>Basic Information</h2>
         
         <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1rem;">
             <div class="form-group">
                 <label for="name">Beam Name *</label>
-                <input type="text" id="name" name="name" required autofocus
-                       placeholder="e.g., Main Floor Joist, Ridge Beam">
+                <input type="text" id="name" name="name" value="{{ beam.name }}" required autofocus>
             </div>
             
             <div class="form-group">
                 <label for="reference">Reference Code</label>
-                <input type="text" id="reference" name="reference"
-                       placeholder="e.g., J1, R2, B3">
+                <input type="text" id="reference" name="reference" value="{{ beam.reference or '' }}">
             </div>
         </div>
         
         <div class="form-group">
             <label for="member_type">Member Type *</label>
             <select id="member_type" name="member_type" required>
-                <option value="">Select type...</option>
-                <option value="floor_joist">Floor Joist</option>
-                <option value="rafter">Rafter</option>
-                <option value="beam">Beam</option>
-                <option value="header">Header</option>
-                <option value="lintel">Lintel</option>
+                <option value="floor_joist" {% if beam.member_type == 'floor_joist' %}selected{% endif %}>Floor Joist</option>
+                <option value="rafter" {% if beam.member_type == 'rafter' %}selected{% endif %}>Rafter</option>
+                <option value="beam" {% if beam.member_type == 'beam' %}selected{% endif %}>Beam</option>
+                <option value="header" {% if beam.member_type == 'header' %}selected{% endif %}>Header</option>
+                <option value="lintel" {% if beam.member_type == 'lintel' %}selected{% endif %}>Lintel</option>
             </select>
         </div>
         
@@ -40,14 +37,14 @@
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div class="form-group">
                 <label for="span">Span (meters) *</label>
-                <input type="number" id="span" name="span" step="0.01" min="0" required
-                       placeholder="e.g., 4.8">
+                <input type="number" id="span" name="span" step="0.01" min="0" 
+                       value="{{ beam.span }}" required>
             </div>
             
             <div class="form-group">
                 <label for="spacing">Spacing (meters)</label>
                 <input type="number" id="spacing" name="spacing" step="0.01" min="0"
-                       placeholder="e.g., 0.4 or 0.6">
+                       value="{{ beam.spacing or '' }}">
                 <small style="color: #666;">For joists/rafters only</small>
             </div>
         </div>
@@ -58,13 +55,13 @@
             <div class="form-group">
                 <label for="dead_load">Dead Load (kPa or kN/m)</label>
                 <input type="number" id="dead_load" name="dead_load" step="0.01" min="0"
-                       placeholder="e.g., 0.5">
+                       value="{{ beam.dead_load or '' }}">
             </div>
             
             <div class="form-group">
                 <label for="live_load">Live Load (kPa or kN/m)</label>
                 <input type="number" id="live_load" name="live_load" step="0.01" min="0"
-                       placeholder="e.g., 1.5">
+                       value="{{ beam.live_load or '' }}">
             </div>
         </div>
         
@@ -74,14 +71,14 @@
             <div class="form-group">
                 <label for="point_load_1">Point Load 1 (kN)</label>
                 <input type="number" id="point_load_1" name="point_load_1" step="0.01" min="0"
-                       placeholder="e.g., 5.0">
+                       value="{{ beam.point_load_1 or '' }}">
             </div>
             
             <div class="form-group">
                 <label for="point_load_1_position">Position from Left (m)</label>
                 <input type="number" id="point_load_1_position" name="point_load_1_position" 
                        step="0.01" min="0"
-                       placeholder="e.g., 2.4">
+                       value="{{ beam.point_load_1_position or '' }}">
             </div>
         </div>
         
@@ -89,20 +86,20 @@
             <div class="form-group">
                 <label for="point_load_2">Point Load 2 (kN)</label>
                 <input type="number" id="point_load_2" name="point_load_2" step="0.01" min="0"
-                       placeholder="e.g., 5.0">
+                       value="{{ beam.point_load_2 or '' }}">
             </div>
             
             <div class="form-group">
                 <label for="point_load_2_position">Position from Left (m)</label>
                 <input type="number" id="point_load_2_position" name="point_load_2_position" 
                        step="0.01" min="0"
-                       placeholder="e.g., 3.6">
+                       value="{{ beam.point_load_2_position or '' }}">
             </div>
         </div>
         
         <div style="display: flex; gap: 1rem; margin-top: 2rem;">
-            <button type="submit" class="btn btn-primary">Create Beam</button>
-            <a href="{{ url_for('projects.detail', project_id=project.id) }}" class="btn btn-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <a href="{{ url_for('beams.detail', beam_id=beam.id) }}" class="btn btn-secondary">Cancel</a>
         </div>
     </form>
 </div>

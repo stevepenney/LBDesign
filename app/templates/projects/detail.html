@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }}{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <div>
+        <h1>{{ project.name }}</h1>
+        <p style="color: #666;">{{ project.region|replace('_', ' ')|title }}</p>
+    </div>
+    <div style="display: flex; gap: 1rem;">
+        <a href="{{ url_for('beams.create', project_id=project.id) }}" class="btn btn-primary">+ Add Beam</a>
+        <a href="{{ url_for('projects.edit', project_id=project.id) }}" class="btn btn-secondary">Edit Project</a>
+        <a href="{{ url_for('projects.list') }}" class="btn btn-secondary">Back to Projects</a>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Project Information</h2>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <div>
+            <p><strong>Client:</strong> {{ project.client or '-' }}</p>
+            <p><strong>Address:</strong> {{ project.address or '-' }}</p>
+            <p><strong>Project Number:</strong> {{ project.project_number or '-' }}</p>
+        </div>
+        <div>
+            <p><strong>Engineer:</strong> {{ project.engineer or '-' }}</p>
+            <p><strong>Architect:</strong> {{ project.architect or '-' }}</p>
+            <p><strong>Merchant:</strong> {{ project.merchant or '-' }}</p>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Beams ({{ beams|length }})</h2>
+    
+    {% if beams %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Reference</th>
+                    <th>Type</th>
+                    <th>Span (m)</th>
+                    <th>Spacing (m)</th>
+                    <th>Dead Load</th>
+                    <th>Live Load</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for beam in beams %}
+                <tr>
+                    <td><strong>{{ beam.name }}</strong></td>
+                    <td>{{ beam.reference or '-' }}</td>
+                    <td>{{ beam.member_type|replace('_', ' ')|title }}</td>
+                    <td>{{ "%.2f"|format(beam.span) }}</td>
+                    <td>{{ ("%.2f"|format(beam.spacing)) if beam.spacing else '-' }}</td>
+                    <td>{{ ("%.2f"|format(beam.dead_load)) if beam.dead_load else '-' }}</td>
+                    <td>{{ ("%.2f"|format(beam.live_load)) if beam.live_load else '-' }}</td>
+                    <td>
+                        <a href="{{ url_for('beams.detail', beam_id=beam.id) }}" class="btn-link">View</a> |
+                        <a href="{{ url_for('beams.edit', beam_id=beam.id) }}" class="btn-link">Edit</a> |
+                        <form method="POST" action="{{ url_for('beams.delete', beam_id=beam.id) }}" 
+                              style="display: inline;"
+                              onsubmit="return confirm('Are you sure you want to delete this beam?');">
+                            <button type="submit" class="btn-link" style="color: #dc3545; cursor: pointer;">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p style="text-align: center; color: #666; margin: 2rem 0;">
+            No beams yet. Click "Add Beam" to create your first beam design.
+        </p>
+    {% endif %}
+</div>
+
+<div style="margin-top: 2rem;">
+    <form method="POST" action="{{ url_for('projects.delete', project_id=project.id) }}" 
+          onsubmit="return confirm('Are you sure you want to delete this project and all its beams?');">
+        <button type="submit" class="btn btn-danger">Delete Project</button>
+    </form>
+</div>
+{% endblock %}

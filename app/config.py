@@ -2,60 +2,66 @@
 Application configuration
 """
 import os
-from datetime import timedelta
+from dotenv import load_dotenv
 
-
-def get_database_uri():
-    """Generate database URI based on DATABASE_TYPE environment variable"""
-    db_type = os.environ.get('DATABASE_TYPE', 'sqlite').lower()
-    
-    if db_type == 'sqlite':
-        # SQLite - for development
-        return 'sqlite:///lbdesign.db'
-    
-    elif db_type == 'mysql':
-        # MySQL/MariaDB
-        user = os.environ.get('DATABASE_USER', '')
-        password = os.environ.get('DATABASE_PASSWORD', '')
-        host = os.environ.get('DATABASE_HOST', 'localhost')
-        port = os.environ.get('DATABASE_PORT', '3306')
-        name = os.environ.get('DATABASE_NAME', 'lbdesign')
-        return f"mysql+pymysql://{user}:{password}@{host}:{port}/{name}"
-    
-    elif db_type == 'mssql':
-        # Microsoft SQL Server
-        user = os.environ.get('DATABASE_USER', '')
-        password = os.environ.get('DATABASE_PASSWORD', '')
-        host = os.environ.get('DATABASE_HOST', 'localhost')
-        port = os.environ.get('DATABASE_PORT', '1433')
-        name = os.environ.get('DATABASE_NAME', 'lbdesign')
-        driver = 'ODBC+Driver+17+for+SQL+Server'
-        return f"mssql+pyodbc://{user}:{password}@{host}:{port}/{name}?driver={driver}"
-    
-    else:
-        raise ValueError(f"Unsupported database type: {db_type}")
+load_dotenv()
 
 
 class Config:
     """Base configuration"""
-    # Flask
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
+    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
     
-    # Application
-    APP_NAME = 'LBDesign'
-    APP_TITLE = 'Lumberbank Design Calculator'
+    # Database configuration
+    DATABASE_TYPE = os.getenv('DATABASE_TYPE', 'sqlite')
     
-    # Session
-    PERMANENT_SESSION_LIFETIME = timedelta(hours=24)
+    # Build database URI based on type
+    if DATABASE_TYPE == 'mysql':
+        SQLALCHEMY_DATABASE_URI = (
+            f"mysql+pymysql://{os.getenv('DATABASE_USER')}:"
+            f"{os.getenv('DATABASE_PASSWORD')}@"
+            f"{os.getenv('DATABASE_HOST', 'localhost')}:"
+            f"{os.getenv('DATABASE_PORT', '3306')}/"
+            f"{os.getenv('DATABASE_NAME', 'beam_selector')}"
+        )
+    elif DATABASE_TYPE == 'mssql':
+        SQLALCHEMY_DATABASE_URI = (
+            f"mssql+pyodbc://{os.getenv('DATABASE_USER')}:"
+            f"{os.getenv('DATABASE_PASSWORD')}@"
+            f"{os.getenv('DATABASE_HOST', 'localhost')}:"
+            f"{os.getenv('DATABASE_PORT', '1433')}/"
+            f"{os.getenv('DATABASE_NAME', 'beam_selector')}"
+            f"?driver=ODBC+Driver+17+for+SQL+Server"
+        )
+    else:  # sqlite
+        # Use absolute path for SQLite database
+        basedir = os.path.abspath(os.path.dirname(__file__))
+        instance_path = os.path.join(os.path.dirname(basedir), 'instance')
+        db_path = os.path.join(instance_path, 'beam_selector.db')
+        
+        # Ensure instance directory exists
+        os.makedirs(instance_path, exist_ok=True)
+        
+        SQLALCHEMY_DATABASE_URI = f'sqlite:///{db_path}'
     
-    # Database Configuration
-    DATABASE_TYPE = os.environ.get('DATABASE_TYPE', 'sqlite')
-    DATABASE_HOST = os.environ.get('DATABASE_HOST', 'localhost')
-    DATABASE_PORT = os.environ.get('DATABASE_PORT', '3306')
-    DATABASE_NAME = os.environ.get('DATABASE_NAME', 'lbdesign')
-    DATABASE_USER = os.environ.get('DATABASE_USER', '')
-    DATABASE_PASSWORD = os.environ.get('DATABASE_PASSWORD', '')
-    
-    # SQLAlchemy
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_DATABASE_URI = get_database_uri()
+    
+    # Application settings
+    DEFAULT_REGION = os.getenv('DEFAULT_REGION', 'new_zealand')
+    ITEMS_PER_PAGE = int(os.getenv('ITEMS_PER_PAGE', 20))
+
+
+class DevelopmentConfig(Config):
+    """Development configuration"""
+    DEBUG = True
+
+
+class ProductionConfig(Config):
+    """Production configuration"""
+    DEBUG = False
+
+
+config = {
+    'development': DevelopmentConfig,
+    'production': ProductionConfig,
+    'default': DevelopmentConfig
+}

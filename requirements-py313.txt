@@ -1,0 +1,21 @@
+# Flask Core - Updated for Python 3.13
+Flask==3.1.0
+Flask-SQLAlchemy==3.1.1
+Flask-Login==0.6.3
+Flask-Migrate==4.0.7
+Flask-WTF==1.2.1
+WTForms==3.1.2
+
+# Database Drivers
+PyMySQL==1.1.1
+
+# Security
+bcrypt==4.2.0
+python-dotenv==1.0.1
+
+# Core dependencies
+SQLAlchemy==2.0.35
+Werkzeug==3.0.4
+
+# Utilities
+python-dateutil==2.9.0

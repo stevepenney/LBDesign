@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Edit {{ project.name }}{% endblock %}
+
+{% block content %}
+<h1>Edit Project</h1>
+
+<div class="card" style="max-width: 800px;">
+    <form method="POST" action="{{ url_for('projects.edit', project_id=project.id) }}">
+        <div class="form-group">
+            <label for="name">Project Name *</label>
+            <input type="text" id="name" name="name" value="{{ project.name }}" required autofocus>
+        </div>
+        
+        <div class="form-group">
+            <label for="region">Region *</label>
+            <select id="region" name="region" required>
+                <option value="new_zealand" {% if project.region == 'new_zealand' %}selected{% endif %}>New Zealand</option>
+                <option value="australia" {% if project.region == 'australia' %}selected{% endif %}>Australia</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="project_type">Project Type</label>
+            <select id="project_type" name="project_type">
+                <option value="">Select type...</option>
+                <option value="Midfloor" {% if project.project_type == 'Midfloor' %}selected{% endif %}>Midfloor</option>
+                <option value="Rafters" {% if project.project_type == 'Rafters' %}selected{% endif %}>Rafters</option>
+                <option value="Both" {% if project.project_type == 'Both' %}selected{% endif %}>Both</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="address">Address</label>
+            <textarea id="address" name="address" rows="3">{{ project.address or '' }}</textarea>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="client">Client</label>
+                <input type="text" id="client" name="client" value="{{ project.client or '' }}">
+            </div>
+            
+            <div class="form-group">
+                <label for="project_number">Project Number</label>
+                <input type="text" id="project_number" name="project_number" value="{{ project.project_number or '' }}">
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="engineer">Engineer</label>
+                <input type="text" id="engineer" name="engineer" value="{{ project.engineer or '' }}">
+            </div>
+            
+            <div class="form-group">
+                <label for="architect">Architect</label>
+                <input type="text" id="architect" name="architect" value="{{ project.architect or '' }}">
+            </div>
+            
+            <div class="form-group">
+                <label for="merchant">Merchant</label>
+                <input type="text" id="merchant" name="merchant" value="{{ project.merchant or '' }}">
+            </div>
+        </div>
+        
+        <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <a href="{{ url_for('projects.detail', project_id=project.id) }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
