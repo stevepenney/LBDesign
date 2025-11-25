@@ -1,7 +1,7 @@
 """
-Flask-Admin setup for database administration
+Flask-Admin setup for database administration (SUPERUSER only)
 """
-from flask_admin import Admin
+from flask_admin import Admin, AdminIndexView, expose
 from flask_admin.contrib.sqla import ModelView
 from flask_login import current_user
 from flask import redirect, url_for, request
@@ -9,8 +9,25 @@ from app.extensions import db
 from app.models import User, Project, Beam
 
 
+class CustomAdminIndexView(AdminIndexView):
+    """Custom index view for database admin with tile layout"""
+    
+    def is_accessible(self):
+        """Only allow SUPERUSER access"""
+        return current_user.is_authenticated and current_user.has_role('SUPERUSER')
+    
+    def inaccessible_callback(self, name, **kwargs):
+        """Redirect to login if not accessible"""
+        return redirect(url_for('auth.login', next=request.url))
+    
+    @expose('/')
+    def index(self):
+        """Custom index page with tiles"""
+        return self.render('admin/database_index.html')
+
+
 class SecureModelView(ModelView):
-    """Base ModelView with authentication"""
+    """Base ModelView with SUPERUSER authentication"""
     
     def _handle_view(self, name, **kwargs):
         """Override to inject custom CSS"""
@@ -74,12 +91,22 @@ class BeamAdminView(SecureModelView):
 
 
 def init_admin(app):
-    """Initialize Flask-Admin"""
-    admin = Admin(app, name='LBDesign Admin')
+    """Initialize Flask-Admin at /admin/database/"""
+    admin = Admin(
+        app, 
+        name='LBDesign Database Admin',
+        url='/admin/database',
+        endpoint='database_admin',
+        index_view=CustomAdminIndexView(
+            name='Database Admin',
+            url='/admin/database',
+            endpoint='database_admin'
+        )
+    )
     
-    # Add model views
-    admin.add_view(UserAdminView(User, db.session, name='Users', category='Data'))
-    admin.add_view(ProjectAdminView(Project, db.session, name='Projects', category='Data'))
-    admin.add_view(BeamAdminView(Beam, db.session, name='Beams', category='Data'))
+    # Add model views - remove category to hide dropdown menu
+    admin.add_view(UserAdminView(User, db.session, name='Users', endpoint='user'))
+    admin.add_view(ProjectAdminView(Project, db.session, name='Projects', endpoint='project'))
+    admin.add_view(BeamAdminView(Beam, db.session, name='Beams', endpoint='beam'))
     
     return admin

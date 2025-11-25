@@ -4,7 +4,7 @@ Admin routes for user and system management
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from functools import wraps
-from app.database.repositories import UserRepository
+from app.database.repositories import UserRepository, ProjectRepository
 from app.extensions import db
 
 admin_bp = Blueprint('user_admin', __name__, url_prefix='/admin')
@@ -39,13 +39,15 @@ def dashboard():
     # Get recent users
     recent_users = User.query.order_by(User.created_at.desc()).limit(5).all()
     
-    return render_template('admin/dashboard.html',
+    return render_template('admin/admin_dashboard.html',
                          total_users=total_users,
                          active_users=active_users,
                          total_projects=total_projects,
                          total_beams=total_beams,
                          recent_users=recent_users)
 
+
+# ==================== USER MANAGEMENT ====================
 
 @admin_bp.route('/users')
 @admin_required
@@ -81,7 +83,7 @@ def create_user():
         # Create user
         UserRepository.create_user(username, email, password, role)
         flash(f'User "{username}" created successfully!', 'success')
-        return redirect(url_for('admin.users'))
+        return redirect(url_for('user_admin.users'))
     
     return render_template('admin/user_form.html', user=None)
 
@@ -94,7 +96,7 @@ def edit_user(user_id):
     
     if not user:
         flash('User not found.', 'error')
-        return redirect(url_for('admin.users'))
+        return redirect(url_for('user_admin.users'))
     
     if request.method == 'POST':
         email = request.form.get('email')
@@ -117,7 +119,7 @@ def edit_user(user_id):
             db.session.commit()
         
         flash(f'User "{user.username}" updated successfully!', 'success')
-        return redirect(url_for('admin.users'))
+        return redirect(url_for('user_admin.users'))
     
     return render_template('admin/user_form.html', user=user)
 
@@ -130,18 +132,18 @@ def toggle_user_active(user_id):
     
     if not user:
         flash('User not found.', 'error')
-        return redirect(url_for('admin.users'))
+        return redirect(url_for('user_admin.users'))
     
     if user.id == current_user.id:
         flash('Cannot deactivate your own account.', 'error')
-        return redirect(url_for('admin.users'))
+        return redirect(url_for('user_admin.users'))
     
     user.is_active = not user.is_active
     db.session.commit()
     
     status = 'activated' if user.is_active else 'deactivated'
     flash(f'User "{user.username}" {status}.', 'success')
-    return redirect(url_for('admin.users'))
+    return redirect(url_for('user_admin.users'))
 
 
 @admin_bp.route('/users/<int:user_id>/delete', methods=['POST'])
@@ -150,19 +152,68 @@ def delete_user(user_id):
     """Delete user"""
     if not current_user.has_role('SUPERUSER'):
         flash('Only SUPERUSER can delete users.', 'error')
-        return redirect(url_for('admin.users'))
+        return redirect(url_for('user_admin.users'))
     
     user = UserRepository.get_by_id(user_id)
     
     if not user:
         flash('User not found.', 'error')
-        return redirect(url_for('admin.users'))
+        return redirect(url_for('user_admin.users'))
     
     if user.id == current_user.id:
         flash('Cannot delete your own account.', 'error')
-        return redirect(url_for('admin.users'))
+        return redirect(url_for('user_admin.users'))
     
     username = user.username
     UserRepository.delete(user)
     flash(f'User "{username}" deleted.', 'success')
-    return redirect(url_for('admin.users'))
+    return redirect(url_for('user_admin.users'))
+
+
+# ==================== PROJECT MANAGEMENT ====================
+
+@admin_bp.route('/projects')
+@admin_required
+def projects():
+    """List all projects (admin view)"""
+    from app.models import Project
+    
+    # Get all projects with owner information
+    all_projects = Project.query.order_by(Project.updated_at.desc()).all()
+    
+    return render_template('admin/projects.html', projects=all_projects)
+
+
+@admin_bp.route('/projects/<int:project_id>')
+@admin_required
+def project_detail(project_id):
+    """View project details (admin view)"""
+    from app.database.repositories import BeamRepository
+    
+    project = ProjectRepository.get_by_id(project_id)
+    
+    if not project:
+        flash('Project not found.', 'error')
+        return redirect(url_for('user_admin.projects'))
+    
+    beams = BeamRepository.get_by_project(project_id)
+    
+    return render_template('admin/project_detail.html', project=project, beams=beams)
+
+
+@admin_bp.route('/projects/<int:project_id>/delete', methods=['POST'])
+@admin_required
+def delete_project(project_id):
+    """Delete project (admin action)"""
+    project = ProjectRepository.get_by_id(project_id)
+    
+    if not project:
+        flash('Project not found.', 'error')
+        return redirect(url_for('user_admin.projects'))
+    
+    project_name = project.name
+    owner_name = project.owner.username
+    
+    ProjectRepository.delete(project)
+    flash(f'Project "{project_name}" (owned by {owner_name}) deleted successfully.', 'success')
+    return redirect(url_for('user_admin.projects'))

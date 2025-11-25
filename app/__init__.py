@@ -44,7 +44,8 @@ def create_app(config_name='development'):
     # Root route
     @app.route('/')
     def index():
-        return redirect(url_for('projects.list'))
+        from flask import render_template
+        return render_template('index.html')
     
     # Create tables
     with app.app_context():

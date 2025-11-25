@@ -1,33 +1,70 @@
 {% extends "base.html" %}
 
+{% block title %}Home - LBDesign{% endblock %}
+
 {% block content %}
 <div class="hero">
     <h2>Welcome to LBDesign</h2>
     <p class="subtitle">Structural design calculator for engineered wood products</p>
     
-    <div class="demo-section">
-        <h3>API Test</h3>
-        <button id="testButton" class="btn btn-primary">Test Hello World API</button>
-        <div id="response" class="response-box"></div>
+    {% if current_user.is_authenticated %}
+    <!-- Logged in user view -->
+    <div class="card" style="max-width: 800px; margin: 2rem auto;">
+        <h3>Welcome back, {{ current_user.username }}!</h3>
+        <p style="margin: 1rem 0;">Quick actions to get started:</p>
+        
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1.5rem;">
+            <a href="{{ url_for('projects.list') }}" class="btn btn-primary">View My Projects</a>
+            <a href="{{ url_for('projects.create') }}" class="btn btn-secondary">Create New Project</a>
+            {% if current_user.has_role('ADMIN') %}
+            <a href="{{ url_for('user_admin.dashboard') }}" class="btn btn-secondary">Admin Dashboard</a>
+            {% endif %}
+        </div>
     </div>
+    {% else %}
+    <!-- Not logged in view -->
+    <div class="card" style="max-width: 600px; margin: 2rem auto; text-align: center;">
+        <h3>Get Started</h3>
+        <p style="margin: 1rem 0; color: #666;">
+            Design floor joists, rafters, and beams to New Zealand standards
+        </p>
+        <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 1.5rem;">
+            <a href="{{ url_for('auth.login') }}" class="btn btn-primary">Login</a>
+            <a href="{{ url_for('auth.register') }}" class="btn btn-secondary">Register</a>
+        </div>
+    </div>
+    {% endif %}
     
     <div class="info-section">
         <div class="info-card">
             <h4>Floor & Roof Members</h4>
-            <p>Design floor joists, rafters, and beams to NZ standards</p>
+            <p>Design floor joists, rafters, and beams to NZ standards (AS/NZS1170, NZS3603)</p>
         </div>
         <div class="info-card">
             <h4>Product Recommendations</h4>
-            <p>Get ranked recommendations from our product range</p>
+            <p>Get ranked recommendations from Lumberworx I-beams, LVL, Glulam, and SG8 timber</p>
         </div>
         <div class="info-card">
             <h4>Standards Compliant</h4>
-            <p>Calculations based on AS/NZS1170 and NZS3603</p>
+            <p>Calculations based on AS/NZS1170 and NZS3603 with future support for Australian standards</p>
         </div>
     </div>
+    
+    {% if current_user.is_authenticated %}
+    <!-- Additional features for logged in users -->
+    <div class="card" style="margin-top: 3rem;">
+        <h3>Your Account</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 2rem; margin-top: 1rem;">
+            <div>
+                <p><strong>Username:</strong> {{ current_user.username }}</p>
+                <p><strong>Email:</strong> {{ current_user.email }}</p>
+            </div>
+            <div>
+                <p><strong>Role:</strong> {{ current_user.role }}</p>
+                <p><strong>Projects:</strong> {{ current_user.projects.count() }}</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </div>
-{% endblock %}
-
-{% block extra_js %}
-<script src="{{ url_for('static', filename='js/api-test.js') }}"></script>
 {% endblock %}
