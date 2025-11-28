@@ -7,45 +7,62 @@
 
 <div class="card">
     <h2>System Overview</h2>
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2rem; margin: 2rem 0;">
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; margin: 2rem 0;">
         <!-- Users Tile -->
-        <div style="background: #f9fafb; padding: 2rem; border-radius: 8px; border-left: 4px solid #8B6F47; cursor: pointer;" 
-             onclick="window.location.href='{{ url_for('user_admin.users') }}'">
-            <h3 style="color: #8B6F47; font-size: 2.5rem; margin: 0;">{{ total_users }}</h3>
-            <p style="color: #666; margin: 0.5rem 0 0 0; font-weight: 600;">Total Users</p>
-            <p style="color: #999; font-size: 0.9rem; margin: 0.25rem 0 0 0;">{{ active_users }} active</p>
-            <p style="color: #8B6F47; font-size: 0.9rem; margin-top: 1rem;">Click to manage →</p>
+        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 2rem; cursor: pointer; transition: all 0.3s; box-shadow: 0 1px 3px rgba(0,0,0,0.1);" 
+             onclick="window.location.href='{{ url_for('user_admin.users') }}'"
+             onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'"
+             onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">👥</div>
+            <h3 style="color: #8B6F47; margin: 0 0 0.5rem 0;">Users</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <span style="color: #666; font-size: 1.5rem; font-weight: 600;">{{ total_users }}</span>
+                <span style="color: #999; font-size: 0.9rem;">total</span>
+            </div>
+            <p style="color: #999; font-size: 0.9rem; margin: 0;">{{ active_users }} active</p>
+            <p style="color: #8B6F47; font-size: 0.9rem; margin-top: 1rem;">
+                Click to manage →
+            </p>
         </div>
         
         <!-- Projects Tile -->
-        <div style="background: #f9fafb; padding: 2rem; border-radius: 8px; border-left: 4px solid #F69321; cursor: pointer;" 
-             onclick="window.location.href='{{ url_for('user_admin.projects') }}'">
-            <h3 style="color: #F69321; font-size: 2.5rem; margin: 0;">{{ total_projects }}</h3>
-            <p style="color: #666; margin: 0.5rem 0 0 0; font-weight: 600;">Total Projects</p>
-            <p style="color: #F69321; font-size: 0.9rem; margin-top: 1rem;">Click to view →</p>
+        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 2rem; cursor: pointer; transition: all 0.3s; box-shadow: 0 1px 3px rgba(0,0,0,0.1);" 
+             onclick="window.location.href='{{ url_for('user_admin.projects') }}'"
+             onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'"
+             onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">📁</div>
+            <h3 style="color: #F69321; margin: 0 0 0.5rem 0;">Projects</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <span style="color: #666; font-size: 1.5rem; font-weight: 600;">{{ total_projects }}</span>
+                <span style="color: #999; font-size: 0.9rem;">total</span>
+            </div>
+            <p style="color: #F69321; font-size: 0.9rem; margin-top: 1rem;">
+                Click to view →
+            </p>
         </div>
-    </div>
-    
-    {% if current_user.has_role('SUPERUSER') %}
-    <!-- Database Admin Tile (SUPERUSER only) -->
-    <div style="margin-top: 2rem;">
-        <div style="background: #fef2f2; padding: 2rem; border-radius: 8px; border-left: 4px solid #dc3545; cursor: pointer; max-width: 400px;" 
-             onclick="confirmDatabaseAccess()">
-            <h3 style="color: #dc3545; font-size: 2rem; margin: 0;">⚠️ Database Administration</h3>
-            <p style="color: #666; margin: 0.5rem 0 0 0; font-weight: 600;">Direct Table Access</p>
-            <p style="color: #999; font-size: 0.9rem; margin: 0.25rem 0 0 0;">Advanced users only</p>
-            <p style="color: #dc3545; font-size: 0.9rem; margin-top: 1rem;">Proceed with caution →</p>
+        
+        {% if current_user.has_role('SUPERUSER') %}
+        <!-- Database Admin Tile (SUPERUSER only) -->
+        <div style="background: white; border: 1px solid #e5e7eb; border-left: 4px solid #dc3545; border-radius: 8px; padding: 2rem; cursor: pointer; transition: all 0.3s; box-shadow: 0 1px 3px rgba(0,0,0,0.1);" 
+             onclick="confirmDatabaseAccess()"
+             onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'"
+             onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
+            <h3 style="color: #dc3545; margin: 0 0 0.5rem 0;">Database Admin</h3>
+            <p style="color: #666; margin: 0.5rem 0; font-size: 0.9rem;">Direct table access</p>
+            <p style="color: #999; font-size: 0.85rem; margin: 0;">Advanced users only</p>
+            <p style="color: #dc3545; font-size: 0.9rem; margin-top: 1rem;">
+                Proceed with caution →
+            </p>
         </div>
-    </div>
-    {% endif %}
-</div>
-
-<div class="card">
-    <h2>Quick Actions</h2>
-    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-        <a href="{{ url_for('user_admin.create_user') }}" class="btn btn-primary">+ Create User</a>
-        <a href="{{ url_for('user_admin.users') }}" class="btn btn-secondary">Manage Users</a>
-        <a href="{{ url_for('user_admin.projects') }}" class="btn btn-secondary">View All Projects</a>
+        {% else %}
+        <!-- Placeholder for non-SUPERUSER to maintain grid -->
+        <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 2rem; opacity: 0.5;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🔒</div>
+            <h3 style="color: #999; margin: 0 0 0.5rem 0;">Database Admin</h3>
+            <p style="color: #999; font-size: 0.9rem; margin: 0;">SUPERUSER access required</p>
+        </div>
+        {% endif %}
     </div>
 </div>
 

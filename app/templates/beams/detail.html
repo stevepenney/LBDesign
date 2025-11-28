@@ -17,6 +17,7 @@
     </div>
 </div>
 
+<!-- Member Properties Card -->
 <div class="card">
     <h2>Member Properties</h2>
     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
@@ -32,17 +33,18 @@
     </div>
 </div>
 
+<!-- Loading Card -->
 <div class="card">
     <h2>Loading</h2>
     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
         <div>
-            <p><strong>Dead Load:</strong> {{ ("%.2f"|format(beam.dead_load)) if beam.dead_load else '-' }}</p>
+            <p><strong>Dead Load:</strong> {{ ("%.2f"|format(beam.dead_load)) if beam.dead_load else '-' }} kPa</p>
         </div>
         <div>
-            <p><strong>Live Load:</strong> {{ ("%.2f"|format(beam.live_load)) if beam.live_load else '-' }}</p>
+            <p><strong>Live Load:</strong> {{ ("%.2f"|format(beam.live_load)) if beam.live_load else '-' }} kPa</p>
         </div>
         <div>
-            <p><strong>Total UDL:</strong> {{ ("%.2f"|format(beam.total_udl)) if beam.total_udl else '-' }}</p>
+            <p><strong>Total UDL:</strong> {{ ("%.2f"|format(beam.total_udl)) if beam.total_udl else '-' }} kPa</p>
         </div>
     </div>
     
@@ -66,49 +68,157 @@
     {% endif %}
 </div>
 
-{% if beam.max_moment or beam.max_shear %}
-<div class="card">
-    <h2>Calculation Results</h2>
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
-        {% if beam.calculation_standard %}
-        <div>
-            <p><strong>Standard:</strong> {{ beam.calculation_standard }}</p>
-        </div>
-        {% endif %}
-        
-        {% if beam.max_moment %}
-        <div>
-            <p><strong>Max Moment:</strong> {{ "%.2f"|format(beam.max_moment) }} kNm</p>
-        </div>
-        {% endif %}
-        
-        {% if beam.max_shear %}
-        <div>
-            <p><strong>Max Shear:</strong> {{ "%.2f"|format(beam.max_shear) }} kN</p>
-        </div>
-        {% endif %}
-        
-        {% if beam.deflection_limit %}
-        <div>
-            <p><strong>Deflection Limit:</strong> {{ "%.2f"|format(beam.deflection_limit) }} mm</p>
-        </div>
-        {% endif %}
-    </div>
-    
-    {% if beam.selected_product_code %}
-    <h3 class="mt-2">Selected Product</h3>
-    <p><strong>Product:</strong> {{ beam.selected_product_code }}</p>
+<!-- Calculate Button (if not calculated) or Re-calculate (if already calculated) -->
+<div style="margin: 2rem 0;">
+    {% if beam.is_calculated %}
+    <form method="POST" action="{{ url_for('beams.calculate', beam_id=beam.id) }}" style="display: inline;">
+        <button type="submit" class="btn btn-secondary">Re-calculate</button>
+    </form>
+    <span style="color: #666; margin-left: 1rem;">
+        Last calculated: {{ beam.calc_date.strftime('%Y-%m-%d %H:%M') if beam.calc_date else 'Never' }}
+    </span>
+    {% else %}
+    <form method="POST" action="{{ url_for('beams.calculate', beam_id=beam.id) }}" style="display: inline;">
+        <button type="submit" class="btn btn-primary">Calculate</button>
+    </form>
+    <span style="color: #666; margin-left: 1rem;">This beam has not been calculated yet</span>
     {% endif %}
 </div>
+
+<!-- Calculation Results Card (only if calculated) -->
+{% if beam.is_calculated %}
+<div class="card">
+    <h2>Calculation Results 
+        <span style="background-color: 
+            {% if beam.calc_status == 'PASS' %}#22c55e
+            {% elif beam.calc_status == 'WARNING' %}#f59e0b
+            {% else %}#ef4444{% endif %};
+            color: white; padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 1rem; margin-left: 1rem;">
+            {{ beam.calc_status }}
+        </span>
+    </h2>
+    
+    <!-- Results Table -->
+    <table style="margin-top: 1.5rem;">
+        <thead>
+            <tr>
+                <th></th>
+                <th>Demand</th>
+                <th>Capacity</th>
+                <th>Utilization</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Bending:</strong></td>
+                <td>{{ "%.2f"|format(beam.demand_moment) }} kNm</td>
+                <td>{{ "%.2f"|format(beam.capacity_moment) }} kNm</td>
+                <td>
+                    <span style="font-weight: 600; color: 
+                        {% if beam.utilization_moment < 0.9 %}#22c55e
+                        {% elif beam.utilization_moment < 1.0 %}#f59e0b
+                        {% else %}#ef4444{% endif %};">
+                        {{ "%.1f"|format(beam.utilization_moment * 100) }}%
+                    </span>
+                </td>
+                <td>
+                    {% if beam.utilization_moment < 0.9 %}
+                    <span style="color: #22c55e;">✓ OK</span>
+                    {% elif beam.utilization_moment < 1.0 %}
+                    <span style="color: #f59e0b;">⚠ Warning</span>
+                    {% else %}
+                    <span style="color: #ef4444;">✗ Fail</span>
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <td><strong>Shear:</strong></td>
+                <td>{{ "%.2f"|format(beam.demand_shear) }} kN</td>
+                <td>{{ "%.2f"|format(beam.capacity_shear) }} kN</td>
+                <td>
+                    <span style="font-weight: 600; color: 
+                        {% if beam.utilization_shear < 0.9 %}#22c55e
+                        {% elif beam.utilization_shear < 1.0 %}#f59e0b
+                        {% else %}#ef4444{% endif %};">
+                        {{ "%.1f"|format(beam.utilization_shear * 100) }}%
+                    </span>
+                </td>
+                <td>
+                    {% if beam.utilization_shear < 0.9 %}
+                    <span style="color: #22c55e;">✓ OK</span>
+                    {% elif beam.utilization_shear < 1.0 %}
+                    <span style="color: #f59e0b;">⚠ Warning</span>
+                    {% else %}
+                    <span style="color: #ef4444;">✗ Fail</span>
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <td><strong>Deflection:</strong></td>
+                <td>{{ "%.2f"|format(beam.demand_deflection) }} mm</td>
+                <td>{{ "%.2f"|format(beam.deflection_limit) }} mm</td>
+                <td>
+                    <span style="font-weight: 600; color: 
+                        {% if beam.utilization_deflection < 0.9 %}#22c55e
+                        {% elif beam.utilization_deflection < 1.0 %}#f59e0b
+                        {% else %}#ef4444{% endif %};">
+                        {{ "%.1f"|format(beam.utilization_deflection * 100) }}%
+                    </span>
+                </td>
+                <td>
+                    {% if beam.utilization_deflection < 0.9 %}
+                    <span style="color: #22c55e;">✓ OK</span>
+                    {% elif beam.utilization_deflection < 1.0 %}
+                    <span style="color: #f59e0b;">⚠ Warning</span>
+                    {% else %}
+                    <span style="color: #ef4444;">✗ Fail</span>
+                    {% endif %}
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    
+    <!-- Summary Info -->
+    <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 2px solid #f3f4f6;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div>
+                <p><strong>Controlling Factor:</strong> {{ beam.controlling_factor }}</p>
+                <p><strong>Maximum Utilization:</strong> 
+                    <span style="font-weight: 600; color: 
+                        {% if beam.max_utilization < 0.9 %}#22c55e
+                        {% elif beam.max_utilization < 1.0 %}#f59e0b
+                        {% else %}#ef4444{% endif %};">
+                        {{ "%.1f"|format(beam.max_utilization * 100) }}%
+                    </span>
+                </p>
+            </div>
+            <div>
+                <p><strong>Calculated:</strong> {{ beam.calc_date.strftime('%Y-%m-%d %H:%M') }}</p>
+                <p><strong>Calculation Version:</strong> {{ beam.calc_version }}</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Section Properties Used (from placeholder) -->
+    <div style="margin-top: 1.5rem; padding: 1rem; background-color: #f9fafb; border-radius: 4px;">
+        <p style="color: #666; font-size: 0.9rem; margin: 0;">
+            <strong>Note:</strong> This calculation uses a placeholder 300x45 LVL section. 
+            Product database integration coming in next phase.
+        </p>
+    </div>
+</div>
 {% else %}
-<div class="card" style="background-color: #fff3cd; border-left: 4px solid #F69321;">
-    <p style="margin: 0;">
-        <strong>Note:</strong> This beam has not been calculated yet. 
-        The calculation engine will be implemented in the next phase.
+<!-- Not yet calculated message -->
+<div class="card" style="background-color: #eff6ff; border-left: 4px solid #3b82f6;">
+    <p style="margin: 0; color: #1e40af;">
+        <strong>ℹ️ Ready to Calculate</strong><br>
+        Click the "Calculate" button above to analyze this beam and get product recommendations.
     </p>
 </div>
 {% endif %}
 
+<!-- Delete Button -->
 <div style="margin-top: 2rem;">
     <form method="POST" action="{{ url_for('beams.delete', beam_id=beam.id) }}" 
           onsubmit="return confirm('Are you sure you want to delete this beam?');">

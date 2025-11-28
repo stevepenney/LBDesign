@@ -76,6 +76,44 @@ def create(project_id):
     
     return render_template('beams/create.html', project=project)
 
+@beams_bp.route('/<int:beam_id>/calculate', methods=['POST'])
+@login_required
+def calculate(beam_id):
+    """Calculate beam and update results"""
+    from app.services.calculations import calculate_and_update_beam
+    from app.extensions import db
+    
+    beam = BeamRepository.get_by_id(beam_id)
+    
+    if not beam:
+        flash('Beam not found', 'error')
+        return redirect(url_for('projects.list'))
+    
+    project = beam.project
+    
+    # Check ownership or admin
+    if project.user_id != current_user.id and not current_user.has_role('ADMIN'):
+        flash('Access denied', 'error')
+        return redirect(url_for('projects.list'))
+    
+    try:
+        # Run calculation
+        updated_beam, results = calculate_and_update_beam(beam)
+        db.session.commit()
+        
+        # Flash message based on status
+        if results['calc_status'] == 'PASS':
+            flash(f'✓ Calculation complete: {results["calc_status"]} - All checks passed!', 'success')
+        elif results['calc_status'] == 'WARNING':
+            flash(f'⚠ Calculation complete: {results["calc_status"]} - Some utilizations are high', 'warning')
+        else:
+            flash(f'✗ Calculation complete: {results["calc_status"]} - Member is overstressed', 'error')
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Calculation error: {str(e)}', 'error')
+    
+    return redirect(url_for('beams.detail', beam_id=beam.id))
 
 @beams_bp.route('/<int:beam_id>')
 @login_required
