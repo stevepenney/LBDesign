@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NZ-Style Beam Canvas Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 2rem;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #1a1a1a;
+            margin-bottom: 0.5rem;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 2rem;
+        }
+        
+        #canvas-container {
+            margin: 2rem 0;
+            min-height: 500px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background-color: #8B6F47;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #6B5537;
+        }
+        
+        .btn-secondary {
+            background-color: #f3f4f6;
+            color: #374151;
+            border: 1px solid #d1d5db;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #e5e7eb;
+        }
+        
+        .info-box {
+            background: #eff6ff;
+            border-left: 4px solid #3b82f6;
+            padding: 1rem;
+            margin: 2rem 0;
+            border-radius: 4px;
+        }
+        
+        .info-box h3 {
+            color: #1e40af;
+            margin-bottom: 0.5rem;
+        }
+        
+        .info-box ul {
+            margin-left: 1.5rem;
+            color: #374151;
+        }
+        
+        .info-box li {
+            margin: 0.25rem 0;
+        }
+        
+        .state-display {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            padding: 1rem;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>NZ-Style Beam Elevation - Interactive Demo</h1>
+        <p class="subtitle">Click to test the interactive SVG beam designer</p>
+        
+        <div class="controls">
+            <button class="btn btn-primary" onclick="initFloorJoist()">Floor Joist (6m span)</button>
+            <button class="btn btn-primary" onclick="initRafter()">Rafter (4m span)</button>
+            <button class="btn btn-primary" onclick="initBeam()">Beam with Point Loads</button>
+            <button class="btn btn-secondary" onclick="showState()">Show State (Console)</button>
+        </div>
+        
+        <div id="canvas-container"></div>
+        
+        <div class="info-box">
+            <h3>Interactive Features:</h3>
+            <ul>
+                <li><strong>Span:</strong> Click "span" dimension below beam to edit</li>
+                <li><strong>Loads:</strong> Click the brown "X.XX kN/m" text to edit LL, DL, SDL, and spacing</li>
+                <li><strong>Point Load Position:</strong> Drag the wall section OR click the dimension (PL1, PL2, etc.)</li>
+                <li><strong>Point Load Magnitude:</strong> Click the "X.X kN" label above the wall</li>
+                <li><strong>Add Point Load:</strong> Use "+ Add Point Load" button in toolbar</li>
+                <li><strong>Spacing:</strong> For joists/rafters, click spacing in toolbar OR in load popup</li>
+            </ul>
+        </div>
+        
+        <div class="info-box" style="background: #fff7ed; border-color: #F69321;">
+            <h3 style="color: #8B6F47;">New Features:</h3>
+            <ul>
+                <li>✅ 25mm tan flooring layer on top of beam</li>
+                <li>✅ Forward slash (/) witness lines on dimensions</li>
+                <li>✅ No arrows - just clean ticks</li>
+                <li>✅ Vertical grey leader lines show where dimensions are measured to</li>
+                <li>✅ Bearing plate removed (was obscured by beam)</li>
+                <li>✅ Simplified load display - just "X.XX kN/m" in brown</li>
+                <li>✅ Point loads can be repositioned by clicking dimension OR dragging</li>
+                <li>✅ All dragging and editing snaps to 50mm</li>
+            </ul>
+        </div>
+        
+        <div id="state-output" style="display: none;">
+            <h3 style="margin-top: 2rem;">Current State:</h3>
+            <div class="state-display"></div>
+        </div>
+    </div>
+
+    <script src="beam-canvas.js"></script>
+    <script>
+        let beamCanvas = null;
+        
+        function initFloorJoist() {
+            beamCanvas = new BeamCanvas('canvas-container', {
+                name: 'FJ-1',
+                member_type: 'floor_joist',
+                spacing: 0.4,
+                supports: [
+                    { position: 0, type: 'pinned' },
+                    { position: 6000, type: 'pinned' }
+                ],
+                udl: {
+                    dead_load: 0.5,
+                    live_load: 1.5,
+                    sdl: 0.2,
+                    total: 0
+                },
+                point_loads: []
+            });
+        }
+        
+        function initRafter() {
+            beamCanvas = new BeamCanvas('canvas-container', {
+                name: 'R-1',
+                member_type: 'rafter',
+                spacing: 0.6,
+                supports: [
+                    { position: 0, type: 'pinned' },
+                    { position: 4000, type: 'pinned' }
+                ],
+                udl: {
+                    dead_load: 0.4,
+                    live_load: 0.25,
+                    sdl: 0.15,
+                    total: 0
+                },
+                point_loads: []
+            });
+        }
+        
+        function initBeam() {
+            beamCanvas = new BeamCanvas('canvas-container', {
+                name: 'B-1',
+                member_type: 'floor_beam',
+                spacing: 1.0,
+                supports: [
+                    { position: 0, type: 'pinned' },
+                    { position: 5500, type: 'pinned' }
+                ],
+                udl: {
+                    dead_load: 0.5,
+                    live_load: 1.5,
+                    sdl: 0.3,
+                    total: 0
+                },
+                point_loads: [
+                    { magnitude: 15.0, position: 1800 },
+                    { magnitude: 12.5, position: 3700 }
+                ]
+            });
+        }
+        
+        function showState() {
+            if (!beamCanvas) {
+                alert('No beam initialized. Click a button above first!');
+                return;
+            }
+            
+            const state = beamCanvas.getState();
+            console.log('Current beam state:', state);
+            
+            const output = document.getElementById('state-output');
+            const display = output.querySelector('.state-display');
+            display.textContent = JSON.stringify(state, null, 2);
+            output.style.display = 'block';
+        }
+        
+        // Initialize with floor joist by default
+        window.onload = () => {
+            initFloorJoist();
+        };
+    </script>
+</body>
+</html>
