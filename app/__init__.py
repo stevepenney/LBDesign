@@ -31,6 +31,7 @@ def create_app(config_name='development'):
         return UserRepository.get_by_id(int(user_id))
     
     # Register blueprints
+    from app.routes.api import api_bp
     from app.routes.auth import auth_bp
     from app.routes.projects import projects_bp
     from app.routes.beams import beams_bp
@@ -40,6 +41,7 @@ def create_app(config_name='development'):
     app.register_blueprint(projects_bp)
     app.register_blueprint(beams_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(api_bp, url_prefix='/api')
     
     # Root route
     @app.route('/')

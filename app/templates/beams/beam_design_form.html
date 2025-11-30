@@ -1,0 +1,381 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Edit Beam' if beam else 'New Beam' }} - {{ project.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    #beam-canvas-container {
+        margin: 2rem 0;
+    }
+    
+    .design-button {
+        width: 100%;
+        padding: 1rem;
+        font-size: 1.1rem;
+        margin: 2rem 0;
+    }
+    
+    .results-section {
+        margin-top: 2rem;
+        padding: 2rem;
+        background: #f9fafb;
+        border-radius: 8px;
+        border: 2px solid #e5e7eb;
+    }
+    
+    .status-badge {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 1.1rem;
+        margin-bottom: 1rem;
+    }
+    
+    .status-pass {
+        background: #f0f9f4;
+        color: #166534;
+        border: 2px solid #22c55e;
+    }
+    
+    .status-warning {
+        background: #fffbeb;
+        color: #92400e;
+        border: 2px solid #fbbf24;
+    }
+    
+    .status-fail {
+        background: #fef2f2;
+        color: #991b1b;
+        border: 2px solid #ef4444;
+    }
+    
+    .utilization-bar {
+        height: 24px;
+        background: #e5e7eb;
+        border-radius: 4px;
+        overflow: hidden;
+        position: relative;
+    }
+    
+    .utilization-fill {
+        height: 100%;
+        transition: width 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 600;
+        font-size: 0.85rem;
+    }
+    
+    .util-pass { background: #22c55e; }
+    .util-warning { background: #fbbf24; }
+    .util-fail { background: #ef4444; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <div>
+        <h1>{{ 'Edit Beam' if beam else 'New Beam' }}</h1>
+        <p style="color: #666;">
+            <a href="{{ url_for('projects.detail', project_id=project.id) }}">{{ project.name }}</a>
+        </p>
+    </div>
+    <div>
+        <a href="{{ url_for('projects.detail', project_id=project.id) }}" class="btn btn-secondary">Back to Project</a>
+    </div>
+</div>
+
+{% if not beam %}
+<!-- CREATE MODE: Show member selector button -->
+<div class="card" style="text-align: center; padding: 3rem;">
+    <h2 style="margin-bottom: 1rem;">Select a Member to Design</h2>
+    <p style="color: #666; margin-bottom: 2rem;">
+        Choose the type of structural member you want to design
+    </p>
+    <button onclick="modelSelector.open()" class="btn btn-primary" style="font-size: 1.1rem; padding: 1rem 2rem;">
+        🏗️ Select Member Type
+    </button>
+</div>
+{% endif %}
+
+<!-- Design Section (hidden until member type selected, or visible in edit mode) -->
+<div id="design-section" style="display: {{ 'block' if beam else 'none' }};">
+    <form id="beam-form" method="POST" action="{{ url_for('beams.edit', project_id=project.id, beam_id=beam.id) if beam else url_for('beams.create', project_id=project.id) }}">
+        
+        <!-- Basic Info Card -->
+        <div class="card">
+            <h2>Beam Information</h2>
+            
+            <div class="form-group">
+                <label for="beam_name">Beam Name *</label>
+                <input type="text" id="beam_name" name="name" value="{{ beam.name if beam else '' }}" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="beam_reference">Reference Code (optional)</label>
+                <input type="text" id="beam_reference" name="reference" value="{{ beam.reference if beam else '' }}">
+            </div>
+        </div>
+        
+        <!-- Interactive SVG Canvas -->
+        <div class="card">
+            <h2>Design Parameters</h2>
+            <p style="color: #666; margin-bottom: 1rem;">
+                Click on any value below to edit. Drag point loads to reposition.
+            </p>
+            
+            <div id="beam-canvas-container"></div>
+        </div>
+        
+        <!-- Hidden form fields (synced by JavaScript) -->
+        <input type="hidden" id="member_type_input" name="member_type" value="{{ beam.member_type if beam else '' }}">
+        <input type="hidden" id="span_input" name="span" value="{{ beam.span if beam else '' }}">
+        <input type="hidden" id="spacing_input" name="spacing" value="{{ beam.spacing if beam else '' }}">
+        <input type="hidden" id="dead_load_input" name="dead_load" value="{{ beam.dead_load if beam else '' }}">
+        <input type="hidden" id="live_load_input" name="live_load" value="{{ beam.live_load if beam else '' }}">
+        <input type="hidden" id="pl1_input" name="point_load_1" value="{{ beam.point_load_1 if beam else '' }}">
+        <input type="hidden" id="pl1_pos_input" name="point_load_1_position" value="{{ beam.point_load_1_position if beam else '' }}">
+        <input type="hidden" id="pl2_input" name="point_load_2" value="{{ beam.point_load_2 if beam else '' }}">
+        <input type="hidden" id="pl2_pos_input" name="point_load_2_position" value="{{ beam.point_load_2_position if beam else '' }}">
+        <input type="hidden" id="supports_input" name="supports" value="{{ beam.support_config | tojson if beam else '' }}">
+        
+        <!-- Design/Calculate Button -->
+        <button type="button" id="design-btn" onclick="calculateBeam()" class="btn btn-primary design-button">
+            🔍 Design (Calculate)
+        </button>
+        
+        <!-- Results Section (shown after calculation) -->
+        <div id="results-section" class="results-section" style="display: none;">
+            <h2>Design Results</h2>
+            
+            <div id="results-content">
+                <!-- Populated by JavaScript after calculation -->
+            </div>
+        </div>
+        
+        <!-- Save Button (shown after successful calculation) -->
+        <div id="save-section" style="display: none; margin-top: 2rem;">
+            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 1rem; font-size: 1.1rem;">
+                {% if beam %}
+                💾 Save Changes
+                {% else %}
+                ✅ Add to Project
+                {% endif %}
+            </button>
+        </div>
+    </form>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/beam-canvas.js') }}"></script>
+<script src="{{ url_for('static', filename='js/model-selector.js') }}"></script>
+
+<script>
+// Initialize beam canvas if editing
+{% if beam %}
+document.addEventListener('DOMContentLoaded', () => {
+    const beamData = {
+        name: "{{ beam.name }}",
+        member_type: "{{ beam.member_type }}",
+        spacing: {{ beam.spacing or 0.4 }},
+        supports: {{ beam.support_config | tojson if beam.support_config else '[{"position": 0.0, "type": "pinned"}, {"position": ' + (beam.span | string) + ', "type": "pinned"}]' }},
+        udl: {
+            dead_load: {{ beam.dead_load or 0 }},
+            live_load: {{ beam.live_load or 0 }},
+            total: 0
+        },
+        point_loads: [
+            {% if beam.point_load_1 %}
+            { magnitude: {{ beam.point_load_1 }}, position: {{ beam.point_load_1_position }} }
+            {% endif %}
+            {% if beam.point_load_2 %}
+            ,{ magnitude: {{ beam.point_load_2 }}, position: {{ beam.point_load_2_position }} }
+            {% endif %}
+        ].filter(pl => pl.magnitude),
+        results: null
+    };
+    
+    window.beamCanvas = new BeamCanvas('beam-canvas-container', beamData);
+    
+    // If beam has been calculated, show results
+    {% if beam.is_calculated %}
+    showResults({
+        status: "{{ beam.calc_status }}",
+        demand_moment: {{ beam.demand_moment or 0 }},
+        demand_shear: {{ beam.demand_shear or 0 }},
+        demand_deflection: {{ beam.demand_deflection or 0 }},
+        capacity_moment: {{ beam.capacity_moment or 0 }},
+        capacity_shear: {{ beam.capacity_shear or 0 }},
+        deflection_limit: {{ beam.deflection_limit or 0 }},
+        utilization_moment: {{ beam.utilization_moment or 0 }},
+        utilization_shear: {{ beam.utilization_shear or 0 }},
+        utilization_deflection: {{ beam.utilization_deflection or 0 }},
+        max_utilization: {{ beam.max_utilization or 0 }},
+        controlling_factor: "{{ beam.controlling_factor or 'Unknown' }}",
+        calc_version: "{{ beam.calc_version }}",
+        calc_date: "{{ beam.calc_date.strftime('%Y-%m-%d %H:%M') if beam.calc_date else '' }}"
+    });
+    {% endif %}
+});
+{% endif %}
+
+// Calculate beam (AJAX call)
+async function calculateBeam() {
+    const state = window.beamCanvas.getState();
+    const button = document.getElementById('design-btn');
+    
+    // Disable button during calculation
+    button.disabled = true;
+    button.textContent = '⏳ Calculating...';
+    
+    try {
+        const response = await fetch('/api/calculate-preview', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                member_type: state.member_type,
+                span: state.supports[state.supports.length - 1].position,
+                spacing: state.spacing,
+                dead_load: state.udl.dead_load,
+                live_load: state.udl.live_load,
+                point_loads: state.point_loads,
+                supports: state.supports
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Calculation failed');
+        }
+        
+        const results = await response.json();
+        showResults(results);
+        
+    } catch (error) {
+        alert('Calculation error: ' + error.message);
+    } finally {
+        // Re-enable button
+        button.disabled = false;
+        button.textContent = '🔍 Re-calculate';
+    }
+}
+
+// Display calculation results
+function showResults(results) {
+    const resultsSection = document.getElementById('results-section');
+    const resultsContent = document.getElementById('results-content');
+    const saveSection = document.getElementById('save-section');
+    
+    // Determine status class
+    let statusClass = 'status-pass';
+    let statusIcon = '✓';
+    if (results.status === 'WARNING') {
+        statusClass = 'status-warning';
+        statusIcon = '⚠';
+    } else if (results.status === 'FAIL') {
+        statusClass = 'status-fail';
+        statusIcon = '✗';
+    }
+    
+    // Build results HTML
+    resultsContent.innerHTML = `
+        <div class="status-badge ${statusClass}">
+            ${statusIcon} ${results.status}
+        </div>
+        
+        <div style="background: #F69321; color: white; padding: 1rem; border-radius: 4px; margin-bottom: 1.5rem;">
+            <strong style="font-size: 1.1rem;">Recommended: 300x45 LVL E13 @ ${(window.beamCanvas.state.spacing * 1000).toFixed(0)}mm crs</strong>
+            <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; opacity: 0.9;">
+                (Placeholder - Product database integration pending)
+            </p>
+        </div>
+        
+        <table style="width: 100%; margin-bottom: 1.5rem;">
+            <thead>
+                <tr>
+                    <th>Check</th>
+                    <th>Demand</th>
+                    <th>Capacity</th>
+                    <th>Utilization</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Bending</strong></td>
+                    <td>${results.demand_moment.toFixed(2)} kNm</td>
+                    <td>${results.capacity_moment.toFixed(2)} kNm</td>
+                    <td>
+                        <div class="utilization-bar">
+                            <div class="utilization-fill ${getUtilClass(results.utilization_moment)}" 
+                                 style="width: ${Math.min(results.utilization_moment * 100, 100)}%">
+                                ${(results.utilization_moment * 100).toFixed(0)}%
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Shear</strong></td>
+                    <td>${results.demand_shear.toFixed(2)} kN</td>
+                    <td>${results.capacity_shear.toFixed(2)} kN</td>
+                    <td>
+                        <div class="utilization-bar">
+                            <div class="utilization-fill ${getUtilClass(results.utilization_shear)}" 
+                                 style="width: ${Math.min(results.utilization_shear * 100, 100)}%">
+                                ${(results.utilization_shear * 100).toFixed(0)}%
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Deflection</strong></td>
+                    <td>${results.demand_deflection.toFixed(1)} mm</td>
+                    <td>${results.deflection_limit.toFixed(1)} mm</td>
+                    <td>
+                        <div class="utilization-bar">
+                            <div class="utilization-fill ${getUtilClass(results.utilization_deflection)}" 
+                                 style="width: ${Math.min(results.utilization_deflection * 100, 100)}%">
+                                ${(results.utilization_deflection * 100).toFixed(0)}%
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <div style="padding: 1rem; background: white; border-radius: 4px; border: 1px solid #e5e7eb;">
+            <p style="margin: 0;"><strong>Summary:</strong></p>
+            <p style="margin: 0.5rem 0 0 0; color: #666;">
+                Controlling factor: <strong>${results.controlling_factor}</strong> 
+                (${(results.max_utilization * 100).toFixed(0)}% utilized)
+            </p>
+            ${results.calc_date ? `
+                <p style="margin: 0.5rem 0 0 0; color: #999; font-size: 0.9rem;">
+                    Calculated: ${results.calc_date} | Version: ${results.calc_version}
+                </p>
+            ` : ''}
+        </div>
+    `;
+    
+    // Show results and save button
+    resultsSection.style.display = 'block';
+    
+    if (results.status !== 'FAIL') {
+        saveSection.style.display = 'block';
+    } else {
+        saveSection.style.display = 'none';
+    }
+}
+
+function getUtilClass(util) {
+    if (util >= 1.0) return 'util-fail';
+    if (util >= 0.9) return 'util-warning';
+    return 'util-pass';
+}
+</script>
+{% endblock %}

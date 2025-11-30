@@ -7,7 +7,39 @@ from app.database.repositories import ProjectRepository, BeamRepository
 
 beams_bp = Blueprint('beams', __name__, url_prefix='/beams')
 
+@beams_bp.route('/projects/<int:project_id>/beams/create', methods=['GET', 'POST'])
+@beams_bp.route('/projects/<int:project_id>/beams/<int:beam_id>/edit', methods=['GET', 'POST'])
+@login_required
+def beam_form(project_id, beam_id=None):
+    """Show beam design form (create or edit)"""
+    project = ProjectRepository.get_by_id(project_id)
+    
+    if not project:
+        flash('Project not found', 'error')
+        return redirect(url_for('projects.list'))
+    
+    # Check ownership
+    if project.user_id != current_user.id and not current_user.has_role('ADMIN'):
+        flash('Access denied', 'error')
+        return redirect(url_for('projects.list'))
+    
+    beam = None
+    if beam_id:
+        beam = BeamRepository.get_by_id(beam_id)
+        if not beam or beam.project_id != project_id:
+            flash('Beam not found', 'error')
+            return redirect(url_for('projects.detail', project_id=project_id))
+    
+    if request.method == 'POST':
+        # Handle form submission
+        # ... existing save logic ...
+        pass
+    
+    return render_template('beams/design_form.html', 
+                         project=project, 
+                         beam=beam)
 
+'''
 @beams_bp.route('/project/<int:project_id>/create', methods=['GET', 'POST'])
 @login_required
 def create(project_id):
@@ -75,7 +107,7 @@ def create(project_id):
         return redirect(url_for('projects.detail', project_id=project_id))
     
     return render_template('beams/create.html', project=project)
-
+'''
 @beams_bp.route('/<int:beam_id>/calculate', methods=['POST'])
 @login_required
 def calculate(beam_id):

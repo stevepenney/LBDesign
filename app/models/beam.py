@@ -27,6 +27,7 @@ class Beam(db.Model):
     point_load_1_position = db.Column(db.Float)  # meters from left support
     point_load_2 = db.Column(db.Float)  # kN
     point_load_2_position = db.Column(db.Float)  # meters from left support
+    support_config = db.Column(db.JSON)
     
     # ========================================================================
     # CALCULATION RESULTS - DEMANDS
