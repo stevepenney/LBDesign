@@ -10,7 +10,7 @@ class BeamCanvas {
         this.container = document.getElementById(containerId);
         this.svg = null;
         this.scale = 0.15; // pixels per mm (150px per meter = 0.15px per mm)
-        this.padding = { top: 100, right: 20, bottom: 80, left: 20 };
+        this.padding = { top: 100, right: 100, bottom: 80, left: 100 };
         
         // Visual element dimensions (constants)
         this.VISUAL = {

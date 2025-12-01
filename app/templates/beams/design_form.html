@@ -103,7 +103,7 @@
 
 <!-- Design Section (hidden until member type selected, or visible in edit mode) -->
 <div id="design-section" style="display: {{ 'block' if beam else 'none' }};">
-    <form id="beam-form" method="POST" action="{{ url_for('beams.edit', project_id=project.id, beam_id=beam.id) if beam else url_for('beams.create', project_id=project.id) }}">
+    <form id="beam-form" method="POST" action="{{ url_for('beams.beam_form', project_id=project.id, beam_id=beam.id) if beam else url_for('beams.beam_form', project_id=project.id) }}">
         
         <!-- Basic Info Card -->
         <div class="card">
