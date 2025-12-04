@@ -15,7 +15,7 @@ python-dotenv==1.0.1
 
 # Core dependencies
 SQLAlchemy==2.0.35
-Werkzeug==3.0.4
+Werkzeug
 
 # Utilities
 python-dateutil==2.9.0

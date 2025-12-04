@@ -27,29 +27,22 @@ def calculate_preview():
     try:
         data = request.get_json()
         
-        # Just return a simple response for now
+        # Just return a simple response for now with CORRECT structure
         return jsonify({
             'status': 'PASS',
-            'demands': {
-                'moment': 25.5,
-                'shear': 12.3,
-                'deflection': 8.5
-            },
-            'capacities': {
-                'moment': 45.0,
-                'shear': 30.0,
-                'deflection': 15.0
-            },
-            'utilizations': {
-                'bending': 0.567,
-                'shear': 0.410,
-                'deflection': 0.567
-            },
+            'demand_moment': 25.5,
+            'demand_shear': 12.3,
+            'demand_deflection': 8.5,
+            'capacity_moment': 45.0,
+            'capacity_shear': 30.0,
+            'deflection_limit': 15.0,
+            'utilization_moment': 0.567,
+            'utilization_shear': 0.410,
+            'utilization_deflection': 0.567,
             'max_utilization': 0.567,
             'controlling_factor': 'Bending',
-            'recommended_member': 'LVL 300x45 Grade 11',
-            'calculation_version': 'PLACEHOLDER',
-            'calculation_date': '2024-11-30'
+            'calc_version': 'PLACEHOLDER v0.1',
+            'calc_date': '2024-11-30'
         })
         
     except Exception as e:

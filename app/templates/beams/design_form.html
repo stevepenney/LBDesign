@@ -225,6 +225,78 @@ document.addEventListener('DOMContentLoaded', () => {
 {% endif %}
 
 // Calculate beam (AJAX call)
+
+// Calculate beam (AJAX call) - DEBUG VERSION
+async function calculateBeam() {
+    const state = window.beamCanvas.getState();
+    const button = document.getElementById('design-btn');
+    
+    console.log('=== CALCULATE BEAM DEBUG ===');
+    console.log('Canvas state:', state);
+    
+    // Disable button during calculation
+    button.disabled = true;
+    button.textContent = '⏳ Calculating...';
+    
+    try {
+        const payload = {
+            member_type: state.member_type,
+            span: state.supports[state.supports.length - 1].position,
+            spacing: state.spacing,
+            dead_load: state.udl.dead_load,
+            live_load: state.udl.live_load,
+            point_loads: state.point_loads,
+            supports: state.supports
+        };
+        
+        console.log('Sending payload:', payload);
+        
+        const response = await fetch('/api/calculate-preview', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        console.log('Response status:', response.status);
+        console.log('Response ok:', response.ok);
+        
+        const responseText = await response.text();
+        console.log('Response text:', responseText);
+        
+        let results;
+        try {
+            results = JSON.parse(responseText);
+        } catch (parseError) {
+            console.error('JSON parse error:', parseError);
+            throw new Error('Invalid JSON response from server');
+        }
+        
+        console.log('Parsed results:', results);
+        
+        if (!response.ok) {
+            throw new Error(results.error || 'Calculation failed');
+        }
+        
+        // Check if results has required properties
+        if (!results.demand_moment && results.demand_moment !== 0) {
+            console.error('Missing demand_moment in results');
+            throw new Error('Incomplete calculation results: missing demand_moment');
+        }
+        
+        showResults(results);
+        
+    } catch (error) {
+        console.error('Calculate error:', error);
+        alert('Calculation error: ' + error.message);
+    } finally {
+        // Re-enable button
+        button.disabled = false;
+        button.textContent = '🔍 Re-calculate';
+    }
+}
+/*
 async function calculateBeam() {
     const state = window.beamCanvas.getState();
     const button = document.getElementById('design-btn');
@@ -265,7 +337,7 @@ async function calculateBeam() {
         button.textContent = '🔍 Re-calculate';
     }
 }
-
+*/
 // Display calculation results
 function showResults(results) {
     const resultsSection = document.getElementById('results-section');

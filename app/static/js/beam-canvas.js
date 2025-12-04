@@ -3,14 +3,28 @@
  * 
  * Provides visual, interactive beam design interface
  * User can click elements to edit values, drag point loads, etc.
+ * 
+ * VERSION: With dynamic scaling and centering
+ * - Implements Option 1A: Smart centering with dynamic scale
+ * - Implements Option 2A: Minimum width requirement with horizontal scroll
  */
 
 class BeamCanvas {
     constructor(containerId, options = {}) {
         this.container = document.getElementById(containerId);
         this.svg = null;
-        this.scale = 0.15; // pixels per mm (150px per meter = 0.15px per mm)
+        
+        // Separate X and Y scaling
+        this.scaleX = 0.15; // Dynamic - pixels per mm (horizontal)
+        this.scaleY = 0.15; // Constant - pixels per mm (vertical) - keeps beam depth consistent
         this.padding = { top: 100, right: 20, bottom: 80, left: 20 };
+        
+        // Scale constraints for X-axis only
+        this.MAX_SCALE_X = 0.18; // Max 180px per meter (0.18px per mm) - for small spans
+        this.MIN_SCALE_X = 0.05; // Min 50px per meter (0.05px per mm) - for large spans
+        
+        // Minimum container width (adds horizontal scroll if needed)
+        this.MIN_CONTAINER_WIDTH = 800;
         
         // Visual element dimensions (constants)
         this.VISUAL = {
@@ -60,12 +74,16 @@ class BeamCanvas {
     }
     
     initialize() {
+        // Apply minimum width to container for horizontal scroll
+        this.container.style.minWidth = `${this.MIN_CONTAINER_WIDTH}px`;
+        this.container.style.overflowX = 'auto';
+        
         // Create SVG element
         let width = this.container.offsetWidth;
         
         if (width === 0) {
-            width = 800;
-            console.log('Container not visible yet, using default width:', width);
+            width = this.MIN_CONTAINER_WIDTH;
+            console.log('Container not visible yet, using minimum width:', width);
         }
         
         const height = 500;
@@ -76,18 +94,76 @@ class BeamCanvas {
         this.svg.setAttribute("width", "100%");
         this.svg.setAttribute("height", height);
         this.svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-        this.svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+        this.svg.setAttribute("preserveAspectRatio", "xMinYMid meet");  // Changed to xMin to prevent text squashing
         this.svg.style.border = "1px solid #e5e7eb";
         this.svg.style.borderRadius = "8px";
         this.svg.style.backgroundColor = "white";
         this.svg.style.display = "block";
-        this.svg.style.maxWidth = "100%";
+        this.svg.style.minWidth = `${this.MIN_CONTAINER_WIDTH}px`;
+        
+        // Store SVG width for dynamic calculations
+        this.svgWidth = width;
         
         this.container.innerHTML = '';
         this.container.appendChild(this.svg);
         
         this.draw();
     }
+    
+    // ===================================================================
+    // DYNAMIC SCALING & CENTERING - OPTION 1A IMPLEMENTATION
+    // ===================================================================
+    
+    calculateDynamicScale() {
+        /**
+         * Calculate optimal X-axis scale to:
+         * 1. Center the beam in available width
+         * 2. Scale X appropriately for span length
+         * 3. Prevent cutoff on long spans
+         * 
+         * Y-axis scale remains constant to keep visual elements consistent
+         */
+        
+        const beamLengthMM = this.getBeamLength();
+        const containerWidth = this.svgWidth;
+        
+        // Reserve space for padding on left and right
+        const horizontalMargin = 40; // Total left + right margin
+        const availableWidth = containerWidth - horizontalMargin;
+        
+        // Calculate X scale needed to fit beam in available width
+        const scaleToFit = availableWidth / beamLengthMM;
+        
+        // Constrain X scale between min and max
+        this.scaleX = Math.max(this.MIN_SCALE_X, Math.min(this.MAX_SCALE_X, scaleToFit));
+        
+        // Calculate actual beam width at this scale
+        const beamWidthPx = beamLengthMM * this.scaleX;
+        
+        // Calculate left padding to center the beam
+        this.padding.left = (containerWidth - beamWidthPx) / 2;
+        
+        // Ensure minimum left padding
+        this.padding.left = Math.max(20, this.padding.left);
+        
+        // Right padding mirrors left (though not strictly enforced)
+        this.padding.right = this.padding.left;
+        
+        console.log('Dynamic scaling:', {
+            beamLengthMM: beamLengthMM,
+            containerWidth: containerWidth,
+            scaleX: this.scaleX,
+            scaleXPerMeter: (this.scaleX * 1000).toFixed(0) + 'px/m',
+            scaleY: this.scaleY,
+            scaleYPerMeter: (this.scaleY * 1000).toFixed(0) + 'px/m',
+            beamWidthPx: beamWidthPx.toFixed(0),
+            leftPadding: this.padding.left.toFixed(0)
+        });
+    }
+    
+    // ===================================================================
+    // STATE & CALCULATIONS
+    // ===================================================================
     
     calculateUDL() {
         const total_kPa = this.state.udl.dead_load + this.state.udl.live_load + this.state.udl.sdl;
@@ -130,7 +206,7 @@ class BeamCanvas {
     
     // Convert mm to SVG coordinates
     toSVGX(mm) {
-        return this.padding.left + (mm * this.scale);
+        return this.padding.left + (mm * this.scaleX);
     }
     
     toSVGY(y) {
@@ -139,12 +215,18 @@ class BeamCanvas {
     
     // Convert SVG coordinates back to mm
     fromSVGX(svgX) {
-        return (svgX - this.padding.left) / this.scale;
+        return (svgX - this.padding.left) / this.scaleX;
     }
     
     // Main draw function
     draw() {
         console.log('Drawing NZ-style beam elevation...', this.state);
+        
+        // Update container width in case it changed
+        this.svgWidth = this.container.offsetWidth || 800;
+        
+        // CRITICAL: Calculate dynamic scale and padding FIRST
+        this.calculateDynamicScale();
         
         // Clear SVG
         while (this.svg.firstChild) {
@@ -176,10 +258,10 @@ class BeamCanvas {
     // REUSABLE DRAWING METHODS
     // ===================================================================
     
-    drawPlate(centerX, centerY, isCrossHatched = true) {
+    drawPlate(centerX, centerY, isCrossHatched = true, loadId = null) {
         // Draw a 90x45mm plate centered at the given position
-        const plateW = this.VISUAL.plateWidth * this.scale;
-        const plateH = this.VISUAL.plateHeight * this.scale;
+        const plateW = this.VISUAL.plateWidth * this.scaleX;
+        const plateH = this.VISUAL.plateHeight * this.scaleY;
         
         const x = this.toSVGX(centerX) - plateW / 2;
         const y = centerY - plateH / 2;
@@ -193,6 +275,12 @@ class BeamCanvas {
         rect.setAttribute("fill", "white");
         rect.setAttribute("stroke", "black");
         rect.setAttribute("stroke-width", "2");
+        
+        // Store loadId as data attribute for reliable identification
+        if (loadId) {
+            rect.setAttribute("data-load-id", loadId);
+        }
+        
         this.svg.appendChild(rect);
         
         // Cross-hatch if requested
@@ -240,9 +328,9 @@ class BeamCanvas {
         // Draw beam rectangle
         const beam = document.createElementNS("http://www.w3.org/2000/svg", "rect");
         beam.setAttribute("x", x1);
-        beam.setAttribute("y", beamY - (beamDepth * this.scale) / 2);
+        beam.setAttribute("y", beamY - (beamDepth * this.scaleY) / 2);
         beam.setAttribute("width", x2 - x1);
-        beam.setAttribute("height", beamDepth * this.scale);
+        beam.setAttribute("height", beamDepth * this.scaleY);
         beam.setAttribute("fill", "white");
         beam.setAttribute("stroke", "black");
         beam.setAttribute("stroke-width", "2");
@@ -251,99 +339,116 @@ class BeamCanvas {
         // Draw flooring layer on top
         const flooring = document.createElementNS("http://www.w3.org/2000/svg", "rect");
         flooring.setAttribute("x", x1);
-        flooring.setAttribute("y", beamY - (beamDepth * this.scale) / 2 - (flooringDepth * this.scale));
+        flooring.setAttribute("y", beamY - (beamDepth * this.scaleY) / 2 - (flooringDepth * this.scaleY));
         flooring.setAttribute("width", x2 - x1);
-        flooring.setAttribute("height", flooringDepth * this.scale);
-        flooring.setAttribute("fill", "#D2B48C"); // Light tan color
+        flooring.setAttribute("height", flooringDepth * this.scaleY);
+        flooring.setAttribute("fill", "#e5e7eb");
         flooring.setAttribute("stroke", "black");
         flooring.setAttribute("stroke-width", "1");
         this.svg.appendChild(flooring);
     }
     
     drawSupports(beamY) {
-        const leftInsideFace = this.getLeftInsideFace();
-        const rightInsideFace = this.getRightInsideFace();
-        
-        // Left wall plate - centered at x=45mm (inside face at x=90mm)
-        const leftWallCenter = leftInsideFace - 45;
-        const wallCenterY = beamY + (this.VISUAL.beamDepth * this.scale) / 2 + (this.VISUAL.plateHeight * this.scale) / 2;
-        this.drawPlate(leftWallCenter, wallCenterY, true);
-        
-        // Right wall plate - centered at right inside face + 45mm
-        const rightWallCenter = rightInsideFace + 45;
-        this.drawPlate(rightWallCenter, wallCenterY, true);
-    }
-    
-    drawPointLoads(beamY) {
-        const leftInsideFace = this.getLeftInsideFace();
-        const span = this.getSpan();
-        
-        // Sort point loads left to right for display
-        const sortedLoads = [...this.state.point_loads].sort((a, b) => a.position - b.position);
-        
-        sortedLoads.forEach((pl, visualIndex) => {
-            // pl.position is absolute position (center of plate)
-            const plateCenter = pl.position;
+        // Draw wall plates at support positions
+        this.state.supports.forEach(support => {
+            const supportX = support.position; // mm - this is the inside face position
             
-            // Calculate dimension from left inside face
-            const dimFromSupport = plateCenter - leftInsideFace;
+            // Draw wall plate (90x45mm, cross-hatched) centered on beam end
+            // The beam end is 45mm before the inside face (for left) or 45mm after (for right)
+            // So the wall plate should be centered at the beam end position
+            const leftInsideFace = this.getLeftInsideFace();
+            const rightInsideFace = this.getRightInsideFace();
             
-            // Check if excluded from calculation (within 100mm of either support)
-            const isExcluded = dimFromSupport < 100 || dimFromSupport > (span - 100);
-            
-            // Draw plate above beam (on top of flooring)
-            const plateCenterY = beamY - (this.VISUAL.beamDepth * this.scale) / 2 - (this.VISUAL.flooringDepth * this.scale) - (this.VISUAL.plateHeight * this.scale) / 2;
-            const plate = this.drawPlate(plateCenter, plateCenterY, true);
-            
-            // Make plate draggable
-            plate.style.cursor = "move";
-            plate.dataset.loadId = pl.id;
-            this.addDragHandlers(plate, pl.id);
-            
-            // Magnitude label above plate
-            const x = this.toSVGX(plateCenter);
-            const magText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-            magText.setAttribute("x", x);
-            magText.setAttribute("y", plateCenterY - (this.VISUAL.plateHeight * this.scale) / 2 - 5);
-            magText.setAttribute("text-anchor", "middle");
-            magText.setAttribute("fill", "black");
-            magText.setAttribute("font-size", "12");
-            magText.setAttribute("font-weight", "bold");
-            magText.style.cursor = "pointer";
-            magText.textContent = `${pl.magnitude.toFixed(1)} kN`;
-            magText.addEventListener('click', () => this.editPointLoadMagnitude(pl.id));
-            this.svg.appendChild(magText);
-            
-            // Add tooltip if excluded
-            if (isExcluded) {
-                const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-                title.textContent = "Within 100mm of support - excluded from calculation";
-                magText.appendChild(title);
+            let wallPlateX;
+            if (support.position === leftInsideFace) {
+                // Left support - wall plate centered on beam start (45mm before inside face)
+                wallPlateX = support.position - 45;
+            } else if (support.position === rightInsideFace) {
+                // Right support - wall plate centered on beam end (45mm after inside face)
+                wallPlateX = support.position + 45;
+            } else {
+                // Interior support (not currently used, but handle it)
+                wallPlateX = support.position;
             }
             
-            // Dimension line to this point load (stacked vertically)
-            this.drawPointLoadDimension(dimFromSupport, visualIndex, sortedLoads.length, beamY, isExcluded, pl.id);
+            // Wall plate is positioned below the beam
+            // beamY is the beam centerline, beam extends down beamDepth/2
+            // Wall plate should be touching the bottom of the beam
+            const beamBottom = beamY + (this.VISUAL.beamDepth * this.scaleY) / 2;
+            const wallPlateY = beamBottom + (this.VISUAL.plateHeight * this.scaleY) / 2;
+            
+            this.drawPlate(wallPlateX, wallPlateY, true);
         });
     }
     
-    drawPointLoadDimension(dimFromSupport, visualIndex, totalLoads, beamY, isExcluded, loadId) {
-        const leftInsideFace = this.getLeftInsideFace();
-        const span = this.getSpan();
+    drawPointLoads(beamY) {
+        // Sort point loads by position (left to right) for consistent naming
+        const sortedLoads = [...this.state.point_loads].sort((a, b) => a.position - b.position);
         
-        // REVERSED Vertical stacking: longest dimension at top
-        // If 3 loads: index 0 (shortest) at bottom, index 2 (longest) at top
-        const baseOffset = -60;  // Start from bottom
-        const stackIncrement = -40;  // Go upward (more negative)
-        const reverseIndex = totalLoads - 1 - visualIndex;  // Reverse the index
-        const dimY = beamY + baseOffset + (reverseIndex * stackIncrement);
+        sortedLoads.forEach((pl, index) => {
+            const plX = pl.position; // mm from left edge
+            const plSVGX = this.toSVGX(plX);
+            
+            // Draw point load plate (90x45mm, cross-hatched)
+            const plateY = beamY - (this.VISUAL.beamDepth * this.scaleY) / 2 - (this.VISUAL.flooringDepth * this.scaleY) - (this.VISUAL.plateHeight * this.scaleY) / 2;
+            this.drawPlate(plX, plateY, true, pl.id);  // Pass loadId for identification
+            
+            // Label with magnitude above the plate
+            const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            label.setAttribute("x", plSVGX);
+            label.setAttribute("y", plateY - (this.VISUAL.plateHeight * this.scaleY) / 2 - 10);
+            label.setAttribute("text-anchor", "middle");
+            label.setAttribute("font-size", "14");
+            label.setAttribute("font-weight", "bold");
+            label.setAttribute("fill", "#0066B3");
+            label.textContent = `${pl.magnitude.toFixed(1)} kN`;
+            label.style.cursor = "pointer";
+            const originalIndex = this.state.point_loads.indexOf(pl);
+            label.addEventListener('click', () => this.editPointLoadMagnitude(originalIndex));
+            this.svg.appendChild(label);
+            
+            // Make plate draggable
+            this.makePlateDraggable(pl.id, plX, plateY);
+        });
+        
+        // Draw dimensions stacked by distance (longest on top)
+        // Calculate distances and sort
+        const leftInsideFace = this.getLeftInsideFace();
+        const loadsWithDistance = sortedLoads.map((pl, idx) => ({
+            load: pl,
+            displayIndex: idx, // PL1, PL2, etc. based on position
+            originalIndex: this.state.point_loads.indexOf(pl),
+            distance: pl.position - leftInsideFace
+        })).filter(item => item.distance > 0); // Only show dimensions for loads on the beam
+        
+        // Sort by distance (longest first) for stacking
+        const loadsByDistance = [...loadsWithDistance].sort((a, b) => b.distance - a.distance);
+        
+        // Draw dimensions with vertical offset
+        // Longest dimension on top (most negative Y offset)
+        const baseDimY = beamY - 50;
+        const verticalSpacing = 40;
+        
+        loadsByDistance.forEach((item, stackIndex) => {
+            // Longest gets largest offset (most negative), so it's on top
+            const dimY = baseDimY - ((loadsByDistance.length - 1 - stackIndex) * verticalSpacing);
+            this.drawPointLoadDimension(item.load, item.displayIndex, item.originalIndex, beamY, dimY);
+        });
+    }
+    
+    drawPointLoadDimension(pl, displayIndex, originalIndex, beamY, dimY) {
+        const leftInsideFace = this.getLeftInsideFace();
+        const distanceFromLeft = pl.position - leftInsideFace; // mm
+        
+        if (distanceFromLeft <= 0) return; // Don't draw if before left support
         
         const x1 = this.toSVGX(leftInsideFace);
-        const x2 = this.toSVGX(leftInsideFace + dimFromSupport);
+        const x2 = this.toSVGX(pl.position);
         
-        const dimColor = isExcluded ? "#999" : "black";
+        const dimColor = "#999";
         
-        // Vertical leader lines (thin grey, longer - closer to beam)
-        const leaderStart = beamY - 120; // Closer to beam
+        // Vertical leader lines
+        const leaderStart = beamY - 120;
         
         const leaderLine1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
         leaderLine1.setAttribute("x1", x1);
@@ -397,72 +502,45 @@ class BeamCanvas {
         this.svg.appendChild(dimLine);
         
         // Label
-        const label = `PL${visualIndex + 1}`;
         const midX = (x1 + x2) / 2;
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        label.setAttribute("x", midX);
+        label.setAttribute("y", dimY - 5);
+        label.setAttribute("text-anchor", "middle");
+        label.setAttribute("font-size", "12");
+        label.setAttribute("fill", dimColor);
+        label.textContent = `${distanceFromLeft.toFixed(0)}`;
+        label.style.cursor = "pointer";
+        label.addEventListener('click', () => this.editPointLoadPosition(originalIndex));
+        this.svg.appendChild(label);
         
-        // Background box
-        const labelBg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-        labelBg.setAttribute("x", midX - 20);
-        labelBg.setAttribute("y", dimY - 22);
-        labelBg.setAttribute("width", 40);
-        labelBg.setAttribute("height", 16);
-        labelBg.setAttribute("fill", "white");
-        this.svg.appendChild(labelBg);
-        
-        // Label text (clickable for editing position)
-        const labelText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        labelText.setAttribute("x", midX);
-        labelText.setAttribute("y", dimY - 10);
-        labelText.setAttribute("text-anchor", "middle");
-        labelText.setAttribute("fill", dimColor);
-        labelText.setAttribute("font-size", "11");
-        labelText.setAttribute("font-weight", "bold");
-        labelText.style.cursor = "pointer";
-        labelText.textContent = label;
-        labelText.addEventListener('click', () => this.editPointLoadPosition(loadId));
-        
-        // Add tooltip if excluded
-        if (isExcluded) {
-            const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-            title.textContent = "Within 100mm of support - excluded from calculation";
-            labelText.appendChild(title);
-        }
-        
-        this.svg.appendChild(labelText);
-        
-        // Dimension value (also clickable for editing position)
-        const dimValue = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        dimValue.setAttribute("x", midX);
-        dimValue.setAttribute("y", dimY + 15);
-        dimValue.setAttribute("text-anchor", "middle");
-        dimValue.setAttribute("fill", dimColor);
-        dimValue.setAttribute("font-size", "11");
-        dimValue.style.cursor = "pointer";
-        dimValue.textContent = `${Math.round(dimFromSupport)}`;
-        dimValue.addEventListener('click', () => this.editPointLoadPosition(loadId));
-        
-        if (isExcluded) {
-            const title2 = document.createElementNS("http://www.w3.org/2000/svg", "title");
-            title2.textContent = "Within 100mm of support - excluded from calculation";
-            dimValue.appendChild(title2);
-        }
-        
-        this.svg.appendChild(dimValue);
+        // Add "PLx" label above
+        const plLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        plLabel.setAttribute("x", midX);
+        plLabel.setAttribute("y", dimY - 20);
+        plLabel.setAttribute("text-anchor", "middle");
+        plLabel.setAttribute("font-size", "12");
+        plLabel.setAttribute("font-weight", "bold");
+        plLabel.setAttribute("fill", "black");
+        plLabel.textContent = `PL${displayIndex + 1}`;
+        this.svg.appendChild(plLabel);
     }
     
     drawSpanDimension(beamY) {
+        const span = this.getSpan();
         const leftInsideFace = this.getLeftInsideFace();
         const rightInsideFace = this.getRightInsideFace();
-        const span = this.getSpan();
         
         const x1 = this.toSVGX(leftInsideFace);
         const x2 = this.toSVGX(rightInsideFace);
-        const dimY = beamY + 220; // Below beam
+        const dimY = beamY + 60;
         
-        // Vertical leader lines (thin grey)
+        // Vertical leader lines
+        const leaderStart = beamY + 30;
+        
         const leaderLine1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
         leaderLine1.setAttribute("x1", x1);
-        leaderLine1.setAttribute("y1", beamY + 100);
+        leaderLine1.setAttribute("y1", leaderStart);
         leaderLine1.setAttribute("x2", x1);
         leaderLine1.setAttribute("y2", dimY);
         leaderLine1.setAttribute("stroke", "#999");
@@ -472,7 +550,7 @@ class BeamCanvas {
         
         const leaderLine2 = document.createElementNS("http://www.w3.org/2000/svg", "line");
         leaderLine2.setAttribute("x1", x2);
-        leaderLine2.setAttribute("y1", beamY + 100);
+        leaderLine2.setAttribute("y1", leaderStart);
         leaderLine2.setAttribute("x2", x2);
         leaderLine2.setAttribute("y2", dimY);
         leaderLine2.setAttribute("stroke", "#999");
@@ -480,27 +558,25 @@ class BeamCanvas {
         leaderLine2.setAttribute("stroke-dasharray", "2,2");
         this.svg.appendChild(leaderLine2);
         
-        // Witness lines (forward slash style: /)
-        const witnessLen = 12;
+        // Witness lines
+        const witnessLen = 10;
         
-        // Left witness line (/)
         const leftWitness = document.createElementNS("http://www.w3.org/2000/svg", "line");
         leftWitness.setAttribute("x1", x1 - witnessLen/2);
         leftWitness.setAttribute("y1", dimY + witnessLen/2);
         leftWitness.setAttribute("x2", x1 + witnessLen/2);
         leftWitness.setAttribute("y2", dimY - witnessLen/2);
         leftWitness.setAttribute("stroke", "black");
-        leftWitness.setAttribute("stroke-width", "2");
+        leftWitness.setAttribute("stroke-width", "1.5");
         this.svg.appendChild(leftWitness);
         
-        // Right witness line (/)
         const rightWitness = document.createElementNS("http://www.w3.org/2000/svg", "line");
         rightWitness.setAttribute("x1", x2 - witnessLen/2);
         rightWitness.setAttribute("y1", dimY + witnessLen/2);
         rightWitness.setAttribute("x2", x2 + witnessLen/2);
         rightWitness.setAttribute("y2", dimY - witnessLen/2);
         rightWitness.setAttribute("stroke", "black");
-        rightWitness.setAttribute("stroke-width", "2");
+        rightWitness.setAttribute("stroke-width", "1.5");
         this.svg.appendChild(rightWitness);
         
         // Dimension line
@@ -541,116 +617,115 @@ class BeamCanvas {
         // Dimension value
         const dimValue = document.createElementNS("http://www.w3.org/2000/svg", "text");
         dimValue.setAttribute("x", midX);
-        dimValue.setAttribute("y", dimY + 20);
+        dimValue.setAttribute("y", dimY + 15);
         dimValue.setAttribute("text-anchor", "middle");
-        dimValue.setAttribute("fill", "black");
-        dimValue.setAttribute("font-size", "13");
+        dimValue.setAttribute("font-size", "14");
         dimValue.setAttribute("font-weight", "bold");
+        dimValue.setAttribute("fill", "black");
         dimValue.style.cursor = "pointer";
-        dimValue.textContent = `${Math.round(span)}`;
+        dimValue.textContent = `${span.toFixed(0)}`;
         dimValue.addEventListener('click', () => this.editSpan());
         this.svg.appendChild(dimValue);
     }
     
     drawLoadInfo(beamY) {
-        // Show just total UDL in brown color (clickable for editing all loads)
-        const leftInsideFace = this.getLeftInsideFace();
-        const span = this.getSpan();
-        const midX = this.toSVGX(leftInsideFace + span/2);
+        // Display UDL info below the span dimension for editing
+        const leftStart = this.toSVGX(this.getLeftInsideFace());
+        const rightEnd = this.toSVGX(this.getRightInsideFace());
+        const udlMidX = (leftStart + rightEnd) / 2;
         
-        const loadY = beamY - 50;
+        // Position below span dimension (span is at beamY + 60)
+        const spanDimY = beamY + 60;
+        const udlInfoY = spanDimY + 35; // Below the span dimension
         
-        // Total UDL text (clickable)
-        const totalText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        totalText.setAttribute("x", midX);
-        totalText.setAttribute("y", loadY);
-        totalText.setAttribute("text-anchor", "middle");
-        totalText.setAttribute("fill", "#8B6F47");
-        totalText.setAttribute("font-size", "14");
-        totalText.setAttribute("font-weight", "bold");
-        totalText.style.cursor = "pointer";
-        totalText.textContent = `${this.state.udl.total.toFixed(2)} kN/m`;
-        totalText.addEventListener('click', () => this.editLoads());
+        const udlText = `UDL: ${this.state.udl.total.toFixed(2)} kN/m`;
+        const spacingText = `@ ${(this.state.spacing * 1000).toFixed(0)}mm c/c`;
         
-        // Hover effect
-        totalText.addEventListener('mouseenter', () => {
-            totalText.setAttribute("fill", "#F69321");
-        });
-        totalText.addEventListener('mouseleave', () => {
-            totalText.setAttribute("fill", "#8B6F47");
-        });
+        // UDL label (clickable to edit)
+        const udlLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        udlLabel.setAttribute("x", udlMidX);
+        udlLabel.setAttribute("y", udlInfoY);
+        udlLabel.setAttribute("text-anchor", "middle");
+        udlLabel.setAttribute("font-size", "14");
+        udlLabel.setAttribute("fill", "#F69321"); // Lumberbank orange
+        udlLabel.setAttribute("font-weight", "bold");
+        udlLabel.textContent = udlText;
+        udlLabel.style.cursor = "pointer";
+        udlLabel.addEventListener('click', () => this.editLoads());
+        this.svg.appendChild(udlLabel);
         
-        this.svg.appendChild(totalText);
+        // Spacing label (clickable to edit)
+        const spacingLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        spacingLabel.setAttribute("x", udlMidX);
+        spacingLabel.setAttribute("y", udlInfoY + 18);
+        spacingLabel.setAttribute("text-anchor", "middle");
+        spacingLabel.setAttribute("font-size", "12");
+        spacingLabel.setAttribute("fill", "#666");
+        spacingLabel.textContent = spacingText;
+        spacingLabel.style.cursor = "pointer";
+        spacingLabel.addEventListener('click', () => this.editSpacing());
+        this.svg.appendChild(spacingLabel);
     }
     
     drawToolbar() {
-        const existingToolbar = this.container.querySelector('.beam-toolbar');
-        if (existingToolbar) {
-            existingToolbar.remove();
-        }
+        // Add button in top-left to add point loads
+        const btnX = 20;
+        const btnY = 20;
         
-        const toolbar = document.createElement('div');
-        toolbar.className = 'beam-toolbar';
-        toolbar.style.cssText = `
-            display: flex;
-            gap: 1rem;
-            padding: 1rem;
-            background: white;
-            border-bottom: 1px solid #e5e7eb;
-            margin-bottom: 1rem;
-            align-items: center;
-        `;
+        const btn = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        btn.setAttribute("x", btnX);
+        btn.setAttribute("y", btnY);
+        btn.setAttribute("width", 120);
+        btn.setAttribute("height", 30);
+        btn.setAttribute("fill", "#0066B3");
+        btn.setAttribute("rx", "4");
+        btn.style.cursor = "pointer";
+        btn.addEventListener('click', () => this.addPointLoad());
+        this.svg.appendChild(btn);
         
-        // Add Point Load button
-        const addPLBtn = document.createElement('button');
-        addPLBtn.className = 'btn btn-secondary';
-        addPLBtn.textContent = '+ Add Point Load';
-        addPLBtn.onclick = () => this.addPointLoad();
-        toolbar.appendChild(addPLBtn);
-        
-        // Spacing input (for joists/rafters)
-        if (this.state.member_type === 'floor_joist' || this.state.member_type === 'rafter') {
-            const spacingLabel = document.createElement('span');
-            spacingLabel.style.cssText = 'display: flex; align-items: center; gap: 0.5rem;';
-            spacingLabel.innerHTML = `
-                <strong>Spacing:</strong>
-                <span style="color: #8B6F47; cursor: pointer; text-decoration: underline;" 
-                      id="spacing-label">
-                    ${(this.state.spacing * 1000).toFixed(0)}mm crs
-                </span>
-            `;
-            toolbar.appendChild(spacingLabel);
-            
-            setTimeout(() => {
-                const label = document.getElementById('spacing-label');
-                if (label) {
-                    label.onclick = () => this.editSpacing();
-                }
-            }, 0);
-        }
-        
-        this.container.insertBefore(toolbar, this.svg);
+        const btnText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        btnText.setAttribute("x", btnX + 60);
+        btnText.setAttribute("y", btnY + 20);
+        btnText.setAttribute("text-anchor", "middle");
+        btnText.setAttribute("font-size", "14");
+        btnText.setAttribute("font-weight", "bold");
+        btnText.setAttribute("fill", "white");
+        btnText.style.cursor = "pointer";
+        btnText.textContent = "+ Point Load";
+        btnText.addEventListener('click', () => this.addPointLoad());
+        btnText.style.pointerEvents = "none"; // Let clicks pass through to button
+        this.svg.appendChild(btnText);
     }
     
     // ===================================================================
-    // DRAG AND DROP FOR POINT LOADS
+    // INTERACTIVITY - DRAGGING
     // ===================================================================
     
-    addDragHandlers(element, loadId) {
+    makePlateDraggable(loadId, centerX, centerY) {
+        // Find the plate rectangle by its data-load-id attribute
+        const plateRect = this.svg.querySelector(`rect[data-load-id="${loadId}"]`);
+        
+        if (!plateRect) {
+            console.warn('Could not find plate for loadId:', loadId);
+            return;
+        }
+        
+        plateRect.style.cursor = "grab";
+        
         const self = this;
         let startX = 0;
         let startPosition = 0;
         
-        element.addEventListener('mousedown', function(e) {
+        plateRect.addEventListener('mousedown', function(e) {
             e.preventDefault();
             self.isDragging = true;
             self.draggedLoadId = loadId;
             startX = e.clientX;
             
             const pl = self.state.point_loads.find(pl => pl.id === loadId);
-            if (!pl) return;
-            
             startPosition = pl.position;
+            
+            plateRect.style.cursor = "grabbing";
             
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
@@ -663,7 +738,7 @@ class BeamCanvas {
             if (!pl) return;
             
             const deltaX = e.clientX - startX;
-            const deltaMM = deltaX / self.scale;
+            const deltaMM = deltaX / self.scaleX;
             let newPosition = startPosition + deltaMM;
             
             // Snap to 50mm
@@ -705,6 +780,26 @@ class BeamCanvas {
                 rightSupport.position = leftPos + value;
             }
             
+            // Check if any point loads are now beyond the new span
+            const newRightInsideFace = leftPos + value;
+            let adjustedLoads = [];
+            
+            this.state.point_loads.forEach(pl => {
+                if (pl.position > newRightInsideFace) {
+                    // Move point load to right support position
+                    pl.position = newRightInsideFace;
+                    adjustedLoads.push(pl);
+                }
+            });
+            
+            // Notify user if any loads were adjusted
+            if (adjustedLoads.length > 0) {
+                const loadNames = adjustedLoads.map((pl, idx) => 
+                    `PL${this.state.point_loads.indexOf(pl) + 1}`
+                ).join(', ');
+                alert(`ℹ️ ${loadNames} repositioned to end of beam. You can now reposition or delete as needed.`);
+            }
+            
             this.draw();
         }
     }
@@ -729,116 +824,24 @@ class BeamCanvas {
     
     editLoads() {
         // Create popup form for load editing
-        const popup = this.createLoadEditPopup();
-        document.body.appendChild(popup);
+        const deadLoad = prompt(`Dead load (kPa):`, this.state.udl.dead_load);
+        if (deadLoad === null) return;
+        
+        const liveLoad = prompt(`Live load (kPa):`, this.state.udl.live_load);
+        if (liveLoad === null) return;
+        
+        const sdl = prompt(`SDL (kPa):`, this.state.udl.sdl);
+        if (sdl === null) return;
+        
+        this.state.udl.dead_load = parseFloat(deadLoad);
+        this.state.udl.live_load = parseFloat(liveLoad);
+        this.state.udl.sdl = parseFloat(sdl);
+        this.calculateUDL();
+        this.draw();
     }
     
-    createLoadEditPopup() {
-        // Create modal overlay
-        const overlay = document.createElement('div');
-        overlay.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: rgba(0,0,0,0.5);
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        `;
-        
-        // Create popup form
-        const popup = document.createElement('div');
-        popup.style.cssText = `
-            background: white;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
-            max-width: 400px;
-            width: 90%;
-        `;
-        
-        popup.innerHTML = `
-            <h3 style="margin: 0 0 1rem 0;">Edit Floor Loading</h3>
-            
-            <div style="margin-bottom: 1rem;">
-                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Live Load (LL) - kPa</label>
-                <input type="number" id="ll-input" value="${this.state.udl.live_load}" step="0.1" 
-                       style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px;">
-            </div>
-            
-            <div style="margin-bottom: 1rem;">
-                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Dead Load (DL) - kPa</label>
-                <input type="number" id="dl-input" value="${this.state.udl.dead_load}" step="0.1"
-                       style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px;">
-            </div>
-            
-            <div style="margin-bottom: 1.5rem;">
-                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Superimposed DL (SDL) - kPa</label>
-                <input type="number" id="sdl-input" value="${this.state.udl.sdl}" step="0.1"
-                       style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px;">
-            </div>
-            
-            ${this.state.member_type === 'floor_joist' || this.state.member_type === 'rafter' ? `
-            <div style="margin-bottom: 1.5rem;">
-                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Spacing - mm</label>
-                <input type="number" id="spacing-popup-input" value="${(this.state.spacing * 1000).toFixed(0)}" step="10"
-                       style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px;">
-            </div>
-            ` : ''}
-            
-            <div style="display: flex; gap: 1rem; justify-content: flex-end;">
-                <button id="cancel-btn" style="padding: 0.5rem 1rem; border: 1px solid #d1d5db; background: white; border-radius: 4px; cursor: pointer;">
-                    Cancel
-                </button>
-                <button id="save-btn" style="padding: 0.5rem 1rem; background: #8B6F47; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">
-                    Save
-                </button>
-            </div>
-        `;
-        
-        overlay.appendChild(popup);
-        
-        // Event handlers
-        const saveBtn = popup.querySelector('#save-btn');
-        const cancelBtn = popup.querySelector('#cancel-btn');
-        
-        saveBtn.onclick = () => {
-            this.state.udl.live_load = parseFloat(popup.querySelector('#ll-input').value);
-            this.state.udl.dead_load = parseFloat(popup.querySelector('#dl-input').value);
-            this.state.udl.sdl = parseFloat(popup.querySelector('#sdl-input').value);
-            
-            if (this.state.member_type === 'floor_joist' || this.state.member_type === 'rafter') {
-                const spacingInput = popup.querySelector('#spacing-popup-input');
-                if (spacingInput) {
-                    this.state.spacing = parseFloat(spacingInput.value) / 1000;
-                }
-            }
-            
-            this.calculateUDL();
-            this.draw();
-            document.body.removeChild(overlay);
-        };
-        
-        cancelBtn.onclick = () => {
-            document.body.removeChild(overlay);
-        };
-        
-        overlay.onclick = (e) => {
-            if (e.target === overlay) {
-                document.body.removeChild(overlay);
-            }
-        };
-        
-        return overlay;
-    }
-    
-    editPointLoadMagnitude(loadId) {
-        const pl = this.state.point_loads.find(pl => pl.id === loadId);
-        if (!pl) return;
-        
+    editPointLoadMagnitude(index) {
+        const pl = this.state.point_loads[index];
         const newMag = prompt(`Point load magnitude (kN):`, pl.magnitude.toFixed(1));
         
         if (newMag && !isNaN(newMag)) {
@@ -847,17 +850,21 @@ class BeamCanvas {
         }
     }
     
-    editPointLoadPosition(loadId) {
-        const pl = this.state.point_loads.find(pl => pl.id === loadId);
-        if (!pl) return;
-        
+    editPointLoadPosition(index) {
+        const pl = this.state.point_loads[index];
         const leftInsideFace = this.getLeftInsideFace();
-        const dimFromSupport = pl.position - leftInsideFace;
+        const span = this.getSpan();
+        const currentDist = pl.position - leftInsideFace;
         
-        const newPos = prompt(`Point load position from left support inside face (mm):`, Math.round(dimFromSupport));
+        const newDist = prompt(`Distance from left support (mm):`, currentDist.toFixed(0));
         
-        if (newPos && !isNaN(newPos)) {
-            let value = parseFloat(newPos);
+        if (newDist && !isNaN(newDist)) {
+            let value = parseFloat(newDist);
+            
+            if (value < 0 || value > span) {
+                alert(`⚠ Position must be between 0 and ${span.toFixed(0)}mm`);
+                return;
+            }
             
             // Snap to 50mm
             value = Math.round(value / 50) * 50;
