@@ -38,3 +38,13 @@ class UserRepository(BaseRepository):
     def get_active_users(cls):
         """Get all active users"""
         return User.query.filter_by(is_active=True).all()
+    
+    @classmethod
+    def count_active(cls):
+        """Count active users"""
+        return User.query.filter_by(is_active=True).count()
+    
+    @classmethod
+    def get_recent(cls, limit=10):
+        """Get most recently created users"""
+        return User.query.order_by(User.created_at.desc()).limit(limit).all()

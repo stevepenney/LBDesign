@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Admin{% endblock %} - Lumberbank</title>
+    
+    {# Your app's main stylesheet #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    
+    {# Bootstrap 4 for Flask-Admin #}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css">
+    
+    {# Font Awesome for icons #}
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    
+    {# Custom admin styles #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    
+    {# Allow templates to add more CSS #}
+    {% block head_css %}{% endblock %}
+    {% block head %}{% endblock %}
+</head>
+<body>
+    {# Your Lumberbank header #}
+    <header>
+        <div class="container">
+            <h1>LBDesign</h1>
+            <nav>
+                <ul>
+                    {% if current_user.is_authenticated %}
+                        <li><a href="{{ url_for('projects.list') }}">Projects</a></li>
+                        {% if current_user.has_role('ADMIN') %}
+                        <li><a href="{{ url_for('user_admin.dashboard') }}">Admin</a></li>
+                        {% endif %}
+                        <li><a href="{{ url_for('auth.logout') }}">Logout ({{ current_user.username }})</a></li>
+                    {% else %}
+                        <li><a href="{{ url_for('auth.login') }}">Login</a></li>
+                        <li><a href="{{ url_for('auth.register') }}">Register</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+    </header>
+    
+    <main>
+        <div class="container">
+            {# Flash messages #}
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-messages">
+                        {% for category, message in messages %}
+                            <div class="flash {{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            
+            {# Flask-Admin content goes here #}
+            {% block body %}{% endblock %}
+        </div>
+    </main>
+    
+    <footer>
+        <div class="container">
+            <p>&copy; 2024 Lumberbank. All rights reserved.</p>
+        </div>
+    </footer>
+    
+    {# jQuery (required by Bootstrap and Flask-Admin) #}
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
+    {# Bootstrap JS #}
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+    
+    {# Allow templates to add more JS #}
+    {% block tail %}{% endblock %}
+</body>
+</html>

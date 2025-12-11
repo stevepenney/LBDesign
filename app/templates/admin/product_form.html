@@ -1,0 +1,172 @@
+{% extends 'admin/model/create.html' %}
+
+{% block head_css %}
+{{ super() }}
+<style>
+    /* Compact form layout */
+    .form-group {
+        margin-bottom: 0.75rem;
+    }
+    
+    /* Make fields more compact */
+    input[type="number"],
+    input[type="text"]:not([name="description"]):not([name="notes"]) {
+        max-width: 200px;
+    }
+    
+    select {
+        max-width: 250px;
+    }
+    
+    textarea {
+        max-width: 500px;
+    }
+    
+    /* Two-column layout for dimension fields */
+    .dimensions-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 300px);
+        gap: 1rem;
+        margin: 1rem 0;
+    }
+    
+    /* Three-column layout for material properties */
+    .materials-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 200px);
+        gap: 1rem;
+        margin: 1rem 0;
+    }
+    
+    /* Section headers */
+    .form-section-header {
+        font-weight: 600;
+        font-size: 1.1rem;
+        color: #8B6F47;
+        margin-top: 1.5rem;
+        margin-bottom: 0.75rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #8B6F47;
+    }
+    
+    /* Hide/show fields based on product type */
+    .rectangular-fields,
+    .i-beam-fields {
+        display: none;
+    }
+    
+    .rectangular-fields.active,
+    .i-beam-fields.active {
+        display: block;
+    }
+    
+    /* Help text styling */
+    .field-help {
+        display: block;
+        font-size: 0.85rem;
+        color: #666;
+        margin-top: 0.25rem;
+        font-style: italic;
+    }
+</style>
+{% endblock %}
+
+{% block tail %}
+{{ super() }}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Product form loaded');
+    
+    // Find the product_type field
+    const productTypeField = document.querySelector('select[name="product_type"]') || 
+                            document.querySelector('input[name="product_type"]');
+    
+    if (!productTypeField) {
+        console.error('Product type field not found');
+        return;
+    }
+    
+    console.log('Product type field found:', productTypeField.tagName);
+    
+    // Add change handler
+    productTypeField.addEventListener('change', updateFieldVisibility);
+    productTypeField.addEventListener('input', updateFieldVisibility);
+    
+    // Initial call
+    updateFieldVisibility();
+    
+    function updateFieldVisibility() {
+        const productType = productTypeField.value;
+        console.log('Product type:', productType);
+        
+        const isIBeam = productType === 'I_BEAM';
+        const isRectangular = ['SOLID_TIMBER', 'LVL', 'GLULAM'].includes(productType);
+        
+        // Show/hide dimension fields based on type
+        const widthField = document.querySelector('input[name="width"]');
+        const widthTopField = document.querySelector('input[name="width_top"]');
+        const widthBottomField = document.querySelector('input[name="width_bottom"]');
+        const flangeThicknessField = document.querySelector('input[name="flange_thickness"]');
+        const webThicknessField = document.querySelector('input[name="web_thickness"]');
+        
+        // Hide all type-specific fields first
+        [widthField, widthTopField, widthBottomField, flangeThicknessField, webThicknessField].forEach(field => {
+            if (field) {
+                const formGroup = field.closest('.form-group');
+                if (formGroup) {
+                    formGroup.style.display = 'none';
+                }
+            }
+        });
+        
+        // Show relevant fields
+        if (isRectangular && widthField) {
+            const formGroup = widthField.closest('.form-group');
+            if (formGroup) formGroup.style.display = 'block';
+        }
+        
+        if (isIBeam) {
+            [widthTopField, widthBottomField, flangeThicknessField, webThicknessField].forEach(field => {
+                if (field) {
+                    const formGroup = field.closest('.form-group');
+                    if (formGroup) formGroup.style.display = 'block';
+                }
+            });
+        }
+    }
+    
+    // Add helpful labels
+    addHelpText();
+    
+    function addHelpText() {
+        const helpTexts = {
+            'product_code': 'e.g., "LW300", "90x45-SG8", "LVL-E11-300x45"',
+            'depth': 'Overall depth in mm (vertical dimension)',
+            'width': 'Width in mm (for rectangular sections)',
+            'width_top': 'Top flange width in mm',
+            'width_bottom': 'Bottom flange width in mm',
+            'flange_thickness': 'Thickness of top/bottom flanges in mm',
+            'web_thickness': 'Thickness of web in mm',
+            'E': 'Modulus of Elasticity in MPa (e.g., 10000 for SG8, 11000 for E11 LVL)',
+            'f_b': 'Characteristic bending strength in MPa',
+            'f_s': 'Characteristic shear strength in MPa',
+            'durability_class': 'e.g., H1.2, H3.2'
+        };
+        
+        Object.keys(helpTexts).forEach(fieldName => {
+            const field = document.querySelector(`input[name="${fieldName}"], select[name="${fieldName}"]`);
+            if (field) {
+                const formGroup = field.closest('.form-group');
+                if (formGroup && !formGroup.querySelector('.field-help')) {
+                    const helpSpan = document.createElement('span');
+                    helpSpan.className = 'field-help';
+                    helpSpan.textContent = helpTexts[fieldName];
+                    field.parentNode.appendChild(helpSpan);
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

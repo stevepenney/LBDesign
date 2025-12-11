@@ -5,6 +5,8 @@ from flask_admin import Admin, AdminIndexView, expose
 from flask_admin.contrib.sqla import ModelView
 from flask_login import current_user
 from flask import redirect, url_for, request
+from app.admin.product_admin import ProductAdminView
+from app.models.product import Product
 from app.extensions import db
 from app.models import User, Project, Beam
 
@@ -108,5 +110,7 @@ def init_admin(app):
     admin.add_view(UserAdminView(User, db.session, name='Users', endpoint='user'))
     admin.add_view(ProjectAdminView(Project, db.session, name='Projects', endpoint='project'))
     admin.add_view(BeamAdminView(Beam, db.session, name='Beams', endpoint='beam'))
+    admin.add_view(ProductAdminView(Product, db.session, name='Products', endpoint='product'))
+
     
     return admin

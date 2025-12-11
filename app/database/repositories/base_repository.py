@@ -20,6 +20,11 @@ class BaseRepository:
         return cls.model.query.all()
     
     @classmethod
+    def count_all(cls):
+        """Count all records"""
+        return cls.model.query.count()
+    
+    @classmethod
     def create(cls, **kwargs):
         """Create new record"""
         instance = cls.model(**kwargs)

@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+
+{# Preserve Flask-Admin's CSS #}
+{% block head_css %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+  {% block head %}{% endblock %}
+{% endblock %}
+
+{# Make Flask-Admin content render inside our base template #}
+{% block content %}
+  {# Flask-Admin puts its content in the 'body' block #}
+  {% block body %}{% endblock %}
+{% endblock %}
+
+{# Preserve Flask-Admin's JavaScript #}
+{% block scripts %}
+  {{ super() }}
+  {% block tail %}{% endblock %}
+{% endblock %}

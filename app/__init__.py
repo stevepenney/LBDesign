@@ -36,12 +36,14 @@ def create_app(config_name='development'):
     from app.routes.projects import projects_bp
     from app.routes.beams import beams_bp
     from app.routes.admin import admin_bp
+    #from app.routes.user_admin import user_admin_bp
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(projects_bp)
     app.register_blueprint(beams_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(api_bp, url_prefix='/api')
+    #app.register_blueprint(user_admin_bp)
     
     # Root route
     @app.route('/')

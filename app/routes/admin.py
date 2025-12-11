@@ -179,7 +179,8 @@ def projects():
     from app.models import Project
     
     # Get all projects with owner information
-    all_projects = Project.query.order_by(Project.updated_at.desc()).all()
+    # all_projects = Project.query.order_by(Project.updated_at.desc()).all()
+    all_projects = ProjectRepository.get_all()
     
     return render_template('admin/projects.html', projects=all_projects)
 

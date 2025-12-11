@@ -103,7 +103,7 @@
 
 <!-- Design Section (hidden until member type selected, or visible in edit mode) -->
 <div id="design-section" style="display: {{ 'block' if beam else 'none' }};">
-    <form id="beam-form" method="POST" action="{{ url_for('beams.beam_form', project_id=project.id, beam_id=beam.id) if beam else url_for('beams.beam_form', project_id=project.id) }}">
+    <form id="beam-form" method="POST" action="">
         
         <!-- Basic Info Card -->
         <div class="card">
@@ -175,15 +175,22 @@
 <script src="{{ url_for('static', filename='js/beam-canvas.js') }}"></script>
 <script src="{{ url_for('static', filename='js/model-selector.js') }}"></script>
 
+{% if beam.support_config %}
+    {% set supports_data = beam.support_config %}
+{% else %}
+    {% set supports_data = [{"position": 0.0, "type": "pinned"}, {"position": beam.span, "type": "pinned"}] %}
+{% endif %}
+
 <script>
-// Initialize beam canvas if editing
-{% if beam %}
+// Initialize beam canvas
 document.addEventListener('DOMContentLoaded', () => {
+    {% if beam %}
+    // EDIT MODE - Load existing beam data
     const beamData = {
         name: "{{ beam.name }}",
         member_type: "{{ beam.member_type }}",
         spacing: {{ beam.spacing or 0.4 }},
-        supports: {{ beam.support_config | tojson if beam.support_config else '[{"position": 0.0, "type": "pinned"}, {"position": ' + (beam.span | string) + ', "type": "pinned"}]' }},
+        supports: {{ supports_data | tojson | safe }},
         udl: {
             dead_load: {{ beam.dead_load or 0 }},
             live_load: {{ beam.live_load or 0 }},
@@ -200,7 +207,12 @@ document.addEventListener('DOMContentLoaded', () => {
         results: null
     };
     
+    console.log('Edit mode - initializing canvas with:', beamData);
     window.beamCanvas = new BeamCanvas('beam-canvas-container', beamData);
+    
+    // Show the design section and hide selector
+    document.getElementById('design-section').style.display = 'block';
+    document.getElementById('member-selector').style.display = 'none';
     
     // If beam has been calculated, show results
     {% if beam.is_calculated %}
@@ -221,10 +233,40 @@ document.addEventListener('DOMContentLoaded', () => {
         calc_date: "{{ beam.calc_date.strftime('%Y-%m-%d %H:%M') if beam.calc_date else '' }}"
     });
     {% endif %}
+    {% else %}
+    // CREATE MODE - Canvas will initialize when member type is selected
+    console.log('Create mode - canvas will initialize when member type is selected');
+    {% endif %}
 });
-{% endif %}
 
-// Calculate beam (AJAX call)
+// Update hidden form fields from canvas state
+function updateHiddenFieldsFromCanvas() {
+    const state = window.beamCanvas.getState();
+    
+    console.log('Updating hidden fields with:', state);
+    
+    // Update hidden inputs
+    document.getElementById('member_type_input').value = state.member_type || '';
+    document.getElementById('span_input').value = state.supports[state.supports.length - 1].position || '';
+    document.getElementById('spacing_input').value = state.spacing || '';
+    document.getElementById('dead_load_input').value = state.udl.dead_load || '';
+    document.getElementById('live_load_input').value = state.udl.live_load || '';
+    
+    // Update point loads
+    if (state.point_loads.length > 0) {
+        document.getElementById('pl1_input').value = state.point_loads[0].magnitude || '';
+        document.getElementById('pl1_pos_input').value = state.point_loads[0].position || '';
+    }
+    if (state.point_loads.length > 1) {
+        document.getElementById('pl2_input').value = state.point_loads[1].magnitude || '';
+        document.getElementById('pl2_pos_input').value = state.point_loads[1].position || '';
+    }
+    
+    // Update supports
+    document.getElementById('supports_input').value = JSON.stringify(state.supports);
+    
+    console.log('Hidden fields updated');
+}
 
 // Calculate beam (AJAX call) - DEBUG VERSION
 async function calculateBeam() {
@@ -234,6 +276,9 @@ async function calculateBeam() {
     console.log('=== CALCULATE BEAM DEBUG ===');
     console.log('Canvas state:', state);
     
+	// UPDATE HIDDEN FIELDS FIRST - THIS IS THE FIX!
+    updateHiddenFieldsFromCanvas();
+	
     // Disable button during calculation
     button.disabled = true;
     button.textContent = '⏳ Calculating...';

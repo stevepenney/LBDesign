@@ -1,11 +1,8 @@
-{% extends 'admin/master.html' %}
+{% extends 'base.html' %}
 
-{% block head_css %}
-{{ super() }}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
-{% endblock %}
+{% block title %}Database Administration{% endblock %}
 
-{% block body %}
+{% block content %}
 <div style="padding: 2rem;">
     <div style="background: #fef2f2; border-left: 4px solid #dc3545; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
         <h2 style="color: #dc3545; margin: 0 0 0.5rem 0;">⚠️ Database Administration</h2>
@@ -53,12 +50,27 @@
              onclick="window.location.href='{{ url_for('beam.index_view') }}'"
              onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'"
              onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
-            <div style="font-size: 3rem; margin-bottom: 1rem;">📐</div>
+            <div style="font-size: 3rem; margin-bottom: 1rem;">📏</div>
             <h3 style="color: #0066B3; margin: 0 0 0.5rem 0;">Beams</h3>
             <p style="color: #666; margin: 0; font-size: 0.9rem;">
                 Direct access to beam calculations and parameters
             </p>
             <p style="color: #0066B3; font-size: 0.9rem; margin-top: 1rem;">
+                Click to edit →
+            </p>
+        </div>
+
+        <!-- Products Table -->
+        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 2rem; cursor: pointer; transition: all 0.3s; box-shadow: 0 1px 3px rgba(0,0,0,0.1);" 
+             onclick="window.location.href='{{ url_for('product.index_view') }}'"
+             onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'"
+             onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🏗️</div>
+            <h3 style="color: #8B6F47; margin: 0 0 0.5rem 0;">Products</h3>
+            <p style="color: #666; margin: 0; font-size: 0.9rem;">
+                Manage structural products (I-beams, LVL, timber)
+            </p>
+            <p style="color: #8B6F47; font-size: 0.9rem; margin-top: 1rem;">
                 Click to edit →
             </p>
         </div>
