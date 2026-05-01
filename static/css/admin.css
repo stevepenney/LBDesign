@@ -1,0 +1,90 @@
+/*
+ * LumberBank Admin — overrides for Django's admin interface.
+ * Loaded after base.css, so all CSS variables from :root are available.
+ */
+
+/* ── Fonts ───────────────────────────────────────────────── */
+body, td, th, input, select, textarea, .form-row label, #header, div.breadcrumbs {
+  font-family: 'Source Sans 3', 'Source Sans Pro', sans-serif !important;
+}
+
+/* ── Header bar ──────────────────────────────────────────── */
+#header {
+  background: var(--brown-dark) !important;
+}
+
+#header a:link,
+#header a:visited { color: rgba(255,255,255,.85) !important; }
+#header a:hover   { color: var(--brown-light) !important; }
+
+/* ── Breadcrumbs ─────────────────────────────────────────── */
+div.breadcrumbs {
+  background: var(--tan-bg) !important;
+  color: var(--brown-dark) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+div.breadcrumbs a { color: var(--brown) !important; }
+
+/* ── Module / section headers ────────────────────────────── */
+.module h2,
+.module caption,
+.inline-group h2 {
+  background: var(--brown) !important;
+  color: var(--white) !important;
+  font-family: 'Source Sans 3', 'Source Sans Pro', sans-serif !important;
+}
+
+/* ── Recent actions module heading ───────────────────────── */
+#recent-actions-module h2 {
+  color: var(--white) !important;
+}
+
+/* ── Links ───────────────────────────────────────────────── */
+a:link, a:visited { color: var(--brown) !important; }
+a:hover           { color: #7a4f31 !important; }
+
+/* Prevent link colour overriding white text in module headers */
+.module caption a:link,
+.module caption a:visited,
+.module h2 a:link,
+.module h2 a:visited,
+.inline-group h2 a:link,
+.inline-group h2 a:visited,
+#recent-actions-module h2 a:link,
+#recent-actions-module h2 a:visited { color: var(--white) !important; }
+
+/* ── Save / action buttons ───────────────────────────────── */
+.submit-row input[type=submit],
+.submit-row button[type=submit],
+input[type=submit] {
+  background: var(--brown) !important;
+  border-color: var(--brown) !important;
+}
+.submit-row input[type=submit]:hover,
+.submit-row button[type=submit]:hover,
+input[type=submit]:hover {
+  background: #7a4f31 !important;
+}
+
+/* ── Object tools (Add / History buttons top-right) ──────── */
+.object-tools a {
+  background: var(--brown) !important;
+}
+.object-tools a:hover { background: #7a4f31 !important; }
+
+/* ── Nav sidebar active app ──────────────────────────────── */
+.nav-sidebar .current-app .section:link,
+.nav-sidebar .current-app .section:visited {
+  color: var(--brown) !important;
+}
+
+/* ── Calendar date highlight ─────────────────────────────── */
+.calendar td.selected a {
+  background: var(--brown) !important;
+}
+
+/* ── Dashboard app list icons ────────────────────────────── */
+.dashboard #content-main .module table td a.changelink,
+.dashboard #content-main .module table td a.addlink {
+  color: var(--brown) !important;
+}

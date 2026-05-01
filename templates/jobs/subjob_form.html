@@ -1,0 +1,456 @@
+{% extends 'base.html' %}
+{% load widget_tweaks %}
+
+{% block title %}{{ action }} — {{ job.job_reference }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .form-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    max-width: 820px;
+    margin-bottom: 1.5rem;
+  }
+  .form-card__header {
+    background: var(--brown);
+    color: var(--white);
+    padding: .75rem 1.25rem;
+    border-radius: 6px 6px 0 0;
+    font-weight: 700;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .form-card__body { padding: 1.25rem 1.5rem; }
+
+  .form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .form-group { margin-bottom: 0; }
+  .form-group label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--charcoal);
+    margin-bottom: .35rem;
+  }
+  .required-star { color: #b20000; }
+
+  .form-control {
+    width: 100%;
+    padding: .55rem .8rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 0.95rem;
+    color: var(--brown-dark);
+    background: var(--white);
+    transition: border-color .15s;
+  }
+  .form-control:focus { outline: none; border-color: var(--brown); }
+
+  .form-error { color: #b20000; font-size: 0.8rem; margin-top: .25rem; }
+
+  /* Checkbox toggle row */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    margin-bottom: 1rem;
+    font-size: 0.92rem;
+    color: var(--charcoal);
+  }
+  .toggle-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--brown); }
+
+  .conditional-section {
+    background: var(--tan-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    margin-top: .75rem;
+    margin-bottom: 1rem;
+  }
+
+  /* Formset grid — areas: label | m² | product | spacing | × */
+  .area-row {
+    display: grid;
+    grid-template-columns: 1fr 90px 1.6fr 110px 36px;
+    gap: .6rem;
+    align-items: end;
+    margin-bottom: .6rem;
+  }
+  .area-header {
+    display: grid;
+    grid-template-columns: 1fr 90px 1.6fr 110px 36px;
+    gap: .6rem;
+    margin-bottom: .35rem;
+  }
+
+  /* Formset grid — beams: product | length | qty | × */
+  .beam-row {
+    display: grid;
+    grid-template-columns: 1.8fr 100px 70px 36px;
+    gap: .6rem;
+    align-items: end;
+    margin-bottom: .6rem;
+  }
+  .beam-header {
+    display: grid;
+    grid-template-columns: 1.8fr 100px 70px 36px;
+    gap: .6rem;
+    margin-bottom: .35rem;
+  }
+
+  .col-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #999;
+  }
+
+  .btn-remove {
+    background: none;
+    border: 1.5px solid #ddd;
+    color: #b20000;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: .38rem .5rem;
+    transition: background .15s;
+    align-self: end;
+  }
+  .btn-remove:hover { background: #fde8e8; border-color: #b20000; }
+
+  .btn-add {
+    background: none;
+    border: 1.5px dashed var(--brown-light);
+    color: var(--brown);
+    border-radius: var(--radius);
+    padding: .45rem 1rem;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: .25rem;
+  }
+  .btn-add:hover { background: var(--tan-bg); }
+
+  .deleted-row { display: none !important; }
+
+  .form-footer {
+    display: flex;
+    gap: .75rem;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--border);
+    background: var(--tan-bg);
+    border-radius: 0 0 6px 6px;
+    max-width: 820px;
+  }
+
+  @media (max-width: 640px) {
+    .area-row, .area-header { grid-template-columns: 1fr 1fr; }
+    .beam-row, .beam-header { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:1rem;">
+  <a href="{% url 'jobs:job_detail' job.pk %}" style="font-size:.88rem;">&larr; {{ job.job_reference }}</a>
+</div>
+
+<form method="post" id="subjob-form">
+{% csrf_token %}
+{{ area_formset.management_form }}
+{{ beam_formset.management_form }}
+
+<!-- ── Sub-job header ─────────────────────────────────────── -->
+<div class="form-card">
+  <div class="form-card__header">{{ action }}</div>
+  <div class="form-card__body">
+    <div class="form-row">
+      <div class="form-group" style="flex:2">
+        <label for="{{ form.label.id_for_label }}">Label <span class="required-star">*</span></label>
+        {% render_field form.label class="form-control" %}
+        {% if form.label.errors %}<div class="form-error">{{ form.label.errors|join:", " }}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.system_type.id_for_label }}">System Type <span class="required-star">*</span></label>
+        {% render_field form.system_type class="form-control" id="id_system_type" %}
+        {% if form.system_type.errors %}<div class="form-error">{{ form.system_type.errors|join:", " }}</div>{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Floor / Roof Areas ─────────────────────────────────── -->
+<div class="form-card">
+  <div class="form-card__header">
+    Floor / Roof Areas
+    <span style="font-weight:400;font-size:.8rem;opacity:.8;margin-left:.5rem;">— at least one required</span>
+  </div>
+  <div class="form-card__body">
+
+    <div class="area-header">
+      <span class="col-label">Area label (optional)</span>
+      <span class="col-label">Area (m²) <span class="required-star">*</span></span>
+      <span class="col-label">Joist / Rafter <span class="required-star">*</span></span>
+      <span class="col-label">Spacing <span class="required-star">*</span></span>
+      <span></span>
+    </div>
+
+    <div id="area-formset-container">
+      {% for af in area_formset %}
+        <div class="area-row{% if af.DELETE.value %} deleted-row{% endif %}">
+          {{ af.id }}
+          {% render_field af.area_label class="form-control" %}
+          {% render_field af.area_m2 class="form-control" %}
+          {% render_field af.joist_product class="form-control" %}
+          {% render_field af.joist_spacing class="form-control" %}
+          <button type="button" class="btn-remove" title="Remove"
+                  onclick="removeRow(this, '{{ af.DELETE.html_name }}')">&#215;</button>
+          <div style="display:none">{{ af.DELETE }}</div>
+        </div>
+        {% if af.errors %}
+          <div class="form-error" style="margin:-0.25rem 0 .5rem;">
+            {% for f, errs in af.errors.items %}{{ errs|join:", " }} {% endfor %}
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <!-- Hidden empty form for JS cloning — Django renders all select options correctly -->
+    <div id="area-empty-form" style="display:none" aria-hidden="true">
+      <div class="area-row">
+        {{ area_formset.empty_form.id }}
+        {% render_field area_formset.empty_form.area_label class="form-control" %}
+        {% render_field area_formset.empty_form.area_m2 class="form-control" %}
+        {% render_field area_formset.empty_form.joist_product class="form-control" %}
+        {% render_field area_formset.empty_form.joist_spacing class="form-control" %}
+        <button type="button" class="btn-remove" title="Remove"
+                onclick="removeRow(this, null)">&#215;</button>
+      </div>
+    </div>
+
+    <button type="button" class="btn-add" onclick="addRow('area')">+ Add area</button>
+  </div>
+</div>
+
+<!-- ── Midfloor-only sections ─────────────────────────────── -->
+<div id="midfloor-sections">
+
+  <!-- Boundary Joists -->
+  <div class="form-card">
+    <div class="form-card__header">Boundary Joists</div>
+    <div class="form-card__body">
+      <div class="toggle-row">
+        {% render_field form.include_boundary_joists id="id_include_boundary_joists" %}
+        <label for="id_include_boundary_joists" style="text-transform:none;font-size:.95rem;margin-bottom:0;">
+          Include double boundary joists
+        </label>
+      </div>
+      <div id="boundary-detail" class="conditional-section">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="{{ form.boundary_perimeter_lm.id_for_label }}">
+              Perimeter (lineal m) <span class="required-star">*</span>
+            </label>
+            {% render_field form.boundary_perimeter_lm class="form-control" %}
+            {% if form.boundary_perimeter_lm.errors %}
+              <div class="form-error">{{ form.boundary_perimeter_lm.errors|join:", " }}</div>
+            {% endif %}
+          </div>
+          <div class="form-group">
+            <label for="{{ form.boundary_joist_product.id_for_label }}">Member</label>
+            {% render_field form.boundary_joist_product class="form-control" %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stair Void Trimmers -->
+  <div class="form-card">
+    <div class="form-card__header">Stair Void Trimmers</div>
+    <div class="form-card__body">
+      <div class="toggle-row">
+        {% render_field form.include_stair_void_trimmers id="id_include_stair_void_trimmers" %}
+        <label for="id_include_stair_void_trimmers" style="text-transform:none;font-size:.95rem;margin-bottom:0;">
+          Include stair void trimmers (standard allowance)
+        </label>
+      </div>
+      <div id="stair-detail" class="conditional-section">
+        <div class="form-group" style="max-width:320px;">
+          <label for="{{ form.stair_void_trimmer_product.id_for_label }}">Member</label>
+          {% render_field form.stair_void_trimmer_product class="form-control" %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Roof-only sections ─────────────────────────────────── -->
+<div id="roof-sections">
+  <div class="form-card">
+    <div class="form-card__header">Roof Pitch</div>
+    <div class="form-card__body">
+      <div class="form-group" style="max-width:260px;">
+        <label for="{{ form.roof_pitch.id_for_label }}">Pitch</label>
+        {% render_field form.roof_pitch class="form-control" %}
+        {% if form.roof_pitch.errors %}
+          <div class="form-error">{{ form.roof_pitch.errors|join:", " }}</div>
+        {% endif %}
+        <p style="font-size:.8rem;color:#999;margin-top:.4rem;">
+          Pitch values are managed by LumberBank Admin.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Additional Beams ───────────────────────────────────── -->
+<div class="form-card">
+  <div class="form-card__header">
+    Additional Beams
+    <span style="font-weight:400;font-size:.8rem;opacity:.8;margin-left:.5rem;">— optional</span>
+  </div>
+  <div class="form-card__body">
+
+    <div id="beam-header" style="display:{% if beam_formset.initial_form_count > 0 %}grid{% else %}none{% endif %}">
+      <div class="beam-header">
+        <span class="col-label">Member <span class="required-star">*</span></span>
+        <span class="col-label">Length (m) <span class="required-star">*</span></span>
+        <span class="col-label">Qty <span class="required-star">*</span></span>
+        <span></span>
+      </div>
+    </div>
+
+    <div id="beam-formset-container">
+      {% for bf in beam_formset %}
+        <div class="beam-row{% if bf.DELETE.value %} deleted-row{% endif %}">
+          {{ bf.id }}
+          {% render_field bf.product class="form-control" %}
+          {% render_field bf.length_m class="form-control" %}
+          {% render_field bf.quantity class="form-control" %}
+          <button type="button" class="btn-remove" title="Remove"
+                  onclick="removeRow(this, '{{ bf.DELETE.html_name }}')">&#215;</button>
+          <div style="display:none">{{ bf.DELETE }}</div>
+        </div>
+        {% if bf.errors %}
+          <div class="form-error" style="margin:-0.25rem 0 .5rem;">
+            {% for f, errs in bf.errors.items %}{{ errs|join:", " }} {% endfor %}
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <!-- Hidden empty form for JS cloning -->
+    <div id="beam-empty-form" style="display:none" aria-hidden="true">
+      <div class="beam-row">
+        {{ beam_formset.empty_form.id }}
+        {% render_field beam_formset.empty_form.product class="form-control" %}
+        {% render_field beam_formset.empty_form.length_m class="form-control" %}
+        {% render_field beam_formset.empty_form.quantity class="form-control" %}
+        <button type="button" class="btn-remove" title="Remove"
+                onclick="removeRow(this, null)">&#215;</button>
+      </div>
+    </div>
+
+    <button type="button" class="btn-add" onclick="addRow('beam')">+ Add beam</button>
+  </div>
+</div>
+
+<!-- ── Form footer ────────────────────────────────────────── -->
+<div class="form-footer">
+  <button type="submit" class="btn btn-primary">Save Section</button>
+  <a href="{% url 'jobs:job_detail' job.pk %}" class="btn btn-secondary">Cancel</a>
+</div>
+
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // ── System type show/hide ─────────────────────────────────
+  const systemTypeEl    = document.getElementById('id_system_type');
+  const midfloorSections = document.getElementById('midfloor-sections');
+  const roofSections     = document.getElementById('roof-sections');
+
+  function applySystemType() {
+    const val = systemTypeEl.value;
+    midfloorSections.style.display = (val === 'midfloor') ? '' : 'none';
+    roofSections.style.display     = (val === 'roof')     ? '' : 'none';
+  }
+  systemTypeEl.addEventListener('change', applySystemType);
+  applySystemType();
+
+  // ── Boundary joists toggle ────────────────────────────────
+  const includeBJ      = document.getElementById('id_include_boundary_joists');
+  const boundaryDetail = document.getElementById('boundary-detail');
+  function applyBoundary() {
+    boundaryDetail.style.display = includeBJ.checked ? '' : 'none';
+  }
+  includeBJ.addEventListener('change', applyBoundary);
+  applyBoundary();
+
+  // ── Stair void trimmers toggle ────────────────────────────
+  const includeSV   = document.getElementById('id_include_stair_void_trimmers');
+  const stairDetail = document.getElementById('stair-detail');
+  function applyStair() {
+    stairDetail.style.display = includeSV.checked ? '' : 'none';
+  }
+  includeSV.addEventListener('change', applyStair);
+  applyStair();
+
+  // ── Generic formset add-row ───────────────────────────────
+  function addRow(type) {
+    const prefix      = type === 'area' ? 'areas' : 'beams';
+    const containerId = type === 'area' ? 'area-formset-container' : 'beam-formset-container';
+    const emptyId     = type === 'area' ? 'area-empty-form'        : 'beam-empty-form';
+
+    const totalForms = document.querySelector(`[name="${prefix}-TOTAL_FORMS"]`);
+    const idx        = parseInt(totalForms.value);
+
+    // Clone the hidden empty form and replace __prefix__ with the real index
+    const emptyHtml = document.getElementById(emptyId).innerHTML
+      .replace(/__prefix__/g, idx);
+
+    const container = document.getElementById(containerId);
+
+    // Show the beam column headers on first beam add
+    if (type === 'beam' && idx === 0) {
+      document.getElementById('beam-header').style.display = '';
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = emptyHtml;
+    container.appendChild(wrapper.firstElementChild);
+
+    totalForms.value = idx + 1;
+  }
+
+  // ── Remove a formset row ──────────────────────────────────
+  function removeRow(btn, deleteFieldName) {
+    const row = btn.closest('.area-row, .beam-row');
+    if (deleteFieldName) {
+      // Mark existing saved row for deletion via the DELETE checkbox
+      const delField = document.querySelector(`[name="${deleteFieldName}"]`);
+      if (delField) delField.checked = true;
+      row.classList.add('deleted-row');
+    } else {
+      row.remove();
+    }
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,241 @@
+/* ── Reset & Base ────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --brown:       #925f3b;
+  --brown-dark:  #1a0a00;
+  --brown-light: #c49a6c;
+  --tan-bg:      #f3ebe2;
+  --green:       #7a9c59;
+  --charcoal:    #494949;
+  --border:      #ddd0c0;
+  --white:       #ffffff;
+  --radius:      4px;
+}
+
+html, body { height: 100%; }
+
+body {
+  font-family: 'Source Sans 3', 'Source Sans Pro', sans-serif;
+  color: var(--charcoal);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--white);
+}
+
+/* ── Hero ────────────────────────────────────────────────── */
+.hero {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: calc(100vh - 64px);
+}
+
+/* Left: brand panel */
+.hero__brand {
+  background: var(--brown-dark);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 4rem 5rem;
+  color: var(--white);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle timber-stripe texture using CSS */
+.hero__brand::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    105deg,
+    transparent,
+    transparent 60px,
+    rgba(255,255,255,.02) 60px,
+    rgba(255,255,255,.02) 61px
+  );
+  pointer-events: none;
+}
+
+.hero__brand-logo {
+  margin-bottom: 3rem;
+}
+
+.hero__brand-logo img {
+  height: 48px;
+  filter: brightness(0) invert(1);
+}
+
+.hero__brand h1 {
+  font-size: 2.4rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-bottom: 1.25rem;
+  color: var(--white);
+}
+
+.hero__brand h1 span {
+  color: var(--brown-light);
+}
+
+.hero__brand p {
+  font-size: 1.05rem;
+  font-weight: 300;
+  line-height: 1.7;
+  color: rgba(255,255,255,.75);
+  max-width: 400px;
+  margin-bottom: 2.5rem;
+}
+
+.hero__features {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+}
+
+.hero__feature {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  font-size: 0.9rem;
+  color: rgba(255,255,255,.7);
+}
+
+.hero__feature-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brown-light);
+  flex-shrink: 0;
+}
+
+/* Right: login panel */
+.hero__login {
+  background: var(--tan-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 3rem;
+}
+
+.login-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2.5rem;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: 0 4px 24px rgba(26,10,0,.08);
+}
+
+.login-card__eyebrow {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--brown);
+  margin-bottom: .6rem;
+}
+
+.login-card h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--brown-dark);
+  margin-bottom: 1.75rem;
+}
+
+/* ── Form ────────────────────────────────────────────────── */
+.form-group {
+  margin-bottom: 1.1rem;
+}
+
+label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--charcoal);
+  margin-bottom: .4rem;
+}
+
+input[type="text"],
+input[type="password"] {
+  width: 100%;
+  padding: .65rem .85rem;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 1rem;
+  color: var(--brown-dark);
+  background: var(--white);
+  transition: border-color .15s;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus {
+  outline: none;
+  border-color: var(--brown);
+}
+
+.btn-signin {
+  display: block;
+  width: 100%;
+  padding: .75rem;
+  margin-top: 1.5rem;
+  background: var(--brown);
+  color: var(--white);
+  border: none;
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  cursor: pointer;
+  transition: background .15s;
+}
+
+.btn-signin:hover { background: #7a4f31; }
+
+.error-list {
+  background: #fde8e8;
+  color: #b20000;
+  border-left: 4px solid #b20000;
+  border-radius: var(--radius);
+  padding: .6rem .85rem;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+  list-style: none;
+}
+
+/* ── Footer ──────────────────────────────────────────────── */
+.site-footer {
+  background: var(--brown-dark);
+  color: rgba(255,255,255,.45);
+  font-size: 0.78rem;
+  padding: 1rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.site-footer img {
+  height: 18px;
+  filter: brightness(0) invert(1);
+  opacity: .5;
+}
+
+/* ── Responsive ─────────────────────────────────────────── */
+@media (max-width: 860px) {
+  .hero { grid-template-columns: 1fr; }
+  .hero__brand {
+    padding: 3rem 2rem;
+    min-height: auto;
+  }
+  .hero__brand h1 { font-size: 1.8rem; }
+  .hero__login { padding: 2.5rem 1.5rem; }
+}

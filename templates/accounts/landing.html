@@ -1,0 +1,99 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LumberBank — Midfloor &amp; Rafter Estimation Tool</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="{% static 'css/landing.css' %}">
+</head>
+<body>
+
+  <div class="hero">
+
+    <!-- Left: brand panel -->
+    <div class="hero__brand">
+      <div class="hero__brand-logo">
+        <img src="{% static 'Lumberbank-Primary-Logo.png' %}" alt="LumberBank">
+      </div>
+
+      <h1>Midfloor &amp; Rafter<br><span>Estimation Tool</span></h1>
+
+      <p>Generate indicative cost estimates for midfloor and rafter timber
+         systems using LumberBank products. Fast, accurate, and built for
+         merchants and pre-nailers.</p>
+
+      <div class="hero__features">
+        <div class="hero__feature">
+          <div class="hero__feature-dot"></div>
+          <span>Instant wholesale estimates for midfloor and roof systems</span>
+        </div>
+        <div class="hero__feature">
+          <div class="hero__feature-dot"></div>
+          <span>LVL, I-Joist, Glulam — your price book, your products</span>
+        </div>
+        <div class="hero__feature">
+          <div class="hero__feature-dot"></div>
+          <span>Branded PDF estimate ready to share with your client</span>
+        </div>
+        <div class="hero__feature">
+          <div class="hero__feature-dot"></div>
+          <span>Upload drawings and notify the detailing team in one step</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: login panel -->
+    <div class="hero__login">
+      <div class="login-card">
+        <p class="login-card__eyebrow">Merchant Access</p>
+        <h2>Sign in to your account</h2>
+
+        <form method="post" action="{% url 'accounts:login' %}">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{% url 'jobs:job_list' %}">
+
+          {% if form.errors %}
+            <ul class="error-list">
+              <li>Incorrect username or password. Please try again.</li>
+            </ul>
+          {% endif %}
+
+          <div class="form-group">
+            <label for="id_username">Username</label>
+            <input type="text" name="username" id="id_username"
+                   autocomplete="username" autofocus required>
+          </div>
+
+          <div class="form-group">
+            <label for="id_password">Password</label>
+            <input type="password" name="password" id="id_password"
+                   autocomplete="current-password" required>
+          </div>
+
+          <button type="submit" class="btn-signin">Sign in</button>
+        </form>
+
+        <p style="margin-top:1.5rem; font-size:0.82rem; color:#888; text-align:center;">
+          Access is granted by LumberBank. Contact us if you need an account.
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+  <footer class="site-footer">
+    <img src="{% static 'Lumberbank-Primary-Logo.png' %}" alt="LumberBank">
+    <span>Midfloor &amp; Rafter Estimation Tool &mdash; Internal Use Only</span>
+    <span>Prices shown are wholesale costs, exclusive of GST</span>
+  </footer>
+
+</body>
+</html>

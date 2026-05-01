@@ -53,7 +53,7 @@ class Job(models.Model):
 
     @property
     def subtotal(self):
-        return sum(sj.calculated_subtotal or 0 for sj in self.sub_jobs.all())
+        return sum(s.calculated_subtotal or 0 for s in self.sections.all())
 
     @property
     def total(self):
@@ -65,22 +65,17 @@ class Job(models.Model):
         return total
 
 
-class SubJob(models.Model):
+class Section(models.Model):
     """
-    A discrete floor or roof system within a Job, with its own
-    estimate inputs and calculated sub-total.
+    A discrete floor or roof framing system within a Job (e.g. Unit 1 Midfloor,
+    Unit 1 Roof). Each section has its own areas, beams, and calculated subtotal.
     """
 
     class SystemType(models.TextChoices):
         MIDFLOOR = 'midfloor', 'Midfloor'
         ROOF = 'roof', 'Roof'
 
-    class JoistSpacing(models.TextChoices):
-        S400 = '0.400', '400 c/c'
-        S450 = '0.450', '450 c/c'
-        S600 = '0.600', '600 c/c'
-
-    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='sub_jobs')
+    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='sections')
     label = models.CharField(max_length=200, help_text="e.g. 'Unit 1 Midfloor'")
     system_type = models.CharField(max_length=10, choices=SystemType)
 
@@ -89,33 +84,35 @@ class SubJob(models.Model):
     boundary_perimeter_lm = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True,
     )
+    boundary_joist_description = models.CharField(max_length=200, blank=True)
     boundary_joist_product = models.ForeignKey(
         'products.Product',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='boundary_joist_sub_jobs',
-        limit_choices_to={'product_use': 'boundary_joist'},
+        related_name='boundary_joist_sections',
+        limit_choices_to={'use_as_boundary_joist': True},
     )
 
     # Stair void trimmers (midfloor only)
     include_stair_void_trimmers = models.BooleanField(default=False)
+    stair_void_trimmer_description = models.CharField(max_length=200, blank=True)
     stair_void_trimmer_product = models.ForeignKey(
         'products.Product',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='stair_void_sub_jobs',
-        limit_choices_to={'product_use': 'stair_void_trimmer'},
+        related_name='stair_void_sections',
+        limit_choices_to={'use_as_stair_void_trimmer': True},
     )
 
     # Roof pitch (roof only)
     roof_pitch = models.ForeignKey(
-        'RoofPitch',
+        'core.RoofPitch',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='sub_jobs',
+        related_name='sections',
     )
 
     # Calculated result (stored after engine runs)
@@ -131,6 +128,8 @@ class SubJob(models.Model):
 
     class Meta:
         ordering = ['created_at']
+        verbose_name = 'section'
+        verbose_name_plural = 'sections'
 
     def __str__(self):
         return f'{self.job.job_reference} / {self.label}'
@@ -146,37 +145,41 @@ class SubJob(models.Model):
 
 class FloorRoofArea(models.Model):
     """
-    One or more areas within a sub-job, each with their own joist
+    One or more areas within a section, each with their own joist
     type, size, and spacing. Supports different zones within a floor
     or roof (e.g. bathroom vs main floor).
     """
-
-    class JoistSpacing(models.TextChoices):
-        S400 = '0.400', '400 c/c'
-        S450 = '0.450', '450 c/c'
-        S600 = '0.600', '600 c/c'
-
-    sub_job = models.ForeignKey(SubJob, on_delete=models.CASCADE, related_name='areas')
+    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='areas')
     area_label = models.CharField(max_length=200, blank=True)
     area_m2 = models.DecimalField(max_digits=10, decimal_places=2)
+    product_description = models.CharField(
+        max_length=200, blank=True,
+        help_text='e.g. LIB240.88 I-Joist or LVL11 240x45',
+    )
     joist_product = models.ForeignKey(
         'products.Product',
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='floor_roof_areas',
-        limit_choices_to={'product_use': 'joist_rafter'},
+        limit_choices_to={'use_as_joist_rafter': True},
     )
-    joist_spacing = models.CharField(max_length=5, choices=JoistSpacing)
+    # Stored in millimetres, e.g. 400, 450, 600.
+    joist_spacing = models.PositiveIntegerField(
+        help_text='Joist / rafter spacing in mm, e.g. 400, 450, 600.',
+    )
 
     class Meta:
         ordering = ['id']
 
     def __str__(self):
         label = self.area_label or f'Area {self.pk}'
-        return f'{self.sub_job.label} / {label}'
+        return f'{self.section.label} / {label}'
 
     @property
     def spacing_m(self):
-        return float(self.joist_spacing)
+        """Spacing converted to metres for lm calculations."""
+        return self.joist_spacing / 1000
 
     def lineal_metres(self, pitch_factor=1.0):
         return float(self.area_m2) / self.spacing_m * pitch_factor
@@ -184,14 +187,20 @@ class FloorRoofArea(models.Model):
 
 class AdditionalBeam(models.Model):
     """
-    Optional additional LVL or Glulam beams added to a sub-job estimate.
+    Optional additional LVL or Glulam beams added to a section estimate.
     """
-    sub_job = models.ForeignKey(SubJob, on_delete=models.CASCADE, related_name='additional_beams')
+    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='additional_beams')
+    product_description = models.CharField(
+        max_length=200, blank=True,
+        help_text='e.g. LVL11 360x63 or Glulam 315x90',
+    )
     product = models.ForeignKey(
         'products.Product',
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='additional_beam_lines',
-        limit_choices_to={'product_use': 'beam'},
+        limit_choices_to={'use_as_beam': True},
     )
     length_m = models.DecimalField(max_digits=8, decimal_places=2)
     quantity = models.PositiveIntegerField(default=1)
@@ -205,26 +214,6 @@ class AdditionalBeam(models.Model):
     @property
     def lineal_metres(self):
         return float(self.length_m) * self.quantity
-
-
-class RoofPitch(models.Model):
-    """
-    Lookup table of supported roof pitches and their pitch factors.
-    Maintained by Lumberbank Admin.
-    """
-    label = models.CharField(max_length=50, help_text="e.g. '15°' or '1:4'")
-    pitch_factor = models.DecimalField(
-        max_digits=6,
-        decimal_places=4,
-        help_text='Multiply plan area by this factor to get rafter lineal metres.',
-    )
-    sort_order = models.PositiveIntegerField(default=0)
-
-    class Meta:
-        ordering = ['sort_order', 'label']
-
-    def __str__(self):
-        return self.label
 
 
 class DrawingUpload(models.Model):

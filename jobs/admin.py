@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Job, SubJob, FloorRoofArea, AdditionalBeam, RoofPitch, DrawingUpload
+from .models import Job, Section, FloorRoofArea, AdditionalBeam, DrawingUpload
 
 
 class FloorRoofAreaInline(admin.TabularInline):
@@ -21,8 +21,8 @@ class DrawingUploadInline(admin.TabularInline):
     fields = ['file', 'original_filename', 'uploaded_by', 'uploaded_at']
 
 
-class SubJobInline(admin.StackedInline):
-    model = SubJob
+class SectionInline(admin.StackedInline):
+    model = Section
     extra = 0
     show_change_link = True
     fields = [
@@ -40,11 +40,11 @@ class JobAdmin(admin.ModelAdmin):
     list_filter = ['status', 'organisation']
     search_fields = ['job_reference', 'client_name', 'site_address']
     readonly_fields = ['created_at', 'updated_at', 'freight_charge', 'freight_surcharge']
-    inlines = [SubJobInline, DrawingUploadInline]
+    inlines = [SectionInline, DrawingUploadInline]
 
 
-@admin.register(SubJob)
-class SubJobAdmin(admin.ModelAdmin):
+@admin.register(Section)
+class SectionAdmin(admin.ModelAdmin):
     list_display = ['label', 'job', 'system_type', 'calculated_subtotal']
     list_filter = ['system_type']
     search_fields = ['label', 'job__job_reference']
@@ -52,8 +52,3 @@ class SubJobAdmin(admin.ModelAdmin):
     inlines = [FloorRoofAreaInline, AdditionalBeamInline]
 
 
-@admin.register(RoofPitch)
-class RoofPitchAdmin(admin.ModelAdmin):
-    list_display = ['label', 'pitch_factor', 'sort_order']
-    list_editable = ['pitch_factor', 'sort_order']
-    ordering = ['sort_order']

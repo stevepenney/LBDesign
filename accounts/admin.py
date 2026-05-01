@@ -5,9 +5,17 @@ from .models import Organisation, User
 
 @admin.register(Organisation)
 class OrganisationAdmin(admin.ModelAdmin):
-    list_display = ['name', 'is_merchant', 'is_active', 'created_at']
+    list_display = ['name', 'is_merchant', 'price_book', 'is_active', 'created_at']
     list_filter = ['is_merchant', 'is_active']
     search_fields = ['name']
+    fieldsets = (
+        (None, {'fields': ('name', 'is_merchant', 'is_active')}),
+        ('Pricing', {
+            'description': 'Leave blank to use the default price book. '
+                           'Assign a specific book to override prices by exception.',
+            'fields': ('price_book',),
+        }),
+    )
 
 
 @admin.register(User)

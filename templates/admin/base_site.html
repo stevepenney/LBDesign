@@ -1,0 +1,22 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | LumberBank Admin{% endblock %}
+
+{% block branding %}
+  <a href="{% url 'admin:index' %}" id="site-name" style="display:flex; align-items:center; text-decoration:none;">
+    <img src="{% static 'Lumberbank-Primary-Logo.png' %}" alt="LumberBank"
+         style="height:110px; filter:brightness(0) invert(1);">
+  </a>
+{% endblock %}
+
+{% block nav-global %}{% endblock %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'css/base.css' %}">
+  <link rel="stylesheet" href="{% static 'css/admin.css' %}">
+{% endblock %}

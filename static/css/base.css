@@ -1,0 +1,216 @@
+/* ── Reset & Base ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --brown:       #925f3b;
+  --brown-dark:  #1a0a00;   /* logo colour */
+  --brown-light: #c49a6c;
+  --tan-bg:      #f3ebe2;
+  --green:       #7a9c59;
+  --charcoal:    #494949;
+  --dark:        #313131;
+  --white:       #ffffff;
+  --border:      #ddd0c0;
+  --radius:      4px;
+  --shadow:      0 2px 8px rgba(26,10,0,.10);
+}
+
+html { font-size: 16px; }
+
+body {
+  font-family: 'Source Sans 3', 'Source Sans Pro', sans-serif;
+  font-weight: 400;
+  color: var(--charcoal);
+  background: var(--white);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+a { color: var(--brown); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── Site Header ──────────────────────────────────────────── */
+.site-header {
+  background: var(--white);
+  border-bottom: 1px solid var(--border);
+  padding: 0 2rem;
+}
+
+.site-header__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 70px;
+}
+
+.site-header__logo img {
+  height: 110px;
+  width: auto;
+  display: block;
+}
+
+.site-header__nav {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.site-header__nav a {
+  color: var(--charcoal);
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
+
+.site-header__nav a:hover { color: var(--brown); text-decoration: none; }
+
+.btn-logout {
+  background: none;
+  border: 1.5px solid var(--brown);
+  color: var(--brown);
+  padding: .35rem .9rem;
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  cursor: pointer;
+}
+
+.btn-logout:hover {
+  background: var(--brown);
+  color: var(--white);
+}
+
+/* ── Sub-header / breadcrumb bar ─────────────────────────── */
+.sub-header {
+  background: var(--tan-bg);
+  border-bottom: 1px solid var(--border);
+  padding: .6rem 2rem;
+  font-size: 0.82rem;
+  color: var(--charcoal);
+}
+.sub-header__inner { max-width: 1200px; margin: 0 auto; }
+
+/* ── Main content ─────────────────────────────────────────── */
+.site-main {
+  flex: 1;
+  padding: 2.5rem 2rem;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ── Page heading ─────────────────────────────────────────── */
+.page-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--brown-dark);
+  margin-bottom: 1.5rem;
+}
+
+/* ── Buttons ──────────────────────────────────────────────── */
+.btn {
+  display: inline-block;
+  padding: .6rem 1.4rem;
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: .03em;
+  cursor: pointer;
+  border: none;
+  transition: background .15s, color .15s;
+}
+
+.btn-primary {
+  background: var(--brown);
+  color: var(--white);
+}
+.btn-primary:hover { background: #7a4f31; color: var(--white); text-decoration: none; }
+
+.btn-secondary {
+  background: var(--tan-bg);
+  color: var(--brown);
+  border: 1.5px solid var(--brown-light);
+}
+.btn-secondary:hover { background: var(--border); text-decoration: none; }
+
+.btn-success {
+  background: var(--green);
+  color: var(--white);
+}
+.btn-success:hover { background: #688449; color: var(--white); text-decoration: none; }
+
+/* ── Toast messages ───────────────────────────────────────── */
+.toast-tray {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 1.5rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  max-width: 360px;
+  pointer-events: none;   /* tray itself doesn't block clicks */
+}
+.toast {
+  list-style: none;
+  padding: .75rem 1rem .75rem 1.1rem;
+  border-radius: var(--radius);
+  font-size: 0.88rem;
+  box-shadow: 0 4px 16px rgba(0,0,0,.18);
+  pointer-events: auto;
+  opacity: 1;
+  transition: opacity .4s ease, transform .4s ease;
+  transform: translateY(0);
+  /* fallback so toast is always visible even if level class is absent */
+  background: var(--white);
+  border-left: 4px solid var(--border);
+  color: var(--charcoal);
+}
+.toast.toast-hiding {
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+}
+.toast.error   { background: #fde8e8; color: #b20000; border-left: 4px solid #b20000; }
+.toast.success { background: #eaf3e4; color: #3d5c1e; border-left: 4px solid var(--green); }
+.toast.warning { background: #fef7e6; color: #7a5800; border-left: 4px solid #f0b429; }
+.toast.info    { background: #e8f0fb; color: #1a3c6e; border-left: 4px solid #4a7fcb; }
+
+/* ── Footer ───────────────────────────────────────────────── */
+.site-footer {
+  background: var(--brown-dark);
+  color: rgba(255,255,255,.6);
+  font-size: 0.8rem;
+  padding: 1.5rem 2rem;
+}
+
+.site-footer__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.site-footer img { height: 60px; opacity: .7; }
+.site-footer a { color: rgba(255,255,255,.5); }
+.site-footer a:hover { color: var(--white); }
+
+/* ── Responsive ───────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .site-header__nav { gap: 1rem; }
+  .site-main { padding: 1.5rem 1rem; }
+}

@@ -14,6 +14,15 @@ class Organisation(models.Model):
     )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    price_book = models.ForeignKey(
+        'products.PriceBook',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='organisations',
+        help_text='Leave blank to use the default price book for all products. '
+                  'Assign a specific book to override prices by exception.',
+    )
 
     class Meta:
         ordering = ['name']

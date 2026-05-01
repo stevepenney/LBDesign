@@ -1,0 +1,396 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ job.job_reference }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .job-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+  }
+  .job-header__title { font-size: 1.6rem; font-weight: 700; color: var(--brown-dark); }
+  .job-header__meta  { font-size: 0.85rem; color: #888; margin-top: .25rem; }
+
+  .status-badge {
+    display: inline-block;
+    padding: .25rem .75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .status-estimate         { background: #e8f0fb; color: #1a3c6e; }
+  .status-drawing_uploaded { background: #fef7e6; color: #7a5800; }
+  .status-order_placed     { background: #eaf3e4; color: #3d5c1e; }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+    margin-bottom: 1.75rem;
+  }
+  @media (max-width: 600px) { .detail-grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .card__header {
+    background: var(--brown);
+    color: var(--white);
+    padding: .6rem 1rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .card__header a { color: rgba(255,255,255,.85); font-size: 0.75rem; font-weight: 600; }
+  .card__header a:hover { color: var(--white); text-decoration: none; }
+  .card__body { padding: 1rem; }
+
+  .detail-row { margin-bottom: .85rem; }
+  .detail-row:last-child { margin-bottom: 0; }
+  .detail-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: #999; margin-bottom: .2rem; }
+  .detail-value { font-size: 0.95rem; color: var(--brown-dark); white-space: pre-line; }
+
+  .section-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  .section-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--brown-dark);
+    padding-bottom: .4rem;
+    border-bottom: 2px solid var(--border);
+    flex: 1;
+  }
+
+  /* Sub-job cards */
+  .subjob-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    margin-bottom: 1rem;
+    overflow: hidden;
+  }
+  .subjob-card__header {
+    background: var(--brown-dark);
+    color: var(--white);
+    padding: .65rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .subjob-card__title { font-weight: 700; font-size: 0.95rem; }
+  .subjob-card__type  {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    background: rgba(255,255,255,.15);
+    padding: .15rem .5rem;
+    border-radius: 20px;
+  }
+  .subjob-card__actions { margin-left: auto; display: flex; gap: .75rem; }
+  .subjob-card__actions a { color: rgba(255,255,255,.8); font-size: 0.8rem; }
+  .subjob-card__actions a:hover { color: var(--white); text-decoration: none; }
+  .subjob-card__actions .del-link { color: rgba(255,120,120,.8); }
+  .subjob-card__actions .del-link:hover { color: #ff8888; }
+
+  .subjob-card__body { padding: 1rem; }
+
+  /* Areas table */
+  .areas-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-bottom: .75rem; }
+  .areas-table th {
+    background: var(--tan-bg);
+    color: var(--charcoal);
+    padding: .4rem .75rem;
+    text-align: left;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .areas-table td { padding: .45rem .75rem; border-bottom: 1px solid var(--border); color: var(--brown-dark); }
+  .areas-table tr:last-child td { border-bottom: none; }
+
+  .flag-list { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
+  .flag-pill {
+    font-size: 0.75rem;
+    padding: .15rem .6rem;
+    border-radius: 20px;
+    background: var(--tan-bg);
+    color: var(--charcoal);
+    border: 1px solid var(--border);
+  }
+
+  .subtotal-row {
+    text-align: right;
+    font-size: 0.88rem;
+    color: #888;
+    padding-top: .5rem;
+    border-top: 1px solid var(--border);
+    margin-top: .5rem;
+  }
+  .subtotal-row strong { color: var(--brown-dark); font-size: 1rem; }
+
+  /* Estimate summary table */
+  .summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+  .summary-table td {
+    padding: .45rem 1rem;
+    color: var(--brown-dark);
+  }
+  .summary-amount {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .summary-nil { color: #aaa; }
+  .summary-partial { color: #b27000; font-size: .8rem; }
+  .summary-empty { color: #aaa; font-style: italic; text-align: center; padding: 1rem !important; }
+  .summary-rule td {
+    border-top: 1px solid var(--border);
+    padding: 0 !important;
+  }
+  .summary-subtotal td {
+    padding-top: .55rem;
+    font-weight: 600;
+    color: var(--charcoal);
+  }
+  .summary-total td {
+    padding-top: .55rem;
+    font-size: 1rem;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: #aaa;
+    background: var(--tan-bg);
+    border: 2px dashed var(--border);
+    border-radius: 6px;
+  }
+  .empty-state p { margin-bottom: 1.25rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:1rem;">
+  <a href="{% url 'jobs:job_list' %}" style="font-size:.88rem;">&larr; Back to Jobs</a>
+</div>
+
+<!-- Job header -->
+<div class="job-header">
+  <div>
+    <div class="job-header__title">{{ job.job_reference }}</div>
+    <div class="job-header__meta">
+      {{ job.organisation.name }} &mdash; created {{ job.created_at|date:"d M Y" }}
+      {% if job.created_by %} by {{ job.created_by.get_full_name|default:job.created_by.username }}{% endif %}
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+    <span class="status-badge status-{{ job.status }}">{{ job.get_status_display }}</span>
+    <a href="{% url 'jobs:job_edit' job.pk %}" class="btn btn-secondary">Edit Job</a>
+    <form method="post" action="{% url 'jobs:job_recalculate' job.pk %}" style="display:inline;">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-secondary">Recalculate</button>
+    </form>
+  </div>
+</div>
+
+<!-- Project details + summary -->
+<div class="detail-grid">
+  <div class="card">
+    <div class="card__header">Project Details</div>
+    <div class="card__body">
+      <div class="detail-row">
+        <div class="detail-label">Client Name</div>
+        <div class="detail-value">{{ job.client_name }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Site Address</div>
+        <div class="detail-value">{{ job.site_address }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Merchant</div>
+        <div class="detail-value">{{ job.organisation.name }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card__header">Estimate Summary</div>
+    <div class="card__body" style="padding:0;">
+      <table class="summary-table">
+        {% for sj in sections %}
+        <tr>
+          <td>{{ sj.label }}</td>
+          <td class="summary-amount">
+            {% if sj.calculated_subtotal is not None %}
+              ${{ sj.calculated_subtotal|floatformat:2 }}
+              {% if sj.member_schedule.has_unpriced %}<span class="summary-partial" title="Some items have no price set">&nbsp;&#9888;</span>{% endif %}
+            {% else %}
+              <span class="summary-nil">&mdash;</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="2" class="summary-empty">No items added yet.</td></tr>
+        {% endfor %}
+
+        <tr class="summary-rule"><td colspan="2"></td></tr>
+
+        <tr class="summary-subtotal">
+          <td>Subtotal (excl. GST)</td>
+          <td class="summary-amount">${{ job.subtotal|floatformat:2 }}</td>
+        </tr>
+
+        {% if job.freight_charge %}
+        <tr>
+          <td>Freight</td>
+          <td class="summary-amount">${{ job.freight_charge|floatformat:2 }}</td>
+        </tr>
+        {% endif %}
+
+        {% if job.freight_surcharge %}
+        <tr>
+          <td>Freight surcharge{% if freight_settings.surcharge_enabled %} at {{ freight_settings.surcharge_percentage }}%{% endif %}</td>
+          <td class="summary-amount">${{ job.freight_surcharge|floatformat:2 }}</td>
+        </tr>
+        {% endif %}
+
+        <tr class="summary-rule"><td colspan="2"></td></tr>
+
+        <tr class="summary-total">
+          <td>Total (excl. GST)</td>
+          <td class="summary-amount"><strong>${{ job.total|floatformat:2 }}</strong></td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Sub-jobs -->
+<div class="section-toolbar">
+  <div class="section-title">Sections</div>
+  <a href="{% url 'jobs:section_create' job.pk %}" class="btn btn-primary" style="margin-left:1rem;">+ Add Section</a>
+</div>
+
+{% if sections %}
+  {% for sj in sections %}
+  <div class="subjob-card">
+    <div class="subjob-card__header">
+      <span class="subjob-card__title">{{ sj.label }}</span>
+      <span class="subjob-card__type">{{ sj.get_system_type_display }}</span>
+      <div class="subjob-card__actions">
+        <a href="{% url 'jobs:section_edit' job.pk sj.pk %}">Edit</a>
+        <a href="{% url 'jobs:section_delete' job.pk sj.pk %}" class="del-link">Delete</a>
+      </div>
+    </div>
+    <div class="subjob-card__body">
+
+      <!-- Areas -->
+      {% if sj.areas.all %}
+      <table class="areas-table">
+        <thead>
+          <tr>
+            <th>Area</th>
+            <th>Area (m²)</th>
+            <th>Joist / Rafter</th>
+            <th>Spacing</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for area in sj.areas.all %}
+          <tr>
+            <td>{{ area.area_label|default:"—" }}</td>
+            <td>{{ area.area_m2 }}</td>
+            <td>{{ area.joist_product|default:"—" }}</td>
+            <td>{{ area.joist_spacing }} mm</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+
+      <!-- Flags / options -->
+      <div class="flag-list">
+        {% if sj.is_midfloor %}
+          {% if sj.include_boundary_joists %}
+            <span class="flag-pill">Boundary joists{% if sj.boundary_perimeter_lm %} — {{ sj.boundary_perimeter_lm }} lm{% endif %}{% if sj.boundary_joist_product %} ({{ sj.boundary_joist_product }}){% endif %}</span>
+          {% endif %}
+          {% if sj.include_stair_void_trimmers %}
+            <span class="flag-pill">Stair void trimmers{% if sj.stair_void_trimmer_product %} ({{ sj.stair_void_trimmer_product }}){% endif %}</span>
+          {% endif %}
+        {% endif %}
+        {% if sj.is_roof and sj.roof_pitch %}
+          <span class="flag-pill">Pitch: {{ sj.roof_pitch }}</span>
+        {% endif %}
+      </div>
+
+      <!-- Additional beams -->
+      {% if sj.additional_beams.all %}
+      <div style="margin-top:.75rem;">
+        <div class="detail-label" style="margin-bottom:.4rem;">Additional Beams</div>
+        <table class="areas-table">
+          <thead>
+            <tr><th>Member</th><th>Length (m)</th><th>Qty</th></tr>
+          </thead>
+          <tbody>
+            {% for beam in sj.additional_beams.all %}
+            <tr>
+              <td>{{ beam.product|default:"—" }}</td>
+              <td>{{ beam.length_m }}</td>
+              <td>{{ beam.quantity }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      <!-- Sub-total -->
+      <div class="subtotal-row">
+        Sub-total:
+        {% if sj.calculated_subtotal is not None %}
+          <strong>${{ sj.calculated_subtotal|floatformat:2 }}</strong> excl. GST
+          {% if sj.member_schedule.has_unpriced %}
+            <span style="font-size:.78rem;color:#b27000;" title="Some items have no price in the active price book.">&#9888; partial</span>
+          {% endif %}
+        {% else %}
+          <strong>—</strong> <span style="font-size:.8rem;color:#aaa;">(products not yet priced)</span>
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+  {% endfor %}
+
+{% else %}
+  <div class="empty-state">
+    <p>No sub-jobs yet. Add a sub-job to start the estimate.</p>
+    <a href="{% url 'jobs:section_create' job.pk %}" class="btn btn-primary">+ Add Section</a>
+  </div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+{% load widget_tweaks %}
+
+{% block title %}{{ action }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .form-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    max-width: 640px;
+  }
+
+  .form-card__header {
+    background: var(--brown);
+    color: var(--white);
+    padding: 1rem 1.5rem;
+    border-radius: 6px 6px 0 0;
+    font-weight: 700;
+    font-size: 1rem;
+    letter-spacing: .02em;
+  }
+
+  .form-card__body { padding: 1.75rem 1.5rem; }
+
+  .form-group { margin-bottom: 1.25rem; }
+
+  .form-group label {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--charcoal);
+    margin-bottom: .4rem;
+  }
+
+  .form-group .required-star { color: #b20000; margin-left: .15rem; }
+
+  .form-control {
+    width: 100%;
+    padding: .6rem .85rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 1rem;
+    color: var(--brown-dark);
+    background: var(--white);
+    transition: border-color .15s;
+  }
+
+  .form-control:focus {
+    outline: none;
+    border-color: var(--brown);
+  }
+
+  textarea.form-control { resize: vertical; }
+
+  .form-error {
+    color: #b20000;
+    font-size: 0.82rem;
+    margin-top: .3rem;
+  }
+
+  .form-card__footer {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: var(--tan-bg);
+    border-radius: 0 0 6px 6px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+  <div style="margin-bottom:1rem;">
+    <a href="{% url 'jobs:job_list' %}" style="font-size:0.88rem;">&larr; Back to Jobs</a>
+  </div>
+
+  <div class="form-card">
+    <div class="form-card__header">{{ action }}</div>
+    <form method="post" class="form-card__body">
+      {% csrf_token %}
+
+      <div class="form-group">
+        <label for="{{ form.job_reference.id_for_label }}">
+          Job Reference <span class="required-star">*</span>
+        </label>
+        {% render_field form.job_reference class="form-control" %}
+        {% if form.job_reference.errors %}
+          <div class="form-error">{{ form.job_reference.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="{{ form.client_name.id_for_label }}">
+          Client Name <span class="required-star">*</span>
+        </label>
+        {% render_field form.client_name class="form-control" %}
+        {% if form.client_name.errors %}
+          <div class="form-error">{{ form.client_name.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="{{ form.site_address.id_for_label }}">
+          Site Address <span class="required-star">*</span>
+        </label>
+        {% render_field form.site_address class="form-control" %}
+        {% if form.site_address.errors %}
+          <div class="form-error">{{ form.site_address.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+
+      <div class="form-card__footer">
+        <button type="submit" class="btn btn-primary">Save Job</button>
+        {% if job %}
+          <a href="{% url 'jobs:job_detail' job.pk %}" class="btn btn-secondary">Cancel</a>
+        {% else %}
+          <a href="{% url 'jobs:job_list' %}" class="btn btn-secondary">Cancel</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+{% endblock %}

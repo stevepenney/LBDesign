@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+
+{% block title %}Delete Section{% endblock %}
+
+{% block content %}
+<div style="max-width:500px;">
+  <h1 class="page-title">Delete Section</h1>
+  <div class="form-card" style="max-width:500px;">
+    <div class="form-card__body" style="padding:1.5rem;">
+      <p style="margin-bottom:1.25rem;">
+        Are you sure you want to delete <strong>{{ section.label }}</strong>?
+        This will also remove all areas and beams within it. This cannot be undone.
+      </p>
+      <form method="post" style="display:flex; gap:.75rem;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary" style="background:#b20000;">Delete</button>
+        <a href="{% url 'jobs:job_detail' job.pk %}" class="btn btn-secondary">Cancel</a>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
