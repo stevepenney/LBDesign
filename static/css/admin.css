@@ -69,8 +69,27 @@ input[type=submit]:hover {
 /* ── Object tools (Add / History buttons top-right) ──────── */
 .object-tools a {
   background: var(--brown) !important;
+  color: var(--white) !important;
 }
-.object-tools a:hover { background: #7a4f31 !important; }
+.object-tools a:hover {
+  background: #7a4f31 !important;
+  color: var(--white) !important;
+}
+
+/* ── Delete button (bottom of change form) ───────────────── */
+/* Django's height: 0.9375rem was written for content-box; our border-box reset
+   squashes it. Override to match the save button's 2.1875rem total height. */
+.submit-row a.deletelink {
+  height: 2.1875rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+.submit-row a.deletelink,
+.submit-row a.deletelink:link,
+.submit-row a.deletelink:visited,
+.submit-row a.deletelink:hover {
+  color: var(--white) !important;
+}
 
 /* ── Nav sidebar active app ──────────────────────────────── */
 .nav-sidebar .current-app .section:link,

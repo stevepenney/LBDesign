@@ -69,6 +69,252 @@
     </ul>
   {% endif %}
 
+  {% if user.is_authenticated %}
+  <!-- Feedback widget -->
+  <button class="feedback-fab" id="feedback-fab" title="Give Feedback" aria-label="Give feedback">
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+    <span>Feedback</span>
+  </button>
+
+  <div class="feedback-panel" id="feedback-panel" aria-hidden="true">
+    <div class="feedback-panel__header">
+      <strong>Give Feedback</strong>
+      <button class="feedback-panel__close" id="feedback-close" aria-label="Close">&times;</button>
+    </div>
+    <p class="feedback-panel__hint">Tell us about this page — what works, what doesn't, or any ideas. You can also paste a screenshot with <kbd>Ctrl+V</kbd>.</p>
+    <form id="feedback-form" novalidate>
+      {% csrf_token %}
+      <textarea id="feedback-comments" name="comments" rows="4" placeholder="Your comments…" required></textarea>
+      <div class="feedback-screenshot-zone" id="feedback-screenshot-zone">
+        <span id="feedback-paste-hint">Paste a screenshot here (Ctrl+V)</span>
+        <img id="feedback-preview" src="" alt="Screenshot preview" hidden>
+        <button type="button" class="feedback-remove-img" id="feedback-remove-img" hidden aria-label="Remove screenshot">&times; Remove image</button>
+      </div>
+      <div class="feedback-panel__actions">
+        <button type="submit" class="feedback-submit" id="feedback-submit">Send</button>
+      </div>
+      <p class="feedback-error" id="feedback-error" hidden></p>
+    </form>
+    <p class="feedback-success" id="feedback-success" hidden>Thanks — we got it! ✓</p>
+  </div>
+
+  <style>
+    .feedback-fab {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      z-index: 900;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.55rem 1rem;
+      background: var(--color-primary, #2c5f2e);
+      color: #fff;
+      border: none;
+      border-radius: 2rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      transition: background 0.15s, transform 0.15s;
+    }
+    .feedback-fab:hover { background: var(--color-primary-dark, #1e4220); transform: translateY(-1px); }
+
+    .feedback-panel {
+      position: fixed;
+      bottom: 5rem;
+      right: 1.5rem;
+      z-index: 901;
+      width: 340px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .feedback-panel.is-open { display: flex; }
+
+    .feedback-panel__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1rem;
+      background: var(--color-primary, #2c5f2e);
+      color: #fff;
+    }
+    .feedback-panel__header strong { font-size: 0.9rem; }
+    .feedback-panel__close {
+      background: none; border: none; color: #fff;
+      font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 0 0.2rem;
+    }
+
+    .feedback-panel__hint {
+      font-size: 0.8rem;
+      color: #555;
+      margin: 0.75rem 1rem 0.5rem;
+    }
+    .feedback-panel__hint kbd {
+      background: #eee; border: 1px solid #ccc; border-radius: 3px;
+      padding: 0 4px; font-size: 0.75rem;
+    }
+
+    #feedback-form { padding: 0 1rem 1rem; display: flex; flex-direction: column; gap: 0.6rem; }
+
+    #feedback-comments {
+      width: 100%; box-sizing: border-box;
+      border: 1px solid #ccc; border-radius: 6px;
+      padding: 0.5rem; font-size: 0.875rem; font-family: inherit;
+      resize: vertical; min-height: 80px;
+    }
+    #feedback-comments:focus { outline: none; border-color: var(--color-primary, #2c5f2e); }
+
+    .feedback-screenshot-zone {
+      border: 2px dashed #ccc; border-radius: 6px;
+      padding: 0.6rem; text-align: center; font-size: 0.8rem; color: #888;
+      cursor: default; min-height: 44px; display: flex;
+      flex-direction: column; align-items: center; justify-content: center; gap: 0.4rem;
+    }
+    .feedback-screenshot-zone.has-image { border-color: var(--color-primary, #2c5f2e); }
+    #feedback-preview { max-width: 100%; max-height: 160px; border-radius: 4px; }
+    .feedback-remove-img {
+      background: none; border: 1px solid #ccc; border-radius: 4px;
+      font-size: 0.75rem; color: #c00; cursor: pointer; padding: 2px 8px;
+    }
+
+    .feedback-panel__actions { display: flex; justify-content: flex-end; }
+    .feedback-submit {
+      background: var(--color-primary, #2c5f2e); color: #fff;
+      border: none; border-radius: 6px;
+      padding: 0.45rem 1.2rem; font-size: 0.875rem; font-weight: 600;
+      cursor: pointer;
+    }
+    .feedback-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .feedback-error { color: #c00; font-size: 0.8rem; margin: 0; }
+    .feedback-success { color: #2c5f2e; font-size: 0.875rem; font-weight: 600; padding: 0.75rem 1rem 1rem; margin: 0; }
+  </style>
+
+  <script>
+  (function () {
+    const fab       = document.getElementById('feedback-fab');
+    const panel     = document.getElementById('feedback-panel');
+    const closeBtn  = document.getElementById('feedback-close');
+    const form      = document.getElementById('feedback-form');
+    const comments  = document.getElementById('feedback-comments');
+    const zone      = document.getElementById('feedback-screenshot-zone');
+    const pasteHint = document.getElementById('feedback-paste-hint');
+    const preview   = document.getElementById('feedback-preview');
+    const removeBtn = document.getElementById('feedback-remove-img');
+    const submitBtn = document.getElementById('feedback-submit');
+    const errorMsg  = document.getElementById('feedback-error');
+    const successMsg= document.getElementById('feedback-success');
+
+    let screenshotFile = null;
+
+    fab.addEventListener('click', () => {
+      const isOpen = panel.classList.toggle('is-open');
+      panel.setAttribute('aria-hidden', String(!isOpen));
+      if (isOpen) comments.focus();
+    });
+
+    closeBtn.addEventListener('click', () => {
+      panel.classList.remove('is-open');
+      panel.setAttribute('aria-hidden', 'true');
+    });
+
+    // Paste image anywhere inside the panel
+    panel.addEventListener('paste', (e) => {
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          screenshotFile = item.getAsFile();
+          const url = URL.createObjectURL(screenshotFile);
+          preview.src = url;
+          preview.hidden = false;
+          removeBtn.hidden = false;
+          pasteHint.hidden = true;
+          zone.classList.add('has-image');
+          break;
+        }
+      }
+    });
+
+    removeBtn.addEventListener('click', () => {
+      screenshotFile = null;
+      preview.src = '';
+      preview.hidden = true;
+      removeBtn.hidden = true;
+      pasteHint.hidden = false;
+      zone.classList.remove('has-image');
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorMsg.hidden = true;
+
+      if (!comments.value.trim()) {
+        errorMsg.textContent = 'Please enter some comments.';
+        errorMsg.hidden = false;
+        return;
+      }
+
+      const fd = new FormData();
+      fd.append('csrfmiddlewaretoken', form.querySelector('[name=csrfmiddlewaretoken]').value);
+      fd.append('comments', comments.value.trim());
+      fd.append('page_url', window.location.href);
+      fd.append('page_title', document.title);
+      if (screenshotFile) {
+        fd.append('screenshot', screenshotFile, 'screenshot.png');
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Sending…';
+
+      try {
+        const resp = await fetch('{% url "core:submit_feedback" %}', { method: 'POST', body: fd });
+        const data = await resp.json();
+        if (data.ok) {
+          form.hidden = true;
+          panel.querySelector('.feedback-panel__hint').hidden = true;
+          successMsg.hidden = false;
+          setTimeout(() => {
+            panel.classList.remove('is-open');
+            panel.setAttribute('aria-hidden', 'true');
+            // reset for next open
+            setTimeout(() => {
+              form.hidden = false;
+              panel.querySelector('.feedback-panel__hint').hidden = false;
+              successMsg.hidden = true;
+              comments.value = '';
+              removeBtn.click();
+              submitBtn.disabled = false;
+              submitBtn.textContent = 'Send';
+            }, 400);
+          }, 1800);
+        } else {
+          errorMsg.textContent = data.error || 'Something went wrong.';
+          errorMsg.hidden = false;
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Send';
+        }
+      } catch {
+        errorMsg.textContent = 'Could not send — please try again.';
+        errorMsg.hidden = false;
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Send';
+      }
+    });
+  })();
+  </script>
+  {% endif %}
+
   <!-- Scripts -->
   <script src="{% static 'js/base.js' %}"></script>
   {% block extra_js %}{% endblock %}
