@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'jobs',
     'products',
     'core',
+    'cutlist',
 ]
 
 MIDDLEWARE = [

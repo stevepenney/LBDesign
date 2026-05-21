@@ -1,0 +1,212 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ project.name }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/cutlist.css' %}">
+{% endblock %}
+
+{% block sub_header %}
+<div class="sub-header">
+  <div class="sub-header__inner">
+    <a href="{% url 'cutlist:project_list' %}">&larr; Cutlist Projects</a>
+    {% if project.job %}
+      &nbsp;&mdash;&nbsp;
+      <a href="{% url 'jobs:job_detail' project.job.pk %}">{{ project.job.job_reference }}</a>
+    {% endif %}
+    <span class="cutlist-project-name" id="projectTitle">{{ project.name }}</span>
+    <span class="cutlist-save-indicator" id="saveIndicator">&#10003; Saved</span>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="wizard-layout">
+
+  <!-- ── Step 1: Job Details ───────────────────────────────── -->
+  <div class="wizard-step step--open" data-step="1" id="step-1">
+    <div class="step-header" onclick="goToStep(1)">
+      <span class="step-badge">1</span>
+      <span class="step-title">Job Details</span>
+      <span class="step-meta" id="step-1-meta"></span>
+      <svg class="step-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </div>
+    <div class="step-body" id="step-1-body">
+      <div class="step-form-grid">
+        <div class="form-group">
+          <label for="jobNumber">Job Number</label>
+          <input type="text" id="jobNumber" maxlength="10" placeholder="e.g. 2601-125">
+        </div>
+        <div class="form-group">
+          <label for="jobDescription">Description</label>
+          <input type="text" id="jobDescription" maxlength="50" placeholder="e.g. House at 55 Main St">
+        </div>
+        <div class="form-group">
+          <label for="client">Client</label>
+          <input type="text" id="client" maxlength="50" placeholder="e.g. ABC Construction">
+        </div>
+        <div class="form-group">
+          <label for="preparedBy">Prepared By</label>
+          <input type="text" id="preparedBy" maxlength="20" placeholder="e.g. John">
+        </div>
+        <div class="form-group">
+          <label for="kerfWidth">Kerf Width (mm)</label>
+          <input type="number" id="kerfWidth" value="25" min="0" max="50">
+        </div>
+      </div>
+      <div class="step-footer">
+        <button class="btn btn-primary" onclick="completeStep1()">Next &rarr;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Step 2: Import Cuts ───────────────────────────────── -->
+  <div class="wizard-step wizard-step--locked" data-step="2" id="step-2">
+    <div class="step-header" onclick="goToStep(2)">
+      <span class="step-badge">2</span>
+      <span class="step-title">Import Cuts</span>
+      <span class="step-meta" id="step-2-meta"></span>
+      <svg class="step-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </div>
+    <div class="step-body" id="step-2-body" style="display:none;">
+      <p class="step-hint">
+        Paste your cut list below, or drop a CSV file directly onto the text area.<br>
+        <small>One row per cut &mdash; format: <code>Member Name, Qty, Length, Mark, Group</code></small>
+      </p>
+      <textarea id="csvInput" class="csv-textarea"
+                placeholder="240x45 LIB, 12, 3450, J1, Level 1&#10;360x45 LVL8, 6, 5900, B1"></textarea>
+      <input type="file" id="csvFileInput" accept=".csv" style="display:none;">
+      <div class="step-footer">
+        <label for="csvFileInput" class="btn btn-secondary">Browse CSV</label>
+        <button class="btn btn-primary" onclick="completeStep2()">Review Cuts &rarr;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Step 3: Review Cuts ───────────────────────────────── -->
+  <div class="wizard-step wizard-step--locked" data-step="3" id="step-3">
+    <div class="step-header" onclick="goToStep(3)">
+      <span class="step-badge">3</span>
+      <span class="step-title">Review Cuts</span>
+      <span class="step-meta" id="step-3-meta"></span>
+      <svg class="step-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </div>
+    <div class="step-body" id="step-3-body" style="display:none;">
+      <div id="reviewContent"></div>
+      <div id="skippedMembers" class="skipped-members" style="display:none;">
+        <h3>&#9888; Max 5 member types &mdash; skipped:</h3>
+        <table id="skippedTable">
+          <thead><tr><th>Member</th><th>Cuts</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <button id="copySkippedBtn" class="btn btn-secondary"
+                style="font-size:0.78rem;padding:.3rem .75rem;margin-top:.5rem;">Copy skipped</button>
+      </div>
+      <div class="step-footer">
+        <button class="btn btn-secondary" onclick="addManualMember()">+ Add Member</button>
+        <button class="btn btn-primary" id="optimiseBtn" onclick="runOptimisation()">Optimise &rarr;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Step 4: Results ───────────────────────────────────── -->
+  <div class="wizard-step wizard-step--locked" data-step="4" id="step-4">
+    <div class="step-header" onclick="goToStep(4)">
+      <span class="step-badge">4</span>
+      <span class="step-title">Results</span>
+      <span class="step-meta" id="step-4-meta"></span>
+      <svg class="step-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </div>
+    <div class="step-body step-body--tabs" id="step-4-body" style="display:none;">
+      <div class="tabs-header">
+        <div id="tabsList" class="tabs-list"></div>
+        <button class="btn btn-secondary tab-reoptimise-btn" id="reoptimiseBtn"
+                onclick="goToStep(3)" title="Go back to Review to re-optimise">
+          &larr; Re-optimise
+        </button>
+      </div>
+      <div id="tabsContent"></div>
+    </div>
+  </div>
+
+  <!-- ── Step 5: Summary & Export ─────────────────────────── -->
+  <div class="wizard-step wizard-step--locked" data-step="5" id="step-5">
+    <div class="step-header" onclick="goToStep(5)">
+      <span class="step-badge">5</span>
+      <span class="step-title">Summary &amp; Export</span>
+      <span class="step-meta" id="step-5-meta"></span>
+      <svg class="step-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </div>
+    <div class="step-body" id="step-5-body" style="display:none;">
+      <div id="summaryContent"></div>
+      <div class="export-actions">
+        <button class="btn btn-primary" id="saveProjectBtn">&#10003; Save</button>
+        <button class="btn btn-secondary" id="exportProjectBtn">Export JSON</button>
+        <button class="btn btn-secondary" id="loadProjectBtn">Import JSON</button>
+        <input type="file" id="loadProjectInput" accept=".json" style="display:none;">
+        <button class="btn btn-secondary" id="printBtn">Print / PDF</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- .wizard-layout -->
+
+<!-- ── Cut editor modal ──────────────────────────────────── -->
+<div id="cutEditorModal" class="modal-overlay" style="display:none;"
+     onclick="if(event.target===this)closeCutEditor()">
+  <div class="modal-box">
+    <h3>Edit Cut</h3>
+    <p id="editCutHint" class="modal-hint"></p>
+    <div class="form-group">
+      <label for="editCutLength">Length (mm)</label>
+      <input type="number" id="editCutLength" min="1">
+    </div>
+    <div class="form-group">
+      <label for="editCutQuantity">Quantity</label>
+      <input type="number" id="editCutQuantity" min="1">
+    </div>
+    <div class="form-group">
+      <label for="editCutMark">Mark / ID</label>
+      <input type="text" id="editCutMark" maxlength="10">
+    </div>
+    <div class="form-group">
+      <label for="editCutGroup">Group</label>
+      <input type="text" id="editCutGroup" maxlength="20">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="saveCutEdit()">Apply &amp; Re-optimise</button>
+      <button class="btn btn-secondary" onclick="closeCutEditor()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+{% csrf_token %}
+{% endblock %}
+
+{% block extra_js %}
+{{ project.state|json_script:"cutlist-state-data" }}
+<script>
+  window.CUTLIST_PROJECT_PK = {{ project.pk }};
+  (function () {
+    const el = document.getElementById('cutlist-state-data');
+    window.CUTLIST_STATE = el ? JSON.parse(el.textContent) : null;
+  })();
+</script>
+<script src="{% static 'js/cutlist.js' %}"></script>
+{% endblock %}

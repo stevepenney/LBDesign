@@ -8,4 +8,5 @@ urlpatterns = [
     path('', include('accounts.urls', namespace='accounts')),
     path('jobs/', include('jobs.urls', namespace='jobs')),
     path('core/', include('core.urls', namespace='core')),
+    path('cutlist/', include('cutlist.urls', namespace='cutlist')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

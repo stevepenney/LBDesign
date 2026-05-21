@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Cutlist Projects{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;">
+  <h1 class="page-title" style="margin:0;">Cutlist Projects</h1>
+  <form method="post" action="{% url 'cutlist:project_new' %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-primary">+ New Project</button>
+  </form>
+</div>
+
+{% if projects %}
+<table style="width:100%;border-collapse:collapse;font-size:0.9rem;">
+  <thead>
+    <tr style="background:var(--tan-bg);border-bottom:2px solid var(--border);">
+      <th style="padding:.5rem .75rem;text-align:left;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#999;">Project</th>
+      <th style="padding:.5rem .75rem;text-align:left;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#999;">Linked Job</th>
+      <th style="padding:.5rem .75rem;text-align:left;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#999;">Created By</th>
+      <th style="padding:.5rem .75rem;text-align:left;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#999;">Last Updated</th>
+      <th style="padding:.5rem .75rem;"></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for proj in projects %}
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:.6rem .75rem;">
+        <a href="{% url 'cutlist:project_edit' proj.pk %}" style="font-weight:600;color:var(--brown-dark);">{{ proj.name }}</a>
+      </td>
+      <td style="padding:.6rem .75rem;color:#888;font-size:0.85rem;">
+        {% if proj.job %}
+          <a href="{% url 'jobs:job_detail' proj.job.pk %}">{{ proj.job.job_reference }}</a>
+        {% else %}
+          <span style="color:#bbb;">—</span>
+        {% endif %}
+      </td>
+      <td style="padding:.6rem .75rem;color:#888;font-size:0.85rem;">
+        {{ proj.created_by.get_full_name|default:proj.created_by.username|default:"—" }}
+      </td>
+      <td style="padding:.6rem .75rem;color:#888;font-size:0.85rem;">
+        {{ proj.updated_at|date:"d M Y, g:ia" }}
+      </td>
+      <td style="padding:.6rem .75rem;text-align:right;">
+        <a href="{% url 'cutlist:project_edit' proj.pk %}" class="btn btn-secondary" style="font-size:0.8rem;padding:.3rem .8rem;">Open</a>
+        <form method="post" action="{% url 'cutlist:project_delete' proj.pk %}" style="display:inline;"
+              onsubmit="return confirm('Delete {{ proj.name|escapejs }}?')">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-secondary" style="font-size:0.8rem;padding:.3rem .8rem;color:#c00;border-color:#e0a0a0;">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div style="text-align:center;padding:3rem 2rem;color:#aaa;background:var(--tan-bg);border:2px dashed var(--border);border-radius:6px;">
+  <p style="margin-bottom:1.25rem;">No cutlist projects yet.</p>
+  <form method="post" action="{% url 'cutlist:project_new' %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-primary">+ New Project</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

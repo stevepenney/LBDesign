@@ -38,6 +38,7 @@ venv/Scripts/python manage.py shell
 | `core` | FreightSettings (singleton), RoofPitch (lookup) |
 | `products` | Product, PriceBook, PriceBookEntry; `pricing.py` price resolver |
 | `jobs` | Job, Section, FloorRoofArea, AdditionalBeam, DrawingUpload; `calculations.py` engine |
+| `cutlist` | Cutlist Optimizer (no models yet — pure JS tool served by a single view) |
 
 Templates live in `templates/` (project-level, not per-app).
 Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`.
@@ -102,6 +103,55 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
 
 ---
 
+## Cutlist Optimizer
+
+A browser-based bin-packing tool for optimising timber cutting lists. Pure JS front-end —
+no Django models needed in phase 1. Source files currently in `cutlist/` (standalone),
+to be migrated to:
+
+| Source file | Django destination |
+|---|---|
+| `cutlist/cutlist.js` | `static/js/cutlist.js` |
+| `cutlist/cutlist.css` | `static/css/cutlist.css` |
+| `cutlist/cutlist.html` | `templates/cutlist/cutlist.html` (extends `base.html`) |
+
+### Architecture
+State lives in a single `project` JS object (jobDetails, tabs[], activeTabId, skippedData).
+DOM is always rendered from state, never read back. Key functions in `cutlist.js`:
+- `parseCSVAndCreateTabs()` — parses CSV input, creates one tab per member type (max 5)
+- `calculateOptimization(tabId)` — runs First Fit Decreasing algorithm
+- `advancedOptimizeAll()` — post-process: offcut reuse + bin consolidation
+- `saveProject()` / `loadProject()` — serialise full state to/from JSON file
+
+### CSS Variables
+`cutlist.css` defines its own `:root` variables (`--primary-brown`, `--dark-brown`,
+`--beige-bg`, etc.) — a brown Lumberbank palette, separate from the green site palette in
+`base.css`. Keep them in `cutlist.css`; do not merge into `base.css`.
+
+### Integration Notes
+- Django app: `cutlist` (no models, one `TemplateView`)
+- URL: `cutlist:cutlist_tool` → `/cutlist/`
+- Template extends `base.html` — remove the standalone logo/header from the HTML; the
+  site header already provides it.
+- The standalone HTML wraps everything in `<div class="container">`. This conflicts with
+  the site `.container` in `base.html`. Rename to `<div class="cutlist-content">` in both
+  the template and `cutlist.css` when integrating.
+- Load `cutlist.css` via `{% block extra_css %}` and `cutlist.js` via `{% block extra_js %}`.
+- Add a **Cutlist** nav link in `templates/base.html` for authenticated users.
+- Save/Load currently writes JSON to the user's local filesystem — no server storage needed
+  yet. Future phase: `CutlistProject` model stored against a Job.
+
+### Planned Features (not yet built)
+- Feature 2: Lock individual sticks (exclude from re-optimisation) — needs `locked` flag
+  on each bin and a checkbox UI on each stick diagram.
+- Feature 3: Click a cut segment to edit inline — needs click handler on `.cut-segment`
+  and a modal that writes back to state and re-runs optimisation.
+- Feature 4 (nice to have): Drag-and-drop cut segments between sticks.
+- Feature 5 (nice to have): Add/remove a cut directly in the results panel with live
+  re-optimisation.
+
+---
+
 ## Do / Don't
 
 **Do:**
@@ -120,9 +170,17 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
 
 ---
 
+## Phase Vision
+
+**Phase 1 (current):** Estimation tool + cutlist optimiser.
+**Phase 2 (future):** Full design tool with expanded job management. The current `jobs` and
+`cutlist` apps will grow; more apps may be added. Build with this trajectory in mind —
+don't over-engineer now, but don't make choices that box out phase 2 expansion.
+
 ## Still To Build (Phase 1)
 
 - [ ] PDF estimate generation (WeasyPrint installed, not wired up)
 - [ ] Drawing upload → email notification to detailing team (`DETAILING_TEAM_EMAIL` setting exists)
 - [ ] Price book management UI (currently admin-only via Django admin)
 - [ ] Member schedule display on job detail page
+- [x] Cutlist Optimizer — integrated at `/cutlist/` with split-panel layout and DB persistence
