@@ -65,6 +65,13 @@ def project_save(request, pk):
 
 
 @login_required
+def project_print(request, pk):
+    project = get_object_or_404(CutlistProject, pk=pk)
+    _assert_project_access(request.user, project)
+    return render(request, 'cutlist/print_view.html', {'project': project})
+
+
+@login_required
 @require_POST
 def project_delete(request, pk):
     project = get_object_or_404(CutlistProject, pk=pk)

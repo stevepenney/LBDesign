@@ -202,7 +202,8 @@
 {% block extra_js %}
 {{ project.state|json_script:"cutlist-state-data" }}
 <script>
-  window.CUTLIST_PROJECT_PK = {{ project.pk }};
+  window.CUTLIST_PROJECT_PK  = {{ project.pk }};
+  window.CUTLIST_PRINT_URL   = "{% url 'cutlist:project_print' project.pk %}";
   (function () {
     const el = document.getElementById('cutlist-state-data');
     window.CUTLIST_STATE = el ? JSON.parse(el.textContent) : null;

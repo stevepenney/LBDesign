@@ -890,30 +890,7 @@
   text-align: center;
 }
 
-/* ── Lock sticks (Feature 2) ──────────────────────────────── */
-.btn-lock {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 2px 4px;
-  opacity: .3;
-  transition: opacity .15s, background .15s;
-  line-height: 1;
-  border-radius: 3px;
-  display: block;
-  margin: 0 auto;
-}
 
-.btn-lock:hover { opacity: .75; background: rgba(0,0,0,.06); }
-.btn-lock.btn-lock-active { opacity: 1; }
-
-.bin-locked .stick {
-  border-color: #f0b429;
-  box-shadow: 0 0 0 2px rgba(240, 180, 41, .25);
-}
-
-.bin-locked .stick-label { color: #7a5800; }
 
 /* ── Click-to-edit cut segments (Feature 3) ──────────────── */
 .cut-clickable { cursor: pointer; }
@@ -1031,7 +1008,6 @@
   .step-header,
   .step-footer,
   .export-actions,
-  .btn-lock,
   .skipped-members,
   .review-member,
   .tabs-header { display: none !important; }

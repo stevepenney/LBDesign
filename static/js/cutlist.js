@@ -50,6 +50,7 @@ function writeJobDetailsToDOM() {
 // =============================================================================
 
 document.addEventListener('DOMContentLoaded', function () {
+    if (window.CUTLIST_PRINT_MODE) return;
     initJobDetailListeners();
     initGlobalEventListeners();
     initCSVDropzone();
@@ -77,7 +78,7 @@ function initGlobalEventListeners() {
         document.getElementById('loadProjectInput').click();
     });
     document.getElementById('loadProjectInput').addEventListener('change', loadProject);
-    document.getElementById('printBtn').addEventListener('click', generatePDF);
+    document.getElementById('printBtn').addEventListener('click', openPrintView);
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape') closeCutEditor();
     });
@@ -749,7 +750,7 @@ function calculateOptimization(tabId) {
 
         expandedCuts.forEach(cutInfo => {
             if (cutInfo.isFullStick) {
-                allBins.push({ id: binIdCounter++, locked: false, stockLength: cutInfo.length, cuts: [cutInfo], remaining: 0, timberType, group: groupKey });
+                allBins.push({ id: binIdCounter++, stockLength: cutInfo.length, cuts: [cutInfo], remaining: 0, timberType, group: groupKey });
                 return;
             }
             const groupBins = allBins.filter(b => b.group === groupKey);
@@ -766,7 +767,7 @@ function calculateOptimization(tabId) {
             if (!placed) {
                 const suitableStock = sortedStock.find(stock => stock >= cutInfo.length);
                 if (suitableStock) {
-                    allBins.push({ id: binIdCounter++, locked: false, stockLength: suitableStock, cuts: [cutInfo], remaining: suitableStock - cutInfo.length, timberType, group: groupKey });
+                    allBins.push({ id: binIdCounter++, stockLength: suitableStock, cuts: [cutInfo], remaining: suitableStock - cutInfo.length, timberType, group: groupKey });
                 } else {
                     showToast(`Cut length ${cutInfo.length}mm exceeds all available stock lengths!`, 'error');
                 }
@@ -888,14 +889,10 @@ function generateCuttingDiagram(bin, stickNumber, kerfWidth, tabId) {
     const kerfHeightPx  = 4;
 
     const timberClass = timberType ? `timber-${timberType.toLowerCase()}` : 'timber-other';
-    const lockedClass = bin.locked ? ' bin-locked' : '';
 
     let html = `
-        <div class="stick-diagram ${timberClass}${lockedClass}" data-bin-id="${bin.id}">
+        <div class="stick-diagram ${timberClass}" data-bin-id="${bin.id}">
             <div class="stick-label">Stick ${stickNumber}<br>${stockLength}mm</div>
-            <button class="btn-lock${bin.locked ? ' btn-lock-active' : ''}"
-                    onclick="toggleBinLock('${tabId}', ${bin.id})"
-                    title="${bin.locked ? 'Unlock stick' : 'Lock stick'}" type="button">&#128274;</button>
             <div class="stick" style="height:${diagramHeight}px;width:${diagramWidth}px;">`;
 
     const totalNonKerfHeight = diagramHeight - ((cuts.length - 1) * kerfHeightPx);
@@ -943,31 +940,6 @@ function generateCuttingDiagram(bin, stickNumber, kerfWidth, tabId) {
 
     html += `</div></div>`;
     return html;
-}
-
-// =============================================================================
-// LOCK STICKS (Feature 2)
-// =============================================================================
-
-function toggleBinLock(tabId, binId) {
-    const tab = getTab(tabId);
-    if (!tab || !tab.results) return;
-    const bin = tab.results.bins.find(b => b.id === binId);
-    if (!bin) return;
-
-    bin.locked = !bin.locked;
-
-    const stickEl = document.querySelector(
-        `.tab-content[data-tab-id="${tabId}"] .stick-diagram[data-bin-id="${binId}"]`
-    );
-    if (stickEl) {
-        stickEl.classList.toggle('bin-locked', bin.locked);
-        const lockBtn = stickEl.querySelector('.btn-lock');
-        if (lockBtn) {
-            lockBtn.classList.toggle('btn-lock-active', bin.locked);
-            lockBtn.title = bin.locked ? 'Unlock stick' : 'Lock stick';
-        }
-    }
 }
 
 // =============================================================================
@@ -1137,7 +1109,7 @@ function advancedOptimizeTab(tab, kerfWidth, maxUpgradesRemaining) {
 
     const binsWithOffcuts = workingBins
         .map((bin, index) => ({ bin, index }))
-        .filter(item => item.bin.remaining >= 500 && !item.bin.locked)
+        .filter(item => item.bin.remaining >= 500)
         .sort((a, b) => b.bin.remaining - a.bin.remaining);
 
     for (let item of binsWithOffcuts) {
@@ -1237,7 +1209,7 @@ function findCutsToMove(workingBins, excludeBinIndex, availableSpace, kerfWidth,
 
     const sortedBinIndices = workingBins
         .map((bin, index) => ({ bin, index }))
-        .filter(item => item.index !== excludeBinIndex && !item.bin.locked && (item.bin.group || '') === (group || ''))
+        .filter(item => item.index !== excludeBinIndex && (item.bin.group || '') === (group || ''))
         .sort((a, b) => a.bin.stockLength - b.bin.stockLength);
 
     for (let item of sortedBinIndices) {
@@ -1293,7 +1265,6 @@ function consolidateBins(tab, kerfWidth) {
     const uniqueGroups  = [...new Set(bins.map(b => b.group || ''))];
     const binsByLength  = {};
     bins.forEach((bin, index) => {
-        if (bin.locked) return;
         const k = `${bin.group || ''}||${bin.stockLength}`;
         if (!binsByLength[k]) binsByLength[k] = [];
         binsByLength[k].push({ bin, index });
@@ -1406,7 +1377,6 @@ function consolidateBins(tab, kerfWidth) {
 
     const binsByLengthFinal = {};
     tab.results.bins.forEach((bin, index) => {
-        if (bin.locked) return;
         const k = `${bin.group || ''}||${bin.stockLength}`;
         if (!binsByLengthFinal[k]) binsByLengthFinal[k] = [];
         binsByLengthFinal[k].push({ bin, index });
@@ -1682,7 +1652,7 @@ function restoreProject(projectData) {
         if (tab.results && tab.results.bins) {
             tab.results.bins.forEach(bin => {
                 if (bin.id === undefined)     bin.id     = binIdCounter++;
-                if (bin.locked === undefined) bin.locked = false;
+
             });
         }
     });
@@ -1760,33 +1730,11 @@ function showToast(message, type = 'info') {
 // PDF / PRINT
 // =============================================================================
 
-function generatePDF() {
-    const calculatedTabs = project.tabs.filter(t => t.results);
-    if (calculatedTabs.length === 0) {
+async function openPrintView() {
+    if (project.tabs.filter(t => t.results).length === 0) {
         showToast('Please run optimisation first', 'warning');
         return;
     }
-
-    document.querySelectorAll('.tab-content').forEach(content => {
-        const tab = getTab(content.dataset.tabId);
-        if (tab && tab.results) {
-            content.classList.remove('active');
-            content.style.display = 'block';
-            content.classList.add('print-visible');
-        } else {
-            content.style.display = 'none';
-            content.classList.remove('print-visible');
-        }
-    });
-
-    setTimeout(() => {
-        window.print();
-        setTimeout(() => {
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('print-visible');
-                content.style.display = '';
-                content.classList.toggle('active', content.dataset.tabId === project.activeTabId);
-            });
-        }, 100);
-    }, 50);
+    await saveProject();
+    window.open(window.CUTLIST_PRINT_URL, '_blank');
 }

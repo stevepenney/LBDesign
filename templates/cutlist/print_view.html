@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cutlist Report — {{ project.name }}</title>
+  <link rel="stylesheet" href="{% static 'css/base.css' %}">
+  <link rel="stylesheet" href="{% static 'css/cutlist.css' %}">
+  <style>
+    /* ── Screen preview ──────────────────────────────────────── */
+    body {
+      background: #f0ede8;
+      padding: 2cm 0;
+      font-size: 13px;
+    }
+
+    .print-page {
+      background: white;
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto 24px auto;
+      padding: 2cm;
+      box-sizing: border-box;
+      box-shadow: 0 2px 10px rgba(26,10,0,.12);
+    }
+
+    /* ── Job header ──────────────────────────────────────────── */
+    .print-header {
+      border-bottom: 2px solid var(--brown);
+      padding-bottom: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .print-header h1 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin: 0 0 .6rem 0;
+      color: var(--brown);
+      letter-spacing: .02em;
+    }
+    .print-meta-grid {
+      display: grid;
+      grid-template-columns: auto 1fr auto 1fr;
+      gap: .2rem .75rem;
+      font-size: 0.8rem;
+    }
+    .print-meta-label { color: #888; font-weight: 600; }
+
+    /* ── Section headings ────────────────────────────────────── */
+    .print-section-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: #999;
+      margin: 1.5rem 0 .5rem 0;
+      padding-bottom: .25rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── Tables (overview + stock order) ────────────────────── */
+    .print-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+      margin-bottom: 1rem;
+    }
+    .print-table thead th {
+      background: var(--brown);
+      color: white;
+      font-weight: 600;
+      padding: .35rem .65rem;
+      text-align: left;
+    }
+    .print-table thead th:not(:first-child) { text-align: right; }
+    .print-table td {
+      padding: .3rem .65rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .print-table td:not(:first-child) { text-align: right; }
+    .print-table tr:last-child td { border-bottom: none; }
+    .print-table tbody tr:nth-child(even) td { background: var(--tan-bg); }
+    .print-table tfoot td {
+      font-weight: 700;
+      border-top: 2px solid var(--border);
+      background: var(--tan-bg);
+    }
+
+    /* Stock order table: thead repeats when table spans pages */
+    .print-stock-table thead { display: table-header-group; }
+    .print-stock-table tr    { page-break-inside: avoid; }
+
+    /* ── Diagram page header ─────────────────────────────────── */
+    .print-page-header {
+      display: flex;
+      align-items: baseline;
+      gap: .75rem;
+      border-bottom: 2px solid var(--brown);
+      padding-bottom: .5rem;
+      margin-bottom: 1rem;
+    }
+    .print-page-header__member {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--brown);
+    }
+    .print-page-header__group {
+      font-size: 0.82rem;
+      color: #666;
+    }
+    .print-page-header__jobref {
+      margin-left: auto;
+      font-size: 0.75rem;
+      color: #aaa;
+    }
+
+    /* ── Per-group stats bar ─────────────────────────────────── */
+    .print-group-stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: .5rem;
+      margin-top: 1rem;
+      padding: .65rem;
+      background: var(--tan-bg);
+      border-top: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .print-group-stats .stat { text-align: center; }
+
+    /* ── Print media ─────────────────────────────────────────── */
+    @media print {
+      body { background: white; padding: 0; margin: 0; }
+
+      .print-page {
+        box-shadow: none;
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        min-height: 0;
+      }
+
+      .print-page--diagram { break-before: page; }
+
+      /* Stock table header repeats across physical pages */
+      .print-stock-table thead { display: table-header-group; }
+      .print-stock-table tr    { page-break-inside: avoid; }
+
+      .stick-diagram      { page-break-inside: avoid; break-inside: avoid; }
+      .diagrams-container { page-break-inside: auto; }
+
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      @page { margin: 1.5cm; size: A4; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="print-root"></div>
+
+  {{ project.state|json_script:"print-state-data" }}
+  <script>
+    window.CUTLIST_PRINT_MODE = true;
+    (function () {
+      const el = document.getElementById('print-state-data');
+      window.CUTLIST_STATE = el ? JSON.parse(el.textContent) : null;
+    })();
+  </script>
+  <script src="{% static 'js/cutlist.js' %}"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const root = document.getElementById('print-root');
+
+      if (!window.CUTLIST_STATE || !window.CUTLIST_STATE.tabs || !window.CUTLIST_STATE.tabs.length) {
+        root.innerHTML = '<p style="padding:2cm;font-family:sans-serif">No saved data found. Please save the project before printing.</p>';
+        return;
+      }
+
+      // Populate project state without touching wizard DOM
+      const state = window.CUTLIST_STATE;
+      Object.assign(project.jobDetails, state.jobDetails || {});
+      project.tabs  = [];
+      tabCounter    = 0;
+      binIdCounter  = 0;
+
+      state.tabs.forEach(tabData => {
+        const tabId = `tab-${tabCounter++}`;
+        const tab = {
+          id:                   tabId,
+          memberName:           tabData.memberName,
+          cuts:                 tabData.cuts,
+          stockLengths:         tabData.stockLengths,
+          cutTolerance:         tabData.cutTolerance !== undefined ? tabData.cutTolerance : 50,
+          overlengthSplitStock: tabData.overlengthSplitStock || 6000,
+          results:              tabData.results || null,
+        };
+        if (tab.results && tab.results.bins) {
+          tab.results.bins.forEach(bin => {
+            if (bin.id === undefined) bin.id = binIdCounter++;
+          });
+        }
+        project.tabs.push(tab);
+      });
+
+      root.appendChild(buildSummaryPage());
+      buildDiagramPages().forEach(page => root.appendChild(page));
+
+      setTimeout(() => window.print(), 600);
+    });
+
+    // ─── HTML escaping helper ─────────────────────────────────────
+
+    function esc(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // ─── Summary page ─────────────────────────────────────────────
+
+    function buildSummaryPage() {
+      const jd   = project.jobDetails;
+      const tabs = project.tabs.filter(t => t.results);
+      const today = new Date().toLocaleDateString('en-AU', {
+        day: '2-digit', month: 'short', year: 'numeric'
+      });
+
+      const page = document.createElement('div');
+      page.className = 'print-page print-page--summary';
+      page.innerHTML = `
+        <div class="print-header">
+          <h1>Cutlist Optimisation Report</h1>
+          <div class="print-meta-grid">
+            <span class="print-meta-label">Job:</span>          <span>${esc(jd.jobNumber)}</span>
+            <span class="print-meta-label">Description:</span>  <span>${esc(jd.jobDescription)}</span>
+            <span class="print-meta-label">Client:</span>        <span>${esc(jd.client)}</span>
+            <span class="print-meta-label">Prepared by:</span>  <span>${esc(jd.preparedBy)}</span>
+            <span class="print-meta-label">Date:</span>          <span>${today}</span>
+            <span class="print-meta-label">Kerf width:</span>   <span>${jd.kerfWidth}mm</span>
+          </div>
+        </div>
+        <div class="print-section-title">Optimisation Overview</div>
+        ${buildOverviewTable(tabs)}
+        <div class="print-section-title">Stock Order</div>
+        ${buildStockTable(tabs)}
+      `;
+      return page;
+    }
+
+    function buildOverviewTable(tabs) {
+      if (!tabs.length) return '<p>No optimised results found.</p>';
+
+      let totalSticks    = 0;
+      let totalStockMm   = 0;
+      let totalCutMm     = 0;
+      let totalWasteMm   = 0;
+
+      const rows = tabs.map(tab => {
+        const r = tab.results;
+        totalSticks  += r.stockCount;
+        totalStockMm += r.totalStockUsed;
+        totalCutMm   += r.totalCutLength;
+        totalWasteMm += Number(r.totalWaste);
+        return `<tr>
+          <td>${esc(tab.memberName)}</td>
+          <td>${r.stockCount}</td>
+          <td>${(r.totalStockUsed / 1000).toFixed(1)}</td>
+          <td>${(r.totalCutLength  / 1000).toFixed(1)}</td>
+          <td>${r.wastePercentage}%</td>
+        </tr>`;
+      }).join('');
+
+      const totalWastePct = totalStockMm > 0
+        ? ((totalWasteMm / totalStockMm) * 100).toFixed(1)
+        : '0.0';
+
+      return `<table class="print-table">
+        <thead>
+          <tr>
+            <th>Member Type</th>
+            <th style="text-align:right">Sticks</th>
+            <th style="text-align:right">Stock (lin. m)</th>
+            <th style="text-align:right">Cut Length (m)</th>
+            <th style="text-align:right">Waste %</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr>
+            <td>Total</td>
+            <td>${totalSticks}</td>
+            <td>${(totalStockMm / 1000).toFixed(1)}</td>
+            <td>${(totalCutMm   / 1000).toFixed(1)}</td>
+            <td>${totalWastePct}%</td>
+          </tr>
+        </tfoot>
+      </table>`;
+    }
+
+    function buildStockTable(tabs) {
+      if (!tabs.length) return '';
+
+      const stockData = [];
+      tabs.forEach(tab => {
+        const counts = {};
+        tab.results.bins.forEach(bin => {
+          const group  = bin.group || '';
+          const length = bin.stockLength / 1000;
+          const key    = `${group}||${length}`;
+          counts[key]  = (counts[key] || 0) + 1;
+        });
+        Object.entries(counts).forEach(([key, qty]) => {
+          const [group, lenStr] = key.split('||');
+          stockData.push({ group, product: tab.memberName, length: parseFloat(lenStr), qty });
+        });
+      });
+
+      stockData.sort((a, b) => {
+        const ga = a.group || '￿';
+        const gb = b.group || '￿';
+        if (ga !== gb) return ga.localeCompare(gb);
+        if (a.product !== b.product) return a.product.localeCompare(b.product);
+        return b.length - a.length;
+      });
+
+      const hasGroups = stockData.some(r => r.group);
+      const rows = stockData.map(row => `<tr>
+        ${hasGroups ? `<td>${esc(row.group || '—')}</td>` : ''}
+        <td>${esc(row.product)}</td>
+        <td>${row.length.toFixed(1)}</td>
+        <td>${row.qty}</td>
+      </tr>`).join('');
+
+      const totalQty = stockData.reduce((s, r) => s + r.qty, 0);
+      const totalFooter = `<tr>
+        ${hasGroups ? '<td></td>' : ''}
+        <td>Total</td>
+        <td></td>
+        <td>${totalQty}</td>
+      </tr>`;
+
+      return `<table class="print-table print-stock-table">
+        <thead>
+          <tr>
+            ${hasGroups ? '<th>Group</th>' : ''}
+            <th>Product</th>
+            <th style="text-align:right">Length (m)</th>
+            <th style="text-align:right">Qty</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>${totalFooter}</tfoot>
+      </table>`;
+    }
+
+    // ─── Diagram pages ────────────────────────────────────────────
+
+    function buildDiagramPages() {
+      const pages  = [];
+      const jd     = project.jobDetails;
+      const jobRef = [jd.jobNumber, jd.jobDescription].filter(Boolean).join(' — ');
+
+      project.tabs.filter(t => t.results).forEach(tab => {
+        const { bins, kerfWidth } = tab.results;
+
+        const groupOrder = [...new Set(bins.map(b => b.group || ''))].sort((a, b) => {
+          if (a === '') return 1;
+          if (b === '') return -1;
+          return a.localeCompare(b);
+        });
+        const hasNamedGroups = groupOrder.some(k => k !== '');
+
+        groupOrder.forEach(groupKey => {
+          const groupBins = bins
+            .filter(b => (b.group || '') === groupKey)
+            .sort((a, b) => b.stockLength - a.stockLength || a.remaining - b.remaining);
+
+          if (!groupBins.length) return;
+
+          const groupLabel = groupKey
+            ? groupKey
+            : (hasNamedGroups ? 'Ungrouped' : null);
+
+          // Per-group stats
+          const stockTotal = groupBins.reduce((s, b) => s + b.stockLength, 0);
+          const wasteTotal = groupBins.reduce((s, b) => s + (b.remaining || 0), 0);
+          const cutTotal   = groupBins.reduce((s, b) =>
+            s + b.cuts.reduce((cs, c) => cs + (typeof c === 'object' ? c.length : c), 0), 0);
+          const wastePct   = stockTotal > 0
+            ? ((wasteTotal / stockTotal) * 100).toFixed(1)
+            : '0.0';
+
+          const page = document.createElement('div');
+          page.className = 'print-page print-page--diagram';
+
+          const groupSubtitle = groupLabel
+            ? `<span class="print-page-header__group">Group: ${esc(groupLabel)}</span>`
+            : '';
+
+          page.innerHTML = `
+            <div class="print-page-header">
+              <span class="print-page-header__member">${esc(tab.memberName)}</span>
+              ${groupSubtitle}
+              <span class="print-page-header__jobref">${esc(jobRef)}</span>
+            </div>
+            <div class="cutting-diagrams">
+              <div class="diagrams-container"></div>
+            </div>
+            <div class="print-group-stats">
+              <div class="stat">
+                <div class="stat-label">Sticks</div>
+                <div class="stat-value">${groupBins.length}</div>
+              </div>
+              <div class="stat">
+                <div class="stat-label">Stock (lin. m)</div>
+                <div class="stat-value">${(stockTotal / 1000).toFixed(1)}</div>
+              </div>
+              <div class="stat">
+                <div class="stat-label">Cut Length</div>
+                <div class="stat-value">${(cutTotal / 1000).toFixed(1)}m</div>
+              </div>
+              <div class="stat">
+                <div class="stat-label">Waste</div>
+                <div class="stat-value">${wastePct}%</div>
+              </div>
+            </div>`;
+
+          // Inject diagrams using the shared rendering function
+          const container = page.querySelector('.diagrams-container');
+          let stickNum = 1;
+          groupBins.forEach(bin => {
+            container.insertAdjacentHTML(
+              'beforeend',
+              generateCuttingDiagram(bin, stickNum++, kerfWidth, null)
+            );
+          });
+
+          pages.push(page);
+        });
+      });
+
+      return pages;
+    }
+  </script>
+</body>
+</html>

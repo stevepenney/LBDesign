@@ -105,50 +105,38 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
 
 ## Cutlist Optimizer
 
-A browser-based bin-packing tool for optimising timber cutting lists. Pure JS front-end —
-no Django models needed in phase 1. Source files currently in `cutlist/` (standalone),
-to be migrated to:
-
-| Source file | Django destination |
-|---|---|
-| `cutlist/cutlist.js` | `static/js/cutlist.js` |
-| `cutlist/cutlist.css` | `static/css/cutlist.css` |
-| `cutlist/cutlist.html` | `templates/cutlist/cutlist.html` (extends `base.html`) |
+A browser-based bin-packing tool for optimising timber cutting lists. Integrated Django app
+with `CutlistProject` model (org FK, job FK optional, state JSONField). Template at
+`templates/cutlist/project_edit.html`, JS at `static/js/cutlist.js`, CSS at `static/css/cutlist.css`.
 
 ### Architecture
 State lives in a single `project` JS object (jobDetails, tabs[], activeTabId, skippedData).
-DOM is always rendered from state, never read back. Key functions in `cutlist.js`:
-- `parseCSVAndCreateTabs()` — parses CSV input, creates one tab per member type (max 5)
-- `calculateOptimization(tabId)` — runs First Fit Decreasing algorithm
-- `advancedOptimizeAll()` — post-process: offcut reuse + bin consolidation
-- `saveProject()` / `loadProject()` — serialise full state to/from JSON file
+`wizard` object tracks `reachedStep`. DOM always rendered from state, never read back.
+Key functions:
+- `parseCSVIntoTabs(csvText)` — parses CSV, populates `project.tabs[]`, max 5 member types
+- `calculateOptimization(tabId)` — First Fit Decreasing algorithm
+- `advancedOptimizeAll(silent)` — post-process: offcut reuse + bin consolidation; `silent=true` suppresses toasts/saves when called from wizard
+- `runOptimisation()` — async wizard action: validates → FFD → advanced → renders tabs → saves → advances to Step 4
+- `saveProject()` — POSTs full state to `/cutlist/<pk>/save/`
+- `restoreProject(data)` — restores from saved state (page load or JSON import)
+- `resetFromStep(n)` — clears downstream DOM + locks steps when re-processing
 
-### CSS Variables
-`cutlist.css` defines its own `:root` variables (`--primary-brown`, `--dark-brown`,
-`--beige-bg`, etc.) — a brown Lumberbank palette, separate from the green site palette in
-`base.css`. Keep them in `cutlist.css`; do not merge into `base.css`.
+### Wizard (5 steps — vertical accordion)
+1. **Job Details** — common project metadata
+2. **Import Cuts** — textarea (also drop zone for CSV files)
+3. **Review Cuts** — per-member collapsible panels (start collapsed); cuts grouped + collapsible by group within each panel
+4. **Results** — member tabs with cutting diagrams; click cut segment to edit inline (Feature 3)
+5. **Summary & Export** — stock order table; Save / Export JSON / Import JSON / Print
 
-### Integration Notes
-- Django app: `cutlist` (no models, one `TemplateView`)
-- URL: `cutlist:cutlist_tool` → `/cutlist/`
-- Template extends `base.html` — remove the standalone logo/header from the HTML; the
-  site header already provides it.
-- The standalone HTML wraps everything in `<div class="container">`. This conflicts with
-  the site `.container` in `base.html`. Rename to `<div class="cutlist-content">` in both
-  the template and `cutlist.css` when integrating.
-- Load `cutlist.css` via `{% block extra_css %}` and `cutlist.js` via `{% block extra_js %}`.
-- Add a **Cutlist** nav link in `templates/base.html` for authenticated users.
-- Save/Load currently writes JSON to the user's local filesystem — no server storage needed
-  yet. Future phase: `CutlistProject` model stored against a Job.
+Navigation: free to jump to any previously reached step. Actions (Optimise, Next) reset downstream steps.
 
-### Planned Features (not yet built)
-- Feature 2: Lock individual sticks (exclude from re-optimisation) — needs `locked` flag
-  on each bin and a checkbox UI on each stick diagram.
-- Feature 3: Click a cut segment to edit inline — needs click handler on `.cut-segment`
-  and a modal that writes back to state and re-runs optimisation.
-- Feature 4 (nice to have): Drag-and-drop cut segments between sticks.
-- Feature 5 (nice to have): Add/remove a cut directly in the results panel with live
-  re-optimisation.
+### CSS
+`cutlist.css` uses `base.css` variables (no separate palette). Timber bin colours are
+functional and must not change: LIB=yellow, LVL8=green, LVL11=cyan, LVL13=teal, GL=pink.
+
+### Removed
+- Lock sticks feature (was Feature 2) — removed; no longer relevant to workflow
+- Split-panel layout — replaced by accordion wizard
 
 ---
 
