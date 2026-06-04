@@ -3,6 +3,7 @@ Django settings for lumberbank project.
 """
 
 from pathlib import Path
+import dj_database_url
 from decouple import config, Csv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -66,15 +67,15 @@ WSGI_APPLICATION = 'lumberbank.wsgi.application'
 
 # Database — PostgreSQL
 
+_local_db = (
+    f"postgresql://{config('DB_USER', default='lumberbank_user')}"
+    f":{config('DB_PASSWORD', default='')}"
+    f"@{config('DB_HOST', default='localhost')}"
+    f":{config('DB_PORT', default='5432')}"
+    f"/{config('DB_NAME', default='lumberbank_db')}"
+)
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME', default='lumberbank_db'),
-        'USER': config('DB_USER', default='lumberbank_user'),
-        'PASSWORD': config('DB_PASSWORD', default=''),
-        'HOST': config('DB_HOST', default='localhost'),
-        'PORT': config('DB_PORT', default='5432'),
-    }
+    'default': dj_database_url.config(env='DATABASE_URL', default=_local_db)
 }
 
 
