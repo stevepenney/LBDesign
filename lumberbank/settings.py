@@ -36,6 +36,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -67,16 +68,21 @@ WSGI_APPLICATION = 'lumberbank.wsgi.application'
 
 # Database — PostgreSQL
 
-_local_db = (
-    f"postgresql://{config('DB_USER', default='lumberbank_user')}"
-    f":{config('DB_PASSWORD', default='')}"
-    f"@{config('DB_HOST', default='localhost')}"
-    f":{config('DB_PORT', default='5432')}"
-    f"/{config('DB_NAME', default='lumberbank_db')}"
-)
-DATABASES = {
-    'default': dj_database_url.config(env='DATABASE_URL', default=_local_db)
-}
+import os as _os
+_database_url = _os.environ.get('DATABASE_URL', '')
+if _database_url.startswith('postgres'):
+    DATABASES = {'default': dj_database_url.parse(_database_url, conn_max_age=600)}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': config('DB_NAME', default='lumberbank_db'),
+            'USER': config('DB_USER', default='lumberbank_user'),
+            'PASSWORD': config('DB_PASSWORD', default=''),
+            'HOST': config('DB_HOST', default='localhost'),
+            'PORT': config('DB_PORT', default='5432'),
+        }
+    }
 
 
 # Custom user model
@@ -111,6 +117,7 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
