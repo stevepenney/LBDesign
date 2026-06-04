@@ -65,6 +65,22 @@ def project_save(request, pk):
 
 
 @login_required
+@require_POST
+def project_duplicate(request, pk):
+    project = get_object_or_404(CutlistProject, pk=pk)
+    _assert_project_access(request.user, project)
+
+    new_project = CutlistProject.objects.create(
+        organisation=project.organisation,
+        created_by=request.user,
+        job=project.job,
+        name=f'Copy of {project.name}'[:100],
+        state=project.state,
+    )
+    return redirect('cutlist:project_edit', pk=new_project.pk)
+
+
+@login_required
 def project_print(request, pk):
     project = get_object_or_404(CutlistProject, pk=pk)
     _assert_project_access(request.user, project)

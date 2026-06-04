@@ -42,7 +42,18 @@
   .jobs-table tbody tr:hover td { background: var(--tan-bg); }
 
   .jobs-table .actions { white-space: nowrap; }
-  .jobs-table .actions a { margin-right: .5rem; font-size: 0.85rem; }
+  .jobs-table .actions a,
+  .jobs-table .actions .btn-link { margin-right: .5rem; font-size: 0.85rem; }
+  .btn-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--brown);
+    cursor: pointer;
+    text-decoration: none;
+    font-family: inherit;
+  }
+  .btn-link:hover { text-decoration: underline; }
 
   .status-badge {
     display: inline-block;
@@ -125,6 +136,10 @@
               <td class="actions">
                 <a href="{% url 'jobs:job_detail' job.pk %}">View</a>
                 <a href="{% url 'jobs:job_edit' job.pk %}">Edit</a>
+                <form method="post" action="{% url 'jobs:job_duplicate' job.pk %}" style="display:inline;">
+                  {% csrf_token %}
+                  <button type="submit" class="btn-link">Duplicate</button>
+                </form>
               </td>
             </tr>
           {% endfor %}

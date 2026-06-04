@@ -42,8 +42,12 @@
       <td style="padding:.6rem .75rem;color:#888;font-size:0.85rem;">
         {{ proj.updated_at|date:"d M Y, g:ia" }}
       </td>
-      <td style="padding:.6rem .75rem;text-align:right;">
+      <td style="padding:.6rem .75rem;text-align:right;white-space:nowrap;">
         <a href="{% url 'cutlist:project_edit' proj.pk %}" class="btn btn-secondary" style="font-size:0.8rem;padding:.3rem .8rem;">Open</a>
+        <form method="post" action="{% url 'cutlist:project_duplicate' proj.pk %}" style="display:inline;">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-secondary" style="font-size:0.8rem;padding:.3rem .8rem;">Duplicate</button>
+        </form>
         <form method="post" action="{% url 'cutlist:project_delete' proj.pk %}" style="display:inline;"
               onsubmit="return confirm('Delete {{ proj.name|escapejs }}?')">
           {% csrf_token %}

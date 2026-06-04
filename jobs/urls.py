@@ -11,6 +11,7 @@ urlpatterns = [
     path('<int:pk>/edit/',  views.job_edit,   name='job_edit'),
 
     path('<int:pk>/recalculate/', views.job_recalculate, name='job_recalculate'),
+    path('<int:pk>/duplicate/',   views.job_duplicate,   name='job_duplicate'),
 
     # Sections (nested under a job)
     path('<int:job_pk>/sections/new/',              views.section_create, name='section_create'),

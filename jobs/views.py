@@ -5,7 +5,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from core.models import FreightSettings
 from .calculations import run_job_estimate, run_subjob_calculation
 from .forms import JobForm, SectionForm, FloorRoofAreaFormSet, AdditionalBeamFormSet
-from .models import Job, Section
+from .models import Job, Section, FloorRoofArea, AdditionalBeam
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -170,6 +170,61 @@ def section_edit(request, job_pk, pk):
         'beam_formset': beam_fs,
         'action': 'Edit Section',
     })
+
+
+@login_required
+def job_duplicate(request, pk):
+    job = get_object_or_404(Job, pk=pk)
+    if not _assert_job_access(request.user, job):
+        messages.error(request, 'You do not have access to that job.')
+        return redirect('jobs:job_list')
+
+    if request.method != 'POST':
+        return redirect('jobs:job_detail', pk=pk)
+
+    new_job = Job.objects.create(
+        organisation=job.organisation,
+        created_by=request.user,
+        job_reference=f'Copy of {job.job_reference}'[:200],
+        client_name=job.client_name,
+        site_address=job.site_address,
+        status=Job.Status.ESTIMATE,
+    )
+
+    for section in job.sections.prefetch_related('areas', 'additional_beams').all():
+        new_section = Section.objects.create(
+            job=new_job,
+            label=section.label,
+            system_type=section.system_type,
+            include_boundary_joists=section.include_boundary_joists,
+            boundary_perimeter_lm=section.boundary_perimeter_lm,
+            boundary_joist_description=section.boundary_joist_description,
+            boundary_joist_product=section.boundary_joist_product,
+            include_stair_void_trimmers=section.include_stair_void_trimmers,
+            stair_void_trimmer_description=section.stair_void_trimmer_description,
+            stair_void_trimmer_product=section.stair_void_trimmer_product,
+            roof_pitch=section.roof_pitch,
+        )
+        for area in section.areas.all():
+            FloorRoofArea.objects.create(
+                section=new_section,
+                area_label=area.area_label,
+                area_m2=area.area_m2,
+                product_description=area.product_description,
+                joist_product=area.joist_product,
+                joist_spacing=area.joist_spacing,
+            )
+        for beam in section.additional_beams.all():
+            AdditionalBeam.objects.create(
+                section=new_section,
+                product_description=beam.product_description,
+                product=beam.product,
+                length_m=beam.length_m,
+                quantity=beam.quantity,
+            )
+
+    messages.success(request, f'Job duplicated as "{new_job.job_reference}".')
+    return redirect('jobs:job_detail', pk=new_job.pk)
 
 
 @login_required

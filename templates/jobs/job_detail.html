@@ -215,6 +215,10 @@
       {% csrf_token %}
       <button type="submit" class="btn btn-secondary">Recalculate</button>
     </form>
+    <form method="post" action="{% url 'jobs:job_duplicate' job.pk %}" style="display:inline;">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-secondary">Duplicate Job</button>
+    </form>
   </div>
 </div>
 
