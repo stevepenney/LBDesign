@@ -1,70 +1,108 @@
 {% extends 'base.html' %}
-{% load static %}
 
-{% block title %}Cutlist Projects{% endblock %}
+{% block title %}Cutlists{% endblock %}
+
+{% block extra_css %}
+<style>
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  .card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .cutlist-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  .cutlist-table th {
+    background: var(--brown);
+    color: var(--white);
+    padding: .6rem .75rem;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+  .cutlist-table td { padding: .6rem .75rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .cutlist-table tbody tr:last-child td { border-bottom: none; }
+  .cutlist-table tbody tr:hover td { background: var(--tan-bg); }
+  .lb-ref { font-family: monospace; font-weight: 700; color: var(--brown-dark); font-size: 0.88rem; }
+  .empty-state {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: #aaa;
+    background: var(--tan-bg);
+    border: 2px dashed var(--border);
+    border-radius: 6px;
+  }
+  .empty-state p { margin-bottom: 1.25rem; }
+  .btn-link {
+    background: none; border: none; padding: 0;
+    color: var(--brown); cursor: pointer; text-decoration: none; font-family: inherit; font-size: 0.85rem;
+  }
+  .btn-link:hover { text-decoration: underline; }
+</style>
+{% endblock %}
 
 {% block content %}
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;">
-  <h1 class="page-title" style="margin:0;">Cutlist Projects</h1>
-  <form method="post" action="{% url 'cutlist:project_new' %}">
-    {% csrf_token %}
-    <button type="submit" class="btn btn-primary">+ New Project</button>
-  </form>
+<div class="toolbar">
+  <h1 class="page-title" style="margin:0;">Cutlists</h1>
+  <a href="{% url 'projects:project_list' %}" class="btn btn-secondary">View Projects</a>
 </div>
 
-{% if projects %}
-<table style="width:100%;border-collapse:collapse;font-size:0.9rem;">
-  <thead>
-    <tr style="background:var(--tan-bg);border-bottom:2px solid var(--border);">
-      <th style="padding:.5rem .75rem;text-align:left;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#999;">Project</th>
-      <th style="padding:.5rem .75rem;text-align:left;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#999;">Linked Job</th>
-      <th style="padding:.5rem .75rem;text-align:left;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#999;">Created By</th>
-      <th style="padding:.5rem .75rem;text-align:left;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#999;">Last Updated</th>
-      <th style="padding:.5rem .75rem;"></th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for proj in projects %}
-    <tr style="border-bottom:1px solid var(--border);">
-      <td style="padding:.6rem .75rem;">
-        <a href="{% url 'cutlist:project_edit' proj.pk %}" style="font-weight:600;color:var(--brown-dark);">{{ proj.name }}</a>
-      </td>
-      <td style="padding:.6rem .75rem;color:#888;font-size:0.85rem;">
-        {% if proj.job %}
-          <a href="{% url 'jobs:job_detail' proj.job.pk %}">{{ proj.job.job_reference }}</a>
-        {% else %}
-          <span style="color:#bbb;">—</span>
-        {% endif %}
-      </td>
-      <td style="padding:.6rem .75rem;color:#888;font-size:0.85rem;">
-        {{ proj.created_by.get_full_name|default:proj.created_by.username|default:"—" }}
-      </td>
-      <td style="padding:.6rem .75rem;color:#888;font-size:0.85rem;">
-        {{ proj.updated_at|date:"d M Y, g:ia" }}
-      </td>
-      <td style="padding:.6rem .75rem;text-align:right;white-space:nowrap;">
-        <a href="{% url 'cutlist:project_edit' proj.pk %}" class="btn btn-secondary" style="font-size:0.8rem;padding:.3rem .8rem;">Open</a>
-        <form method="post" action="{% url 'cutlist:project_duplicate' proj.pk %}" style="display:inline;">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-secondary" style="font-size:0.8rem;padding:.3rem .8rem;">Duplicate</button>
-        </form>
-        <form method="post" action="{% url 'cutlist:project_delete' proj.pk %}" style="display:inline;"
-              onsubmit="return confirm('Delete {{ proj.name|escapejs }}?')">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-secondary" style="font-size:0.8rem;padding:.3rem .8rem;color:#c00;border-color:#e0a0a0;">Delete</button>
-        </form>
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<p style="color:#888;font-size:0.88rem;margin-bottom:1.5rem;">
+  To create a new cutlist, open a project and click <strong>+ New Cutlist</strong>.
+</p>
+
+{% if cutlists %}
+<div class="card">
+  <table class="cutlist-table">
+    <thead>
+      <tr>
+        <th>Cutlist Name</th>
+        <th>Project</th>
+        <th>Client</th>
+        <th>Created By</th>
+        <th>Last Updated</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for cl in cutlists %}
+      <tr>
+        <td><a href="{% url 'cutlist:project_edit' cl.pk %}" style="font-weight:600;color:var(--brown-dark);">{{ cl.name }}</a></td>
+        <td><a href="{% url 'projects:project_detail' cl.project.pk %}"><span class="lb-ref">{{ cl.project.lb_ref }}</span></a></td>
+        <td style="color:#888;font-size:0.85rem;">{{ cl.project.client_name }}</td>
+        <td style="color:#888;font-size:0.85rem;">{{ cl.created_by.get_full_name|default:cl.created_by.username|default:"—" }}</td>
+        <td style="color:#888;font-size:0.85rem;">{{ cl.updated_at|date:"d M Y, g:ia" }}</td>
+        <td style="text-align:right;white-space:nowrap;">
+          <a href="{% url 'cutlist:project_edit' cl.pk %}" style="margin-right:.5rem;font-size:0.85rem;">Open</a>
+          <form method="post" action="{% url 'cutlist:project_duplicate' cl.pk %}" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn-link" style="margin-right:.5rem;">Duplicate</button>
+          </form>
+          <form method="post" action="{% url 'cutlist:project_delete' cl.pk %}" style="display:inline;"
+                onsubmit="return confirm('Delete {{ cl.name|escapejs }}?')">
+            {% csrf_token %}
+            <button type="submit" class="btn-link" style="color:#c00;">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% else %}
-<div style="text-align:center;padding:3rem 2rem;color:#aaa;background:var(--tan-bg);border:2px dashed var(--border);border-radius:6px;">
-  <p style="margin-bottom:1.25rem;">No cutlist projects yet.</p>
-  <form method="post" action="{% url 'cutlist:project_new' %}">
-    {% csrf_token %}
-    <button type="submit" class="btn btn-primary">+ New Project</button>
-  </form>
+<div class="empty-state">
+  <p>No cutlists yet. Open a project to create one.</p>
+  <a href="{% url 'projects:project_list' %}" class="btn btn-primary">Go to Projects</a>
 </div>
 {% endif %}
 {% endblock %}
