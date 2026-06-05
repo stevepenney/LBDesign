@@ -1,8 +1,10 @@
-from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404, redirect, render
 
 from core.models import FreightSettings
+from projects.models import Project
+from projects.views import _assert_project_access
 from .calculations import run_job_estimate, run_subjob_calculation
 from .forms import JobForm, SectionForm, FloorRoofAreaFormSet, AdditionalBeamFormSet
 from .models import Job, Section, FloorRoofArea, AdditionalBeam
@@ -12,16 +14,14 @@ from .models import Job, Section, FloorRoofArea, AdditionalBeam
 
 def _get_jobs_for_user(user):
     if user.is_lb_admin or user.is_lb_detailing:
-        return Job.objects.select_related('organisation').all()
+        return Job.objects.select_related('project__organisation').all()
     if user.organisation:
-        return Job.objects.filter(organisation=user.organisation)
+        return Job.objects.filter(project__organisation=user.organisation)
     return Job.objects.none()
 
 
 def _assert_job_access(user, job):
-    if user.is_lb_admin or user.is_lb_detailing:
-        return True
-    return user.organisation and job.organisation == user.organisation
+    return _assert_project_access(user, job.project)
 
 
 # ── Job views ─────────────────────────────────────────────────────────────────
@@ -33,32 +33,35 @@ def job_list(request):
 
 
 @login_required
-def job_create(request):
-    if not request.user.organisation and not request.user.is_lb_admin:
-        messages.error(request, 'Your account is not linked to an organisation. Contact LumberBank.')
-        return redirect('jobs:job_list')
+def job_create(request, project_pk):
+    project = get_object_or_404(Project, pk=project_pk)
+    if not _assert_project_access(request.user, project):
+        messages.error(request, 'You do not have access to that project.')
+        return redirect('projects:project_list')
 
     if request.method == 'POST':
         form = JobForm(request.POST)
         if form.is_valid():
             job = form.save(commit=False)
-            job.organisation = request.user.organisation
+            job.project = project
             job.created_by = request.user
             job.save()
-            messages.success(request, f'Job "{job.job_reference}" created.')
+            messages.success(request, 'Estimate created.')
             return redirect('jobs:job_detail', pk=job.pk)
     else:
         form = JobForm()
 
-    return render(request, 'jobs/job_form.html', {'form': form, 'action': 'New Job'})
+    return render(request, 'jobs/job_form.html', {
+        'form': form, 'project': project, 'action': 'New Estimate',
+    })
 
 
 @login_required
 def job_detail(request, pk):
     job = get_object_or_404(Job, pk=pk)
     if not _assert_job_access(request.user, job):
-        messages.error(request, 'You do not have access to that job.')
-        return redirect('jobs:job_list')
+        messages.error(request, 'You do not have access to that estimate.')
+        return redirect('projects:project_list')
     sections = job.sections.prefetch_related('areas', 'additional_beams').all()
     return render(request, 'jobs/job_detail.html', {
         'job': job,
@@ -71,19 +74,21 @@ def job_detail(request, pk):
 def job_edit(request, pk):
     job = get_object_or_404(Job, pk=pk)
     if not _assert_job_access(request.user, job):
-        messages.error(request, 'You do not have access to that job.')
-        return redirect('jobs:job_list')
+        messages.error(request, 'You do not have access to that estimate.')
+        return redirect('projects:project_list')
 
     if request.method == 'POST':
         form = JobForm(request.POST, instance=job)
         if form.is_valid():
             form.save()
-            messages.success(request, f'Job "{job.job_reference}" updated.')
+            messages.success(request, 'Estimate updated.')
             return redirect('jobs:job_detail', pk=job.pk)
     else:
         form = JobForm(instance=job)
 
-    return render(request, 'jobs/job_form.html', {'form': form, 'job': job, 'action': 'Edit Job'})
+    return render(request, 'jobs/job_form.html', {
+        'form': form, 'job': job, 'project': job.project, 'action': 'Edit Estimate',
+    })
 
 
 # ── Section views ─────────────────────────────────────────────────────────────
@@ -92,8 +97,8 @@ def job_edit(request, pk):
 def job_recalculate(request, pk):
     job = get_object_or_404(Job, pk=pk)
     if not _assert_job_access(request.user, job):
-        messages.error(request, 'You do not have access to that job.')
-        return redirect('jobs:job_list')
+        messages.error(request, 'You do not have access to that estimate.')
+        return redirect('projects:project_list')
     if request.method == 'POST':
         run_job_estimate(job)
         messages.success(request, 'Estimate recalculated.')
@@ -104,8 +109,8 @@ def job_recalculate(request, pk):
 def section_create(request, job_pk):
     job = get_object_or_404(Job, pk=job_pk)
     if not _assert_job_access(request.user, job):
-        messages.error(request, 'You do not have access to that job.')
-        return redirect('jobs:job_list')
+        messages.error(request, 'You do not have access to that estimate.')
+        return redirect('projects:project_list')
 
     if request.method == 'POST':
         form = SectionForm(request.POST)
@@ -142,8 +147,8 @@ def section_edit(request, job_pk, pk):
     job = get_object_or_404(Job, pk=job_pk)
     section = get_object_or_404(Section, pk=pk, job=job)
     if not _assert_job_access(request.user, job):
-        messages.error(request, 'You do not have access to that job.')
-        return redirect('jobs:job_list')
+        messages.error(request, 'You do not have access to that estimate.')
+        return redirect('projects:project_list')
 
     if request.method == 'POST':
         form = SectionForm(request.POST, instance=section)
@@ -176,19 +181,16 @@ def section_edit(request, job_pk, pk):
 def job_duplicate(request, pk):
     job = get_object_or_404(Job, pk=pk)
     if not _assert_job_access(request.user, job):
-        messages.error(request, 'You do not have access to that job.')
-        return redirect('jobs:job_list')
+        messages.error(request, 'You do not have access to that estimate.')
+        return redirect('projects:project_list')
 
     if request.method != 'POST':
         return redirect('jobs:job_detail', pk=pk)
 
     new_job = Job.objects.create(
-        organisation=job.organisation,
-        created_by=request.user,
-        job_reference=f'Copy of {job.job_reference}'[:200],
-        client_name=job.client_name,
-        site_address=job.site_address,
-        status=Job.Status.ESTIMATE,
+        project    = job.project,
+        created_by = request.user,
+        label      = f'Copy of {job.label}' if job.label else 'Copy',
     )
 
     for section in job.sections.prefetch_related('areas', 'additional_beams').all():
@@ -223,7 +225,7 @@ def job_duplicate(request, pk):
                 quantity=beam.quantity,
             )
 
-    messages.success(request, f'Job duplicated as "{new_job.job_reference}".')
+    messages.success(request, 'Estimate duplicated.')
     return redirect('jobs:job_detail', pk=new_job.pk)
 
 
@@ -232,8 +234,8 @@ def section_delete(request, job_pk, pk):
     job = get_object_or_404(Job, pk=job_pk)
     section = get_object_or_404(Section, pk=pk, job=job)
     if not _assert_job_access(request.user, job):
-        messages.error(request, 'You do not have access to that job.')
-        return redirect('jobs:job_list')
+        messages.error(request, 'You do not have access to that estimate.')
+        return redirect('projects:project_list')
 
     if request.method == 'POST':
         label = section.label

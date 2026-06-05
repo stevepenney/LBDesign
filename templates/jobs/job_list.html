@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Jobs{% endblock %}
+{% block title %}Estimates{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -12,13 +12,7 @@
     flex-wrap: wrap;
     gap: 1rem;
   }
-
-  .jobs-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.92rem;
-  }
-
+  .jobs-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
   .jobs-table th {
     background: var(--brown);
     color: var(--white);
@@ -30,68 +24,28 @@
     letter-spacing: .05em;
     white-space: nowrap;
   }
-
-  .jobs-table td {
-    padding: .75rem 1rem;
-    border-bottom: 1px solid var(--border);
-    vertical-align: middle;
-  }
-
+  .jobs-table td { padding: .75rem 1rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
   .jobs-table tbody tr:last-child td { border-bottom: none; }
-
   .jobs-table tbody tr:hover td { background: var(--tan-bg); }
-
   .jobs-table .actions { white-space: nowrap; }
-  .jobs-table .actions a,
-  .jobs-table .actions .btn-link { margin-right: .5rem; font-size: 0.85rem; }
+  .jobs-table .actions a, .jobs-table .actions .btn-link { margin-right: .5rem; font-size: 0.85rem; }
   .btn-link {
-    background: none;
-    border: none;
-    padding: 0;
-    color: var(--brown);
-    cursor: pointer;
-    text-decoration: none;
-    font-family: inherit;
+    background: none; border: none; padding: 0;
+    color: var(--brown); cursor: pointer; text-decoration: none; font-family: inherit;
   }
   .btn-link:hover { text-decoration: underline; }
-
-  .status-badge {
-    display: inline-block;
-    padding: .2rem .65rem;
-    border-radius: 20px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .05em;
-  }
-  .status-estimate        { background: #e8f0fb; color: #1a3c6e; }
-  .status-drawing_uploaded { background: #fef7e6; color: #7a5800; }
-  .status-order_placed    { background: #eaf3e4; color: #3d5c1e; }
-
-  .empty-state {
-    text-align: center;
-    padding: 4rem 2rem;
-    color: #aaa;
-  }
-  .empty-state p { margin-bottom: 1.5rem; font-size: 1.05rem; }
-
-  .card {
-    background: var(--white);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    box-shadow: var(--shadow);
-    overflow: hidden;
-  }
-
-  /* LB Admin org column */
+  .lb-ref { font-family: monospace; font-weight: 700; font-size: 0.9rem; }
   .org-col { color: var(--brown); font-size: 0.85rem; }
+  .card { background: var(--white); border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--shadow); overflow: hidden; }
+  .empty-state { text-align: center; padding: 4rem 2rem; color: #aaa; }
+  .empty-state p { margin-bottom: 1.5rem; font-size: 1.05rem; }
 </style>
 {% endblock %}
 
 {% block content %}
   <div class="toolbar">
-    <h1 class="page-title" style="margin-bottom:0">Jobs</h1>
-    <a href="{% url 'jobs:job_create' %}" class="btn btn-primary">+ New Job</a>
+    <h1 class="page-title" style="margin-bottom:0">Estimates</h1>
+    <a href="{% url 'projects:project_list' %}" class="btn btn-secondary">View Projects</a>
   </div>
 
   {% if jobs %}
@@ -99,13 +53,13 @@
       <table class="jobs-table">
         <thead>
           <tr>
-            <th>Job Reference</th>
+            <th>LB Job #</th>
             <th>Client</th>
+            <th>Label</th>
             <th>Site Address</th>
             {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
               <th>Organisation</th>
             {% endif %}
-            <th>Status</th>
             <th style="text-align:right;">Total (excl. GST)</th>
             <th>Created</th>
             <th></th>
@@ -114,23 +68,15 @@
         <tbody>
           {% for job in jobs %}
             <tr>
-              <td><a href="{% url 'jobs:job_detail' job.pk %}"><strong>{{ job.job_reference }}</strong></a></td>
-              <td>{{ job.client_name }}</td>
-              <td style="max-width:220px;">{{ job.site_address|truncatechars:60 }}</td>
+              <td><a href="{% url 'jobs:job_detail' job.pk %}"><span class="lb-ref">{{ job.project.lb_ref }}</span></a></td>
+              <td>{{ job.project.client_name }}</td>
+              <td>{{ job.label|default:"—" }}</td>
+              <td style="max-width:200px;">{{ job.project.site_address|truncatechars:50 }}</td>
               {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
-                <td class="org-col">{{ job.organisation.name }}</td>
+                <td class="org-col">{{ job.project.organisation.name }}</td>
               {% endif %}
-              <td>
-                <span class="status-badge status-{{ job.status }}">
-                  {{ job.get_status_display }}
-                </span>
-              </td>
               <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">
-                {% if job.subtotal %}
-                  ${{ job.total|floatformat:2 }}
-                {% else %}
-                  <span style="color:#bbb;">&mdash;</span>
-                {% endif %}
+                {% if job.subtotal %}${{ job.total|floatformat:2 }}{% else %}<span style="color:#bbb;">&mdash;</span>{% endif %}
               </td>
               <td style="color:#888; font-size:0.85rem;">{{ job.created_at|date:"d M Y" }}</td>
               <td class="actions">
@@ -150,8 +96,8 @@
   {% else %}
     <div class="card">
       <div class="empty-state">
-        <p>No jobs yet. Create your first job to get started.</p>
-        <a href="{% url 'jobs:job_create' %}" class="btn btn-primary">+ New Job</a>
+        <p>No estimates yet. Create a project first, then add an estimate.</p>
+        <a href="{% url 'projects:project_create' %}" class="btn btn-primary">+ New Project</a>
       </div>
     </div>
   {% endif %}

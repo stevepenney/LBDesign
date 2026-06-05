@@ -4,19 +4,13 @@ from django.conf import settings
 
 class Job(models.Model):
     """
-    Top-level record representing a construction project.
-    Belongs to a single merchant Organisation.
+    A single estimate (set of sections + freight) belonging to a Project.
+    One project may have multiple estimates for optioneering purposes.
     """
-
-    class Status(models.TextChoices):
-        ESTIMATE = 'estimate', 'Estimate'
-        DRAWING_UPLOADED = 'drawing_uploaded', 'Drawing Uploaded'
-        ORDER_PLACED = 'order_placed', 'Order Placed'
-
-    organisation = models.ForeignKey(
-        'accounts.Organisation',
-        on_delete=models.PROTECT,
-        related_name='jobs',
+    project = models.ForeignKey(
+        'projects.Project',
+        on_delete=models.CASCADE,
+        related_name='estimates',
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -24,12 +18,11 @@ class Job(models.Model):
         null=True,
         related_name='created_jobs',
     )
-    job_reference = models.CharField(max_length=200)
-    client_name = models.CharField(max_length=200)
-    site_address = models.TextField()
-    status = models.CharField(max_length=30, choices=Status, default=Status.ESTIMATE)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    label = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Optional label to distinguish multiple estimates on the same project, e.g. 'Option A'.",
+    )
 
     # Freight applied at job level (stored after calculation)
     freight_charge = models.DecimalField(
@@ -45,11 +38,17 @@ class Job(models.Model):
         blank=True,
     )
 
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
     class Meta:
         ordering = ['-created_at']
+        verbose_name = 'Estimate'
+        verbose_name_plural = 'Estimates'
 
     def __str__(self):
-        return f'{self.job_reference} — {self.client_name}'
+        label_part = f' ({self.label})' if self.label else ''
+        return f'{self.project.lb_ref}{label_part}'
 
     @property
     def subtotal(self):
@@ -67,7 +66,7 @@ class Job(models.Model):
 
 class Section(models.Model):
     """
-    A discrete floor or roof framing system within a Job (e.g. Unit 1 Midfloor,
+    A discrete floor or roof framing system within an estimate (e.g. Unit 1 Midfloor,
     Unit 1 Roof). Each section has its own areas, beams, and calculated subtotal.
     """
 
@@ -132,7 +131,7 @@ class Section(models.Model):
         verbose_name_plural = 'sections'
 
     def __str__(self):
-        return f'{self.job.job_reference} / {self.label}'
+        return f'{self.job.project.lb_ref} / {self.label}'
 
     @property
     def is_midfloor(self):
@@ -218,7 +217,7 @@ class AdditionalBeam(models.Model):
 
 class DrawingUpload(models.Model):
     """
-    Files uploaded against a job by a merchant user.
+    Files uploaded against an estimate by a merchant user.
     Upload triggers an email notification to the Lumberbank detailing team.
     """
     job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='drawing_uploads')
@@ -235,4 +234,4 @@ class DrawingUpload(models.Model):
         ordering = ['-uploaded_at']
 
     def __str__(self):
-        return f'{self.original_filename} ({self.job.job_reference})'
+        return f'{self.original_filename} ({self.job.project.lb_ref})'

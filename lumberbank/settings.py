@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'widget_tweaks',
     # Local apps
     'accounts',
+    'projects',
     'jobs',
     'products',
     'core',
@@ -90,7 +91,7 @@ else:
 AUTH_USER_MODEL = 'accounts.User'
 
 LOGIN_URL = 'accounts:login'
-LOGIN_REDIRECT_URL = 'jobs:job_list'
+LOGIN_REDIRECT_URL = 'projects:project_list'
 LOGOUT_REDIRECT_URL = 'accounts:login'
 
 

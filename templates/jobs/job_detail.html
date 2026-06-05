@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}{{ job.job_reference }}{% endblock %}
+{% block title %}{{ job.project.lb_ref }}{% if job.label %} — {{ job.label }}{% endif %}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -12,21 +12,9 @@
     gap: 1rem;
     margin-bottom: 1.75rem;
   }
-  .job-header__title { font-size: 1.6rem; font-weight: 700; color: var(--brown-dark); }
-  .job-header__meta  { font-size: 0.85rem; color: #888; margin-top: .25rem; }
-
-  .status-badge {
-    display: inline-block;
-    padding: .25rem .75rem;
-    border-radius: 20px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .05em;
-  }
-  .status-estimate         { background: #e8f0fb; color: #1a3c6e; }
-  .status-drawing_uploaded { background: #fef7e6; color: #7a5800; }
-  .status-order_placed     { background: #eaf3e4; color: #3d5c1e; }
+  .job-header__lb    { font-size: 1.5rem; font-weight: 700; color: var(--brown-dark); font-family: monospace; }
+  .job-header__label { font-size: 1rem; color: var(--charcoal); margin-top: .1rem; }
+  .job-header__meta  { font-size: 0.82rem; color: #888; margin-top: .2rem; }
 
   .detail-grid {
     display: grid;
@@ -61,7 +49,7 @@
 
   .detail-row { margin-bottom: .85rem; }
   .detail-row:last-child { margin-bottom: 0; }
-  .detail-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: #999; margin-bottom: .2rem; }
+  .detail-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: #999; margin-bottom: .2rem; }
   .detail-value { font-size: 0.95rem; color: var(--brown-dark); white-space: pre-line; }
 
   .section-toolbar {
@@ -79,7 +67,6 @@
     flex: 1;
   }
 
-  /* Sub-job cards */
   .subjob-card {
     background: var(--white);
     border: 1px solid var(--border);
@@ -112,10 +99,8 @@
   .subjob-card__actions a:hover { color: var(--white); text-decoration: none; }
   .subjob-card__actions .del-link { color: rgba(255,120,120,.8); }
   .subjob-card__actions .del-link:hover { color: #ff8888; }
-
   .subjob-card__body { padding: 1rem; }
 
-  /* Areas table */
   .areas-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-bottom: .75rem; }
   .areas-table th {
     background: var(--tan-bg);
@@ -150,37 +135,15 @@
   }
   .subtotal-row strong { color: var(--brown-dark); font-size: 1rem; }
 
-  /* Estimate summary table */
-  .summary-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.9rem;
-  }
-  .summary-table td {
-    padding: .45rem 1rem;
-    color: var(--brown-dark);
-  }
-  .summary-amount {
-    text-align: right;
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-  }
-  .summary-nil { color: #aaa; }
+  .summary-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  .summary-table td { padding: .45rem 1rem; color: var(--brown-dark); }
+  .summary-amount { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .summary-nil     { color: #aaa; }
   .summary-partial { color: #b27000; font-size: .8rem; }
-  .summary-empty { color: #aaa; font-style: italic; text-align: center; padding: 1rem !important; }
-  .summary-rule td {
-    border-top: 1px solid var(--border);
-    padding: 0 !important;
-  }
-  .summary-subtotal td {
-    padding-top: .55rem;
-    font-weight: 600;
-    color: var(--charcoal);
-  }
-  .summary-total td {
-    padding-top: .55rem;
-    font-size: 1rem;
-  }
+  .summary-empty   { color: #aaa; font-style: italic; text-align: center; padding: 1rem !important; }
+  .summary-rule td { border-top: 1px solid var(--border); padding: 0 !important; }
+  .summary-subtotal td { padding-top: .55rem; font-weight: 600; color: var(--charcoal); }
+  .summary-total td { padding-top: .55rem; font-size: 1rem; }
 
   .empty-state {
     text-align: center;
@@ -196,49 +159,59 @@
 
 {% block content %}
 <div style="margin-bottom:1rem;">
-  <a href="{% url 'jobs:job_list' %}" style="font-size:.88rem;">&larr; Back to Jobs</a>
+  <a href="{% url 'projects:project_detail' job.project.pk %}" style="font-size:.88rem;">&larr; Back to {{ job.project.lb_ref }}</a>
 </div>
 
-<!-- Job header -->
+<!-- Estimate header -->
 <div class="job-header">
   <div>
-    <div class="job-header__title">{{ job.job_reference }}</div>
+    <div class="job-header__lb">{{ job.project.lb_ref }}</div>
+    {% if job.label %}<div class="job-header__label">{{ job.label }}</div>{% endif %}
     <div class="job-header__meta">
-      {{ job.organisation.name }} &mdash; created {{ job.created_at|date:"d M Y" }}
+      {{ job.project.client_name }} &mdash; {{ job.project.organisation.name }}
+      &mdash; created {{ job.created_at|date:"d M Y" }}
       {% if job.created_by %} by {{ job.created_by.get_full_name|default:job.created_by.username }}{% endif %}
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
-    <span class="status-badge status-{{ job.status }}">{{ job.get_status_display }}</span>
-    <a href="{% url 'jobs:job_edit' job.pk %}" class="btn btn-secondary">Edit Job</a>
+    <a href="{% url 'jobs:job_edit' job.pk %}" class="btn btn-secondary">Edit Estimate</a>
     <form method="post" action="{% url 'jobs:job_recalculate' job.pk %}" style="display:inline;">
       {% csrf_token %}
       <button type="submit" class="btn btn-secondary">Recalculate</button>
     </form>
     <form method="post" action="{% url 'jobs:job_duplicate' job.pk %}" style="display:inline;">
       {% csrf_token %}
-      <button type="submit" class="btn btn-secondary">Duplicate Job</button>
+      <button type="submit" class="btn btn-secondary">Duplicate</button>
     </form>
   </div>
 </div>
 
-<!-- Project details + summary -->
+<!-- Details + summary -->
 <div class="detail-grid">
   <div class="card">
-    <div class="card__header">Project Details</div>
+    <div class="card__header">
+      Project Details
+      <a href="{% url 'projects:project_detail' job.project.pk %}">View project &rarr;</a>
+    </div>
     <div class="card__body">
       <div class="detail-row">
         <div class="detail-label">Client Name</div>
-        <div class="detail-value">{{ job.client_name }}</div>
+        <div class="detail-value">{{ job.project.client_name }}</div>
       </div>
       <div class="detail-row">
         <div class="detail-label">Site Address</div>
-        <div class="detail-value">{{ job.site_address }}</div>
+        <div class="detail-value">{{ job.project.site_address }}</div>
       </div>
       <div class="detail-row">
         <div class="detail-label">Merchant</div>
-        <div class="detail-value">{{ job.organisation.name }}</div>
+        <div class="detail-value">{{ job.project.organisation.name }}</div>
       </div>
+      {% if job.project.merchant_reference %}
+      <div class="detail-row">
+        <div class="detail-label">Your Reference</div>
+        <div class="detail-value">{{ job.project.merchant_reference }}</div>
+      </div>
+      {% endif %}
     </div>
   </div>
 
@@ -263,28 +236,23 @@
         {% endfor %}
 
         <tr class="summary-rule"><td colspan="2"></td></tr>
-
         <tr class="summary-subtotal">
           <td>Subtotal (excl. GST)</td>
           <td class="summary-amount">${{ job.subtotal|floatformat:2 }}</td>
         </tr>
-
         {% if job.freight_charge %}
         <tr>
           <td>Freight</td>
           <td class="summary-amount">${{ job.freight_charge|floatformat:2 }}</td>
         </tr>
         {% endif %}
-
         {% if job.freight_surcharge %}
         <tr>
           <td>Freight surcharge{% if freight_settings.surcharge_enabled %} at {{ freight_settings.surcharge_percentage }}%{% endif %}</td>
           <td class="summary-amount">${{ job.freight_surcharge|floatformat:2 }}</td>
         </tr>
         {% endif %}
-
         <tr class="summary-rule"><td colspan="2"></td></tr>
-
         <tr class="summary-total">
           <td>Total (excl. GST)</td>
           <td class="summary-amount"><strong>${{ job.total|floatformat:2 }}</strong></td>
@@ -294,7 +262,7 @@
   </div>
 </div>
 
-<!-- Sub-jobs -->
+<!-- Sections -->
 <div class="section-toolbar">
   <div class="section-title">Sections</div>
   <a href="{% url 'jobs:section_create' job.pk %}" class="btn btn-primary" style="margin-left:1rem;">+ Add Section</a>
@@ -312,18 +280,9 @@
       </div>
     </div>
     <div class="subjob-card__body">
-
-      <!-- Areas -->
       {% if sj.areas.all %}
       <table class="areas-table">
-        <thead>
-          <tr>
-            <th>Area</th>
-            <th>Area (m²)</th>
-            <th>Joist / Rafter</th>
-            <th>Spacing</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Area</th><th>Area (m²)</th><th>Joist / Rafter</th><th>Spacing</th></tr></thead>
         <tbody>
           {% for area in sj.areas.all %}
           <tr>
@@ -337,7 +296,6 @@
       </table>
       {% endif %}
 
-      <!-- Flags / options -->
       <div class="flag-list">
         {% if sj.is_midfloor %}
           {% if sj.include_boundary_joists %}
@@ -352,14 +310,11 @@
         {% endif %}
       </div>
 
-      <!-- Additional beams -->
       {% if sj.additional_beams.all %}
       <div style="margin-top:.75rem;">
         <div class="detail-label" style="margin-bottom:.4rem;">Additional Beams</div>
         <table class="areas-table">
-          <thead>
-            <tr><th>Member</th><th>Length (m)</th><th>Qty</th></tr>
-          </thead>
+          <thead><tr><th>Member</th><th>Length (m)</th><th>Qty</th></tr></thead>
           <tbody>
             {% for beam in sj.additional_beams.all %}
             <tr>
@@ -373,7 +328,6 @@
       </div>
       {% endif %}
 
-      <!-- Sub-total -->
       <div class="subtotal-row">
         Sub-total:
         {% if sj.calculated_subtotal is not None %}
@@ -385,16 +339,14 @@
           <strong>—</strong> <span style="font-size:.8rem;color:#aaa;">(products not yet priced)</span>
         {% endif %}
       </div>
-
     </div>
   </div>
   {% endfor %}
 
 {% else %}
   <div class="empty-state">
-    <p>No sub-jobs yet. Add a sub-job to start the estimate.</p>
+    <p>No sections yet. Add a section to start the estimate.</p>
     <a href="{% url 'jobs:section_create' job.pk %}" class="btn btn-primary">+ Add Section</a>
   </div>
 {% endif %}
-
 {% endblock %}

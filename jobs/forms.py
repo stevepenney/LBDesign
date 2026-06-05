@@ -9,11 +9,12 @@ class JobForm(forms.ModelForm):
 
     class Meta:
         model = Job
-        fields = ['job_reference', 'client_name', 'site_address']
+        fields = ['label']
         widgets = {
-            'job_reference': forms.TextInput(attrs={'placeholder': 'e.g. 2026-042 or Smith Residence'}),
-            'client_name':   forms.TextInput(attrs={'placeholder': 'e.g. Smith Construction Ltd'}),
-            'site_address':  forms.Textarea(attrs={'rows': 3, 'placeholder': '12 Example Street, Auckland'}),
+            'label': forms.TextInput(attrs={'placeholder': "e.g. Option A, Revised — leave blank for a single estimate"}),
+        }
+        labels = {
+            'label': 'Estimate Label (optional)',
         }
 
 

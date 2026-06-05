@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+{% load widget_tweaks %}
+
+{% block title %}{{ action }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .form-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    max-width: 680px;
+  }
+  .form-card__header {
+    background: var(--brown);
+    color: var(--white);
+    padding: 1rem 1.5rem;
+    border-radius: 6px 6px 0 0;
+    font-weight: 700;
+    font-size: 1rem;
+    letter-spacing: .02em;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .form-card__header .lb-ref {
+    font-family: monospace;
+    font-size: 1rem;
+    opacity: .85;
+  }
+  .form-card__body { padding: 1.75rem 1.5rem; }
+  .form-group { margin-bottom: 1.25rem; }
+  .form-group label {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--charcoal);
+    margin-bottom: .4rem;
+  }
+  .form-group .required-star { color: #b20000; margin-left: .15rem; }
+  .form-control {
+    width: 100%;
+    padding: .6rem .85rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 1rem;
+    color: var(--brown-dark);
+    background: var(--white);
+    transition: border-color .15s;
+    box-sizing: border-box;
+  }
+  .form-control:focus { outline: none; border-color: var(--brown); }
+  textarea.form-control { resize: vertical; }
+  .form-error { color: #b20000; font-size: 0.82rem; margin-top: .3rem; }
+  .form-card__footer {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: var(--tan-bg);
+    border-radius: 0 0 6px 6px;
+  }
+  .form-hint { font-size: 0.78rem; color: #888; margin-top: .25rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+  <div style="margin-bottom:1rem;">
+    <a href="{% url 'projects:project_list' %}" style="font-size:0.88rem;">&larr; Back to Projects</a>
+  </div>
+
+  <div class="form-card">
+    <div class="form-card__header">
+      {{ action }}
+      {% if project %}<span class="lb-ref">{{ project.lb_ref }}</span>{% endif %}
+    </div>
+    <form method="post" class="form-card__body">
+      {% csrf_token %}
+
+      <div class="form-group">
+        <label for="{{ form.client_name.id_for_label }}">Client Name <span class="required-star">*</span></label>
+        {% render_field form.client_name class="form-control" %}
+        {% if form.client_name.errors %}<div class="form-error">{{ form.client_name.errors|join:", " }}</div>{% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="{{ form.site_address.id_for_label }}">Site Address <span class="required-star">*</span></label>
+        {% render_field form.site_address class="form-control" %}
+        {% if form.site_address.errors %}<div class="form-error">{{ form.site_address.errors|join:", " }}</div>{% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="{{ form.merchant_reference.id_for_label }}">Your Job Reference</label>
+        {% render_field form.merchant_reference class="form-control" %}
+        <div class="form-hint">Your own internal reference or job number (optional).</div>
+        {% if form.merchant_reference.errors %}<div class="form-error">{{ form.merchant_reference.errors|join:", " }}</div>{% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="{{ form.status.id_for_label }}">Status <span class="required-star">*</span></label>
+        {% render_field form.status class="form-control" %}
+        {% if form.status.errors %}<div class="form-error">{{ form.status.errors|join:", " }}</div>{% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="{{ form.notes.id_for_label }}">Notes</label>
+        {% render_field form.notes class="form-control" %}
+        {% if form.notes.errors %}<div class="form-error">{{ form.notes.errors|join:", " }}</div>{% endif %}
+      </div>
+
+      <div class="form-card__footer">
+        <button type="submit" class="btn btn-primary">Save Project</button>
+        {% if project %}
+          <a href="{% url 'projects:project_detail' project.pk %}" class="btn btn-secondary">Cancel</a>
+        {% else %}
+          <a href="{% url 'projects:project_list' %}" class="btn btn-secondary">Cancel</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+{% endblock %}

@@ -36,19 +36,17 @@ class SectionInline(admin.StackedInline):
 
 @admin.register(Job)
 class JobAdmin(admin.ModelAdmin):
-    list_display = ['job_reference', 'client_name', 'organisation', 'status', 'created_at']
-    list_filter = ['status', 'organisation']
-    search_fields = ['job_reference', 'client_name', 'site_address']
+    list_display  = ['__str__', 'project', 'created_at']
+    list_filter   = ['project__organisation']
+    search_fields = ['label', 'project__client_name', 'project__site_address', 'project__lb_job_number']
     readonly_fields = ['created_at', 'updated_at', 'freight_charge', 'freight_surcharge']
     inlines = [SectionInline, DrawingUploadInline]
 
 
 @admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
-    list_display = ['label', 'job', 'system_type', 'calculated_subtotal']
-    list_filter = ['system_type']
-    search_fields = ['label', 'job__job_reference']
+    list_display  = ['label', 'job', 'system_type', 'calculated_subtotal']
+    list_filter   = ['system_type']
+    search_fields = ['label', 'job__project__client_name']
     readonly_fields = ['calculated_subtotal', 'member_schedule']
     inlines = [FloorRoofAreaInline, AdditionalBeamInline]
-
-

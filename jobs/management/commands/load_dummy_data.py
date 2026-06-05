@@ -23,6 +23,7 @@ from core.models import RoofPitch
 from jobs.calculations import run_subjob_calculation
 from jobs.models import Job, Section, FloorRoofArea, AdditionalBeam
 from products.models import Product
+from projects.models import Project
 
 
 # ── Dummy data pools ─────────────────────────────────────────────────────────
@@ -191,7 +192,7 @@ class Command(BaseCommand):
 
             primary_user = users_created[0]
 
-            # ── Jobs ───────────────────────────────────────────────────────
+            # ── Projects + Estimates ───────────────────────────────────────
             num_jobs = rng.randint(1, 5)
             for j in range(num_jobs):
                 client  = rng.choice(CLIENT_NAMES)
@@ -199,21 +200,26 @@ class Command(BaseCommand):
                 ref     = f'2026-{job_counter:03d}'
                 job_counter += 1
                 status_choice = rng.choice([
-                    Job.Status.ESTIMATE,
-                    Job.Status.ESTIMATE,
-                    Job.Status.ESTIMATE,
-                    Job.Status.DRAWING_UPLOADED,
+                    Project.Status.PRELIMINARY,
+                    Project.Status.PRELIMINARY,
+                    Project.Status.PRELIMINARY,
+                    Project.Status.QUOTING,
                 ])
+                creator = rng.choice(users_created)
 
-                job = Job.objects.create(
-                    organisation=org,
-                    created_by=rng.choice(users_created),
-                    job_reference=ref,
-                    client_name=client,
-                    site_address=address,
-                    status=status_choice,
+                project = Project.objects.create(
+                    organisation       = org,
+                    created_by         = creator,
+                    merchant_reference = ref,
+                    client_name        = client,
+                    site_address       = address,
+                    status             = status_choice,
                 )
-                self.stdout.write(f'    Job: {ref} — {client}')
+                job = Job.objects.create(
+                    project    = project,
+                    created_by = creator,
+                )
+                self.stdout.write(f'    Project: {project.lb_ref} ({ref}) — {client}')
 
                 # ── Sections ──────────────────────────────────────────────
                 num_sections = rng.randint(1, 3)

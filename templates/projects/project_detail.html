@@ -1,0 +1,272 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ project.lb_ref }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .project-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+  }
+  .project-header__lb   { font-size: 1.6rem; font-weight: 700; color: var(--brown-dark); font-family: monospace; }
+  .project-header__name { font-size: 1.1rem; color: var(--charcoal); margin-top: .15rem; }
+  .project-header__meta { font-size: 0.82rem; color: #888; margin-top: .2rem; }
+
+  .status-badge {
+    display: inline-block;
+    padding: .25rem .75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .status-preliminary { background: #eef2ff; color: #3730a3; }
+  .status-quoting     { background: #fef7e6; color: #7a5800; }
+  .status-quoted      { background: #e8f0fb; color: #1a3c6e; }
+  .status-ordered     { background: #eaf3e4; color: #3d5c1e; }
+  .status-supplied    { background: #d1fae5; color: #065f46; }
+  .status-on_hold     { background: #f3f4f6; color: #6b7280; }
+  .status-cancelled   { background: #fee2e2; color: #991b1b; }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+    margin-bottom: 1.75rem;
+  }
+  @media (max-width: 600px) { .detail-grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .card__header {
+    background: var(--brown);
+    color: var(--white);
+    padding: .6rem 1rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .card__header a { color: rgba(255,255,255,.85); font-size: 0.75rem; font-weight: 600; }
+  .card__header a:hover { color: var(--white); text-decoration: none; }
+  .card__body { padding: 1rem; }
+
+  .detail-row { margin-bottom: .85rem; }
+  .detail-row:last-child { margin-bottom: 0; }
+  .detail-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: #999; margin-bottom: .2rem; }
+  .detail-value { font-size: 0.95rem; color: var(--brown-dark); white-space: pre-line; }
+
+  .section-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  .section-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--brown-dark);
+    padding-bottom: .4rem;
+    border-bottom: 2px solid var(--border);
+    flex: 1;
+  }
+
+  .item-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  .item-table th {
+    background: var(--tan-bg);
+    color: var(--charcoal);
+    padding: .4rem .75rem;
+    text-align: left;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .item-table td { padding: .55rem .75rem; border-bottom: 1px solid var(--border); }
+  .item-table tbody tr:last-child td { border-bottom: none; }
+  .item-table tbody tr:hover td { background: var(--tan-bg); }
+  .item-table .actions a { margin-right: .5rem; font-size: 0.82rem; }
+
+  .empty-state {
+    text-align: center;
+    padding: 2.5rem 2rem;
+    color: #aaa;
+    background: var(--tan-bg);
+    border: 2px dashed var(--border);
+    border-radius: 6px;
+    margin-bottom: 1.5rem;
+  }
+  .empty-state p { margin-bottom: 1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:1rem;">
+  <a href="{% url 'projects:project_list' %}" style="font-size:.88rem;">&larr; Back to Projects</a>
+</div>
+
+<!-- Project header -->
+<div class="project-header">
+  <div>
+    <div class="project-header__lb">{{ project.lb_ref }}</div>
+    <div class="project-header__name">{{ project.client_name }}</div>
+    <div class="project-header__meta">
+      {{ project.organisation.name }}
+      {% if project.merchant_reference %} &mdash; Ref: {{ project.merchant_reference }}{% endif %}
+      &mdash; created {{ project.created_at|date:"d M Y" }}
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+    <span class="status-badge status-{{ project.status }}">{{ project.get_status_display }}</span>
+    <a href="{% url 'projects:project_edit' project.pk %}" class="btn btn-secondary">Edit Project</a>
+  </div>
+</div>
+
+<!-- Project details -->
+<div class="detail-grid">
+  <div class="card">
+    <div class="card__header">Project Details</div>
+    <div class="card__body">
+      <div class="detail-row">
+        <div class="detail-label">Site Address</div>
+        <div class="detail-value">{{ project.site_address }}</div>
+      </div>
+      {% if project.notes %}
+      <div class="detail-row">
+        <div class="detail-label">Notes</div>
+        <div class="detail-value">{{ project.notes }}</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card__header">Activity</div>
+    <div class="card__body">
+      <div class="detail-row">
+        <div class="detail-label">Estimates</div>
+        <div class="detail-value">{{ estimates.count }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Cutlists</div>
+        <div class="detail-value">{{ cutlists.count }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Merchant</div>
+        <div class="detail-value">{{ project.organisation.name }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Estimates -->
+<div class="section-toolbar" style="margin-top:1.5rem;">
+  <div class="section-title">Estimates</div>
+  <a href="{% url 'jobs:job_create' project.pk %}" class="btn btn-primary" style="margin-left:1rem;">+ New Estimate</a>
+</div>
+
+{% if estimates %}
+  <div class="card" style="margin-bottom:1.75rem;">
+    <table class="item-table">
+      <thead>
+        <tr>
+          <th>Label</th>
+          <th>Sections</th>
+          <th style="text-align:right;">Total (excl. GST)</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for est in estimates %}
+        <tr>
+          <td><a href="{% url 'jobs:job_detail' est.pk %}"><strong>{{ est.label|default:"(unlabelled)" }}</strong></a></td>
+          <td>{{ est.sections.count }}</td>
+          <td style="text-align:right; font-variant-numeric:tabular-nums;">
+            {% if est.subtotal %}${{ est.total|floatformat:2 }}{% else %}<span style="color:#bbb;">&mdash;</span>{% endif %}
+          </td>
+          <td style="color:#888; font-size:0.85rem;">{{ est.created_at|date:"d M Y" }}</td>
+          <td class="actions">
+            <a href="{% url 'jobs:job_detail' est.pk %}">View</a>
+            <a href="{% url 'jobs:job_edit' est.pk %}">Edit</a>
+            <form method="post" action="{% url 'jobs:job_duplicate' est.pk %}" style="display:inline;">
+              {% csrf_token %}
+              <button type="submit" class="btn-link">Duplicate</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="empty-state">
+    <p>No estimates yet.</p>
+    <a href="{% url 'jobs:job_create' project.pk %}" class="btn btn-primary">+ New Estimate</a>
+  </div>
+{% endif %}
+
+<!-- Cutlists -->
+<div class="section-toolbar">
+  <div class="section-title">Cutlists</div>
+  <form method="post" action="{% url 'cutlist:project_new' project.pk %}" style="margin-left:1rem;">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-primary">+ New Cutlist</button>
+  </form>
+</div>
+
+{% if cutlists %}
+  <div class="card">
+    <table class="item-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Last Updated</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cl in cutlists %}
+        <tr>
+          <td><a href="{% url 'cutlist:project_edit' cl.pk %}"><strong>{{ cl.name }}</strong></a></td>
+          <td style="color:#888; font-size:0.85rem;">{{ cl.updated_at|date:"d M Y H:i" }}</td>
+          <td class="actions">
+            <a href="{% url 'cutlist:project_edit' cl.pk %}">Open</a>
+            <form method="post" action="{% url 'cutlist:project_duplicate' cl.pk %}" style="display:inline;">
+              {% csrf_token %}
+              <button type="submit" class="btn-link">Duplicate</button>
+            </form>
+            <form method="post" action="{% url 'cutlist:project_delete' cl.pk %}" style="display:inline;"
+                  onsubmit="return confirm('Delete this cutlist?')">
+              {% csrf_token %}
+              <button type="submit" class="btn-link" style="color:#c00;">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="empty-state">
+    <p>No cutlists yet.</p>
+    <form method="post" action="{% url 'cutlist:project_new' project.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-primary">+ New Cutlist</button>
+    </form>
+  </div>
+{% endif %}
+
+{% endblock %}
