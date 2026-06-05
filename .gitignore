@@ -35,3 +35,8 @@ Thumbs.db
 dist/
 build/
 *.egg-info/
+
+# Sensitive / local data — never commit
+DB Connection.txt
+*.dmp
+data.json

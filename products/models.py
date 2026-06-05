@@ -2,10 +2,15 @@ from django.db import models
 from django.conf import settings
 
 
-class ProductType(models.TextChoices):
-    I_JOIST = 'i_joist', 'I-Joist'
-    LVL = 'lvl', 'LVL'
-    GLULAM = 'glulam', 'Glulam'
+class ProductType(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['sort_order', 'name']
+
+    def __str__(self):
+        return self.name
 
 
 class Product(models.Model):
@@ -16,7 +21,11 @@ class Product(models.Model):
     e.g. a 240x45 LVL11 can serve as a joist, beam, or boundary joist.
     """
     name = models.CharField(max_length=100)
-    product_type = models.CharField(max_length=20, choices=ProductType)
+    product_type = models.ForeignKey(
+        ProductType,
+        on_delete=models.PROTECT,
+        related_name='products',
+    )
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
 
@@ -27,10 +36,10 @@ class Product(models.Model):
     use_as_beam               = models.BooleanField(default=False, verbose_name='Beam')
 
     class Meta:
-        ordering = ['product_type', 'sort_order', 'name']
+        ordering = ['product_type__sort_order', 'product_type__name', 'sort_order', 'name']
 
     def __str__(self):
-        return f'{self.name} ({self.get_product_type_display()})'
+        return f'{self.name} ({self.product_type})'
 
 
 class PriceBook(models.Model):
@@ -98,7 +107,7 @@ class PriceBookEntry(models.Model):
 
     class Meta:
         unique_together = ('price_book', 'product')
-        ordering = ['product__product_type', 'product__name']
+        ordering = ['product__product_type__sort_order', 'product__product_type__name', 'product__name']
 
     def __str__(self):
         return f'{self.product.name} @ ${self.price_per_lm}/lm'

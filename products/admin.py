@@ -1,5 +1,16 @@
 from django.contrib import admin
-from .models import Product, PriceBook, PriceBookEntry
+from .models import Product, ProductType, PriceBook, PriceBookEntry
+
+
+@admin.register(ProductType)
+class ProductTypeAdmin(admin.ModelAdmin):
+    list_display = ['name', 'sort_order', 'product_count']
+    list_editable = ['sort_order']
+    ordering = ['sort_order', 'name']
+
+    def product_count(self, obj):
+        return obj.products.count()
+    product_count.short_description = 'Products'
 
 
 @admin.register(Product)
@@ -35,7 +46,7 @@ class ProductAdmin(admin.ModelAdmin):
             ),
         }),
     )
-    ordering = ['product_type', 'sort_order', 'name']
+    ordering = ['product_type__sort_order', 'sort_order', 'name']
 
 
 class PriceBookEntryInline(admin.TabularInline):
