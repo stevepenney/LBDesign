@@ -131,15 +131,22 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Email (drawing upload notifications)
 
+# Email — Office 365 SMTP
+# In production set these in your .env:
+#   EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+#   EMAIL_HOST_USER=noreply@lumberbank.co.nz        (must be a valid O365 mailbox)
+#   EMAIL_HOST_PASSWORD=<app-password or SMTP auth password>
+# Note: Basic SMTP auth must be enabled for the mailbox in M365 Admin → Users → Active users
+#       → <user> → Mail → Manage email apps → Authenticated SMTP.
 EMAIL_BACKEND = config(
     'EMAIL_BACKEND',
     default='django.core.mail.backends.console.EmailBackend',
 )
-EMAIL_HOST = config('EMAIL_HOST', default='localhost')
-EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
-EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST          = config('EMAIL_HOST',          default='smtp.office365.com')
+EMAIL_PORT          = config('EMAIL_PORT',          default=587, cast=int)
+EMAIL_USE_TLS       = config('EMAIL_USE_TLS',       default=True, cast=bool)
+EMAIL_HOST_USER     = config('EMAIL_HOST_USER',     default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
-EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
-DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@lumberbank.co.nz')
+DEFAULT_FROM_EMAIL  = config('DEFAULT_FROM_EMAIL',  default='noreply@lumberbank.co.nz')
 
 DETAILING_TEAM_EMAIL = config('DETAILING_TEAM_EMAIL', default='quotes@lumberbank.co.nz')

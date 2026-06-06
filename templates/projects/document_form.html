@@ -1,0 +1,134 @@
+{% extends 'base.html' %}
+{% load widget_tweaks %}
+
+{% block title %}Add Document — {{ project.display_ref }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .form-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    max-width: 640px;
+  }
+  .form-card__header {
+    background: var(--brown);
+    color: var(--white);
+    padding: 1rem 1.5rem;
+    border-radius: 6px 6px 0 0;
+    font-weight: 700;
+    font-size: 1rem;
+  }
+  .form-card__body { padding: 1.75rem 1.5rem; }
+  .form-group { margin-bottom: 1.25rem; }
+  .form-group label {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--charcoal);
+    margin-bottom: .4rem;
+  }
+  .form-control {
+    width: 100%;
+    padding: .6rem .85rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 1rem;
+    color: var(--brown-dark);
+    background: var(--white);
+    transition: border-color .15s;
+    box-sizing: border-box;
+  }
+  .form-control:focus { outline: none; border-color: var(--brown); }
+  textarea.form-control { resize: vertical; }
+  .form-error { color: #b20000; font-size: 0.82rem; margin-top: .3rem; }
+  .form-hint  { font-size: 0.78rem; color: #888; margin-top: .3rem; }
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 1.25rem 0;
+    color: #bbb;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+  .form-card__footer {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: var(--tan-bg);
+    border-radius: 0 0 6px 6px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:1rem;">
+  <a href="{% url 'projects:project_detail' project.pk %}" style="font-size:0.88rem;">
+    &larr; Back to {{ project.display_ref }}
+  </a>
+</div>
+
+<div class="form-card">
+  <div class="form-card__header">Add Document</div>
+  <form method="post" enctype="multipart/form-data" class="form-card__body">
+    {% csrf_token %}
+
+    <div class="form-group">
+      <label for="{{ form.document_type.id_for_label }}">Document Type</label>
+      {% render_field form.document_type class="form-control" %}
+      {% if form.document_type.errors %}<div class="form-error">{{ form.document_type.errors|join:", " }}</div>{% endif %}
+    </div>
+
+    <div class="form-group">
+      <label for="{{ form.name.id_for_label }}">Document Name</label>
+      {% render_field form.name class="form-control" %}
+      {% if form.name.errors %}<div class="form-error">{{ form.name.errors|join:", " }}</div>{% endif %}
+    </div>
+
+    <div class="form-group">
+      <label for="{{ form.file.id_for_label }}">Upload File</label>
+      {% render_field form.file class="form-control" %}
+      <div class="form-hint">PDF, DWG, DXF, images accepted.</div>
+      {% if form.file.errors %}<div class="form-error">{{ form.file.errors|join:", " }}</div>{% endif %}
+    </div>
+
+    <div class="divider">or</div>
+
+    <div class="form-group">
+      <label for="{{ form.external_url.id_for_label }}">Cloud Storage Link</label>
+      {% render_field form.external_url class="form-control" %}
+      <div class="form-hint">Google Drive, Dropbox, OneDrive, or any shared link.</div>
+      {% if form.external_url.errors %}<div class="form-error">{{ form.external_url.errors|join:", " }}</div>{% endif %}
+    </div>
+
+    <div class="form-group">
+      <label for="{{ form.notes.id_for_label }}">Notes</label>
+      {% render_field form.notes class="form-control" %}
+      {% if form.notes.errors %}<div class="form-error">{{ form.notes.errors|join:", " }}</div>{% endif %}
+    </div>
+
+    {% if form.non_field_errors %}
+      <div class="form-error" style="margin-bottom:1rem;">{{ form.non_field_errors|join:", " }}</div>
+    {% endif %}
+
+    <div class="form-card__footer">
+      <button type="submit" class="btn btn-primary">Add Document</button>
+      <a href="{% url 'projects:project_detail' project.pk %}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

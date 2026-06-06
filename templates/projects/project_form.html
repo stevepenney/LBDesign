@@ -77,7 +77,13 @@
   <div class="form-card">
     <div class="form-card__header">
       {{ action }}
-      {% if project %}<span class="lb-ref">{{ project.lb_ref }}</span>{% endif %}
+      {% if project %}
+        {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
+          <span class="lb-ref">{{ project.lb_ref }}</span>
+        {% else %}
+          <span class="lb-ref" style="font-family:inherit;opacity:.85;">{{ project.display_ref }}</span>
+        {% endif %}
+      {% endif %}
     </div>
     <form method="post" class="form-card__body">
       {% csrf_token %}
@@ -101,11 +107,13 @@
         {% if form.merchant_reference.errors %}<div class="form-error">{{ form.merchant_reference.errors|join:", " }}</div>{% endif %}
       </div>
 
+      {% if not is_draft %}
       <div class="form-group">
         <label for="{{ form.status.id_for_label }}">Status <span class="required-star">*</span></label>
         {% render_field form.status class="form-control" %}
         {% if form.status.errors %}<div class="form-error">{{ form.status.errors|join:", " }}</div>{% endif %}
       </div>
+      {% endif %}
 
       <div class="form-group">
         <label for="{{ form.notes.id_for_label }}">Notes</label>

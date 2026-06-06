@@ -1,6 +1,8 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_POST
 
 from core.models import FreightSettings
 from projects.models import Project
@@ -8,6 +10,48 @@ from projects.views import _assert_project_access
 from .calculations import run_job_estimate, run_subjob_calculation
 from .forms import JobForm, SectionForm, FloorRoofAreaFormSet, AdditionalBeamFormSet
 from .models import Job, Section, FloorRoofArea, AdditionalBeam
+
+
+@login_required
+def estimate_quick(request):
+    """Entry point with no project — silently creates a DRAFT project+job on first calculate."""
+    if not request.user.organisation and not request.user.is_lb_admin:
+        messages.error(request, 'Your account is not linked to an organisation. Contact LumberBank.')
+        return redirect('projects:project_list')
+
+    if request.method == 'POST':
+        form    = SectionForm(request.POST)
+        area_fs = FloorRoofAreaFormSet(request.POST, prefix='areas')
+        beam_fs = AdditionalBeamFormSet(request.POST, prefix='beams')
+
+        if form.is_valid() and area_fs.is_valid() and beam_fs.is_valid():
+            project = Project.objects.create(
+                organisation = request.user.organisation,
+                created_by   = request.user,
+                status       = Project.Status.DRAFT,
+            )
+            job = Job.objects.create(project=project, created_by=request.user)
+            section = form.save(commit=False)
+            section.job = job
+            section.save()
+            area_fs.instance = section
+            area_fs.save()
+            beam_fs.instance = section
+            beam_fs.save()
+            run_subjob_calculation(section)
+            return redirect('jobs:job_detail', pk=job.pk)
+    else:
+        form    = SectionForm()
+        area_fs = FloorRoofAreaFormSet(prefix='areas')
+        beam_fs = AdditionalBeamFormSet(prefix='beams')
+
+    return render(request, 'jobs/subjob_form.html', {
+        'job': None,
+        'form': form,
+        'area_formset': area_fs,
+        'beam_formset': beam_fs,
+        'action': 'Quick Estimate',
+    })
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -24,12 +68,23 @@ def _assert_job_access(user, job):
     return _assert_project_access(user, job.project)
 
 
-# ── Job views ─────────────────────────────────────────────────────────────────
-
 @login_required
-def job_list(request):
-    jobs = _get_jobs_for_user(request.user).prefetch_related('sections').order_by('-created_at')
-    return render(request, 'jobs/job_list.html', {'jobs': jobs})
+@require_POST
+def job_update_field(request, pk):
+    from django.http import JsonResponse
+    job = get_object_or_404(Job, pk=pk)
+    if not _assert_job_access(request.user, job):
+        return JsonResponse({'ok': False}, status=403)
+    field = request.POST.get('field', '')
+    value = request.POST.get('value', '').strip()
+    if field not in {'label'}:
+        return JsonResponse({'ok': False, 'error': 'Invalid field'}, status=400)
+    setattr(job, field, value)
+    job.save(update_fields=[field, 'updated_at'])
+    return JsonResponse({'ok': True, 'value': value})
+
+
+# ── Job views ─────────────────────────────────────────────────────────────────
 
 
 @login_required

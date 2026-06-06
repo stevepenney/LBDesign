@@ -25,6 +25,21 @@
     text-transform: uppercase;
     letter-spacing: .05em;
   }
+  .draft-banner {
+    background: #fefce8;
+    border: 1.5px solid #fbbf24;
+    border-radius: 8px;
+    padding: .85rem 1.25rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  .draft-banner__msg { font-size: 0.9rem; color: #78350f; font-weight: 500; }
+  .draft-banner__actions { display: flex; gap: .75rem; align-items: center; }
+  .status-draft       { background: #fefce8; color: #78350f; }
   .status-preliminary { background: #eef2ff; color: #3730a3; }
   .status-quoting     { background: #fef7e6; color: #7a5800; }
   .status-quoted      { background: #e8f0fb; color: #1a3c6e; }
@@ -118,22 +133,64 @@
   <a href="{% url 'projects:project_list' %}" style="font-size:.88rem;">&larr; Back to Projects</a>
 </div>
 
+{% if project.status == 'draft' %}
+<div class="draft-banner" id="draft-banner">
+  <div>
+    <span class="draft-banner__msg">&#9998; New project — fill in the details below, then save or discard.</span>
+    <span id="save-hint" style="display:none;margin-left:.75rem;font-size:0.82rem;color:#b45309;font-weight:600;">
+      Add a client name first.
+    </span>
+  </div>
+  <div class="draft-banner__actions">
+    <button type="button" id="save-project-btn" class="btn btn-primary">Save Project</button>
+    <form method="post" action="{% url 'projects:project_discard' project.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-secondary">Discard</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 <!-- Project header -->
 <div class="project-header">
   <div>
-    <div class="project-header__lb">{{ project.lb_ref }}</div>
-    <div class="project-header__name">{{ project.client_name }}</div>
-    <div class="project-header__meta">
-      {{ project.organisation.name }}
-      {% if project.merchant_reference %} &mdash; Ref: {{ project.merchant_reference }}{% endif %}
-      &mdash; created {{ project.created_at|date:"d M Y" }}
-    </div>
+    {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
+      <div class="project-header__lb">{{ project.lb_ref }}</div>
+      <div class="project-header__name">{{ project.client_name|default:"—" }}</div>
+      <div class="project-header__meta">
+        {{ project.organisation.name }}
+        {% if project.merchant_reference %} &mdash; Ref: {{ project.merchant_reference }}{% endif %}
+        &mdash; created {{ project.created_at|date:"d M Y" }}
+      </div>
+    {% else %}
+      <div class="project-header__lb" style="font-family:inherit;">{{ project.display_ref }}</div>
+      <div class="project-header__meta">
+        {{ project.organisation.name }} &mdash; created {{ project.created_at|date:"d M Y" }}
+      </div>
+    {% endif %}
   </div>
   <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
     <span class="status-badge status-{{ project.status }}">{{ project.get_status_display }}</span>
     <a href="{% url 'projects:project_edit' project.pk %}" class="btn btn-secondary">Edit Project</a>
+    {% if project.status == 'preliminary' %}
+    <form method="post" action="{% url 'projects:request_quote' project.pk %}"
+          onsubmit="return confirm('Request a quote from LB? This will notify the detailing team and move the project to Quoting status.')">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-primary">Request Quote</button>
+    </form>
+    {% endif %}
   </div>
 </div>
+
+{% if project.status == 'quoting' %}
+<div style="background:#fef7e6;border:1.5px solid #f59e0b;border-radius:8px;padding:.85rem 1.25rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:1rem;">
+  <span style="font-size:1.1rem;">&#9203;</span>
+  <div>
+    <strong style="color:#78350f;">Quote requested</strong>
+    <span style="color:#92400e;font-size:0.88rem;margin-left:.5rem;">— the LB detailing team has been notified and will be in touch.</span>
+  </div>
+</div>
+{% endif %}
 
 <!-- Project details -->
 <div class="detail-grid">
@@ -141,8 +198,24 @@
     <div class="card__header">Project Details</div>
     <div class="card__body">
       <div class="detail-row">
+        <div class="detail-label">Client Name</div>
+        <div class="detail-value editable-field"
+             data-field="client_name"
+             data-placeholder="— click to add —"
+             id="field-client_name">{{ project.client_name }}</div>
+      </div>
+      <div class="detail-row">
         <div class="detail-label">Site Address</div>
-        <div class="detail-value">{{ project.site_address }}</div>
+        <div class="detail-value editable-field"
+             data-field="site_address"
+             data-multiline="true"
+             data-placeholder="— click to add —">{{ project.site_address }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Your Reference</div>
+        <div class="detail-value editable-field"
+             data-field="merchant_reference"
+             data-placeholder="— click to add —">{{ project.merchant_reference }}</div>
       </div>
       {% if project.notes %}
       <div class="detail-row">
@@ -269,4 +342,196 @@
   </div>
 {% endif %}
 
+<!-- Documents -->
+<div class="section-toolbar" style="margin-top:1.75rem;">
+  <div class="section-title">Documents &amp; Drawings</div>
+  <a href="{% url 'projects:document_add' project.pk %}" class="btn btn-secondary" style="margin-left:1rem;">+ Add Document</a>
+</div>
+
+{% if documents %}
+  <div class="card">
+    <table class="item-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>File / Link</th>
+          <th>Uploaded By</th>
+          <th>Date</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for doc in documents %}
+        <tr>
+          <td><strong>{{ doc.display_name }}</strong>{% if doc.notes %}<br><span style="font-size:0.8rem;color:#888;">{{ doc.notes }}</span>{% endif %}</td>
+          <td><span style="font-size:0.78rem;text-transform:uppercase;letter-spacing:.05em;color:#888;">{{ doc.get_document_type_display }}</span></td>
+          <td>
+            {% if doc.link_url %}
+              {% if doc.file %}
+                <a href="{{ doc.link_url }}" target="_blank" rel="noopener">&#8595; Download</a>
+              {% else %}
+                <a href="{{ doc.link_url }}" target="_blank" rel="noopener">&#8599; Open link</a>
+              {% endif %}
+            {% else %}
+              <span style="color:#bbb;">—</span>
+            {% endif %}
+          </td>
+          <td style="color:#888;font-size:0.85rem;">{{ doc.uploaded_by.get_full_name|default:doc.uploaded_by.username|default:"—" }}</td>
+          <td style="color:#888;font-size:0.85rem;">{{ doc.uploaded_at|date:"d M Y" }}</td>
+          <td class="actions">
+            {% if doc.uploaded_by == request.user or request.user.is_lb_admin or request.user.is_lb_detailing %}
+            <form method="post" action="{% url 'projects:document_delete' project.pk doc.pk %}" style="display:inline;"
+                  onsubmit="return confirm('Remove this document?')">
+              {% csrf_token %}
+              <button type="submit" class="btn-link" style="color:#c00;">Remove</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="empty-state" style="margin-bottom:1.75rem;">
+    <p>No documents yet. Upload drawings or add a cloud storage link.</p>
+    <a href="{% url 'projects:document_add' project.pk %}" class="btn btn-secondary">+ Add Document</a>
+  </div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<style>
+  .editable-field {
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background .15s;
+    min-height: 1.2em;
+  }
+  .editable-field:hover { background: var(--tan-bg); }
+  .editable-field[data-empty]::after {
+    content: attr(data-placeholder);
+    color: #bbb;
+    font-style: italic;
+  }
+  .inline-edit-input {
+    width: 100%;
+    padding: .3rem .5rem;
+    border: 1.5px solid var(--brown);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: inherit;
+    color: var(--brown-dark);
+    background: #fff;
+    box-sizing: border-box;
+    resize: vertical;
+  }
+  .inline-edit-input:focus { outline: none; }
+</style>
+<script>
+(function () {
+  const UPDATE_URL = "{% url 'projects:project_update_field' project.pk %}";
+  const CSRF = "{{ csrf_token }}";
+
+  {% if project.status == 'draft' %}
+  const PROMOTE_URL = "{% url 'projects:project_promote' project.pk %}";
+  const saveBtn  = document.getElementById('save-project-btn');
+  const saveHint = document.getElementById('save-hint');
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', function () {
+      const clientField = document.getElementById('field-client_name');
+      const clientVal   = clientField ? clientField.textContent.trim() : '';
+
+      if (!clientVal) {
+        saveHint.style.display = '';
+        if (clientField) clientField.click();
+        return;
+      }
+
+      saveHint.style.display = 'none';
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+
+      fetch(PROMOTE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'csrfmiddlewaretoken=' + encodeURIComponent(CSRF),
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (data) { if (data.ok) window.location.reload(); })
+      .catch(function () {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Project';
+      });
+    });
+  }
+  {% endif %}
+
+  document.querySelectorAll('.editable-field').forEach(function (el) {
+    const placeholder = el.dataset.placeholder || '— click to add —';
+    const multiline   = el.dataset.multiline === 'true';
+
+    if (!el.textContent.trim()) el.setAttribute('data-empty', '');
+    el.title = 'Click to edit';
+
+    el.addEventListener('click', function () {
+      if (el.querySelector('input, textarea')) return;
+
+      const current = el.textContent.trim();
+      el.removeAttribute('data-empty');
+
+      const input = document.createElement(multiline ? 'textarea' : 'input');
+      if (!multiline) input.type = 'text';
+      input.value       = current;
+      input.className   = 'inline-edit-input';
+      input.placeholder = placeholder;
+      if (multiline) input.rows = 3;
+
+      el.textContent = '';
+      el.appendChild(input);
+      input.focus();
+      if (!multiline) input.select();
+
+      let saved = false;
+
+      function save() {
+        if (saved) return;
+        saved = true;
+        const newVal = input.value.trim();
+        fetch(UPDATE_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'csrfmiddlewaretoken=' + encodeURIComponent(CSRF) +
+                '&field=' + encodeURIComponent(el.dataset.field) +
+                '&value=' + encodeURIComponent(newVal),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          el.textContent = data.value || '';
+          if (!data.value) el.setAttribute('data-empty', '');
+        })
+        .catch(function () {
+          el.textContent = current || '';
+          if (!current) el.setAttribute('data-empty', '');
+        });
+      }
+
+      function cancel() {
+        saved = true;
+        el.textContent = current || '';
+        if (!current) el.setAttribute('data-empty', '');
+      }
+
+      input.addEventListener('blur', save);
+      input.addEventListener('keydown', function (e) {
+        if (!multiline && e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { input.removeEventListener('blur', save); cancel(); }
+      });
+    });
+  });
+})();
+</script>
 {% endblock %}

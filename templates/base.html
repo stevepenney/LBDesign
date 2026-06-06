@@ -30,8 +30,7 @@
       <nav class="site-header__nav">
         {% if user.is_authenticated %}
           <a href="{% url 'projects:project_list' %}">Projects</a>
-          <a href="{% url 'jobs:job_list' %}">Estimates</a>
-          <a href="{% url 'cutlist:project_list' %}">Cutlist</a>
+          
           {% if user.is_lb_admin %}
             <a href="{% url 'admin:index' %}">Admin</a>
           {% endif %}

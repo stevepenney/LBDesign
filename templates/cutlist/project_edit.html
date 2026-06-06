@@ -8,13 +8,28 @@
 {% endblock %}
 
 {% block sub_header %}
+{% if project.project.status == 'draft' %}
+<div style="background:#fefce8;border-bottom:1.5px solid #fbbf24;padding:.6rem 1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;">
+  <span style="font-size:0.88rem;color:#78350f;font-weight:500;">&#9998; Draft cutlist — not yet saved.</span>
+  <div style="display:flex;gap:.75rem;align-items:center;">
+    <a href="{% url 'projects:project_edit' project.project.pk %}" class="btn btn-primary" style="font-size:0.82rem;padding:.35rem .9rem;">Save Project</a>
+    <form method="post" action="{% url 'projects:project_discard' project.project.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-secondary" style="font-size:0.82rem;padding:.35rem .9rem;">Discard</button>
+    </form>
+  </div>
+</div>
+{% endif %}
 <div class="sub-header">
   <div class="sub-header__inner">
-    <a href="{% url 'cutlist:project_list' %}">&larr; Cutlist Projects</a>
-    {% if project.job %}
-      &nbsp;&mdash;&nbsp;
-      <a href="{% url 'jobs:job_detail' project.job.pk %}">{{ project.job.job_reference }}</a>
-    {% endif %}
+    <a href="{% url 'projects:project_detail' project.project.pk %}">
+      &#8592;
+      {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
+        {{ project.project.lb_ref }}
+      {% else %}
+        {{ project.project.display_ref }}
+      {% endif %}
+    </a>
     <span class="cutlist-project-name" id="projectTitle">{{ project.name }}</span>
     <span class="cutlist-save-indicator" id="saveIndicator">&#10003; Saved</span>
   </div>

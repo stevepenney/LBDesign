@@ -37,7 +37,7 @@
   .projects-table tbody tr:hover td { background: var(--tan-bg); }
   .projects-table .actions { white-space: nowrap; }
   .projects-table .actions a { margin-right: .5rem; font-size: 0.85rem; }
-  .lb-ref { font-weight: 700; color: var(--brown-dark); font-family: monospace; font-size: 0.95rem; }
+  .lb-ref { font-weight: 700; color: var(--brown-dark); font-family: monospace; font-size: 0.95rem; white-space: nowrap; }
   .org-col { color: var(--brown); font-size: 0.85rem; }
   .card {
     background: var(--white);
@@ -61,6 +61,7 @@
     text-transform: uppercase;
     letter-spacing: .05em;
   }
+  .status-draft       { background: #fefce8; color: #78350f; }
   .status-preliminary { background: #eef2ff; color: #3730a3; }
   .status-quoting     { background: #fef7e6; color: #7a5800; }
   .status-quoted      { background: #e8f0fb; color: #1a3c6e; }
@@ -68,6 +69,12 @@
   .status-supplied    { background: #d1fae5; color: #065f46; }
   .status-on_hold     { background: #f3f4f6; color: #6b7280; }
   .status-cancelled   { background: #fee2e2; color: #991b1b; }
+  .status-discarded   { background: #f3f4f6; color: #9ca3af; }
+  .btn-link {
+    background: none; border: none; padding: 0;
+    color: var(--brown); cursor: pointer; text-decoration: none; font-family: inherit; font-size: 0.85rem;
+  }
+  .btn-link:hover { text-decoration: underline; }
   .count-pill {
     display: inline-block;
     background: var(--tan-bg);
@@ -83,8 +90,19 @@
 
 {% block content %}
   <div class="toolbar">
-    <h1 class="page-title" style="margin-bottom:0">Projects</h1>
-    <a href="{% url 'projects:project_create' %}" class="btn btn-primary">+ New Project</a>
+    <h1 class="page-title" style="margin-bottom:0">
+      {% if show_discarded %}Discarded Projects{% else %}Projects{% endif %}
+    </h1>
+    <div style="display:flex;gap:.75rem;align-items:center;">
+      {% if show_discarded %}
+        <a href="{% url 'projects:project_list' %}" class="btn btn-secondary">&larr; Back to Projects</a>
+      {% else %}
+        {% if discarded_count %}
+          <a href="?discarded=1" style="font-size:0.85rem;color:#9ca3af;">{{ discarded_count }} discarded</a>
+        {% endif %}
+        <a href="{% url 'projects:project_create' %}" class="btn btn-primary">+ New Project</a>
+      {% endif %}
+    </div>
   </div>
 
   {% if projects %}
@@ -92,29 +110,37 @@
       <table class="projects-table">
         <thead>
           <tr>
-            <th>LB Job #</th>
-            <th>Client</th>
-            <th>Site Address</th>
-            <th>Your Ref</th>
             {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
-              <th>Organisation</th>
+              <th style="width:110px;white-space:nowrap;">LB Job #</th>
+              <th style="width:160px;">Client</th>
+              <th>Site Address</th>
+              
+              <th style="width:160px;">Organisation</th>
+            {% else %}
+              <th style="width:180px;">Your Ref</th>
+              <th style="width:160px;">Client</th>
+              <th>Site Address</th>
             {% endif %}
-            <th>Status</th>
-            <th>Estimates</th>
-            <th>Cutlists</th>
-            <th>Created</th>
-            <th></th>
+            <th style="width:120px;">Status</th>
+            <th style="width:80px;text-align:center;">Estimates</th>
+            <th style="width:80px;text-align:center;">Cutlists</th>
+            <th style="width:100px;">Created</th>
+            <th style="width:120px;"></th>
           </tr>
         </thead>
         <tbody>
           {% for project in projects %}
             <tr>
-              <td><a href="{% url 'projects:project_detail' project.pk %}"><span class="lb-ref">{{ project.lb_ref }}</span></a></td>
-              <td>{{ project.client_name }}</td>
-              <td style="max-width:200px;">{{ project.site_address|truncatechars:50 }}</td>
-              <td style="color:#888; font-size:0.85rem;">{{ project.merchant_reference|default:"—" }}</td>
               {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
+                <td><a href="{% url 'projects:project_detail' project.pk %}"><span class="lb-ref">{{ project.lb_ref }}</span></a></td>
+                <td>{{ project.client_name|default:"—" }}</td>
+                <td style="max-width:200px;">{{ project.site_address|truncatechars:50|default:"—" }}</td>
+                
                 <td class="org-col">{{ project.organisation.name }}</td>
+              {% else %}
+                <td><a href="{% url 'projects:project_detail' project.pk %}"><strong>{{ project.display_ref }}</strong></a></td>
+                <td>{{ project.client_name|default:"—" }}</td>
+                <td style="max-width:200px;">{{ project.site_address|truncatechars:50|default:"—" }}</td>
               {% endif %}
               <td><span class="status-badge status-{{ project.status }}">{{ project.get_status_display }}</span></td>
               <td style="text-align:center;">{{ project.estimates.count }}</td>
@@ -122,7 +148,19 @@
               <td style="color:#888; font-size:0.85rem;">{{ project.created_at|date:"d M Y" }}</td>
               <td class="actions">
                 <a href="{% url 'projects:project_detail' project.pk %}">View</a>
-                <a href="{% url 'projects:project_edit' project.pk %}">Edit</a>
+                {% if show_discarded %}
+                  <form method="post" action="{% url 'projects:project_undiscard' project.pk %}" style="display:inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-link">Restore</button>
+                  </form>
+                {% else %}
+                  <a href="{% url 'projects:project_edit' project.pk %}">Edit</a>
+                  <form method="post" action="{% url 'projects:project_discard' project.pk %}" style="display:inline;"
+                        onsubmit="return confirm('Discard {{ project.display_ref|escapejs }}? It will be hidden but can be restored.')">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-link" style="color:#9ca3af;">Discard</button>
+                  </form>
+                {% endif %}
               </td>
             </tr>
           {% endfor %}

@@ -57,10 +57,6 @@
   <a href="{% url 'projects:project_list' %}" class="btn btn-secondary">View Projects</a>
 </div>
 
-<p style="color:#888;font-size:0.88rem;margin-bottom:1.5rem;">
-  To create a new cutlist, open a project and click <strong>+ New Cutlist</strong>.
-</p>
-
 {% if cutlists %}
 <div class="card">
   <table class="cutlist-table">
@@ -78,8 +74,16 @@
       {% for cl in cutlists %}
       <tr>
         <td><a href="{% url 'cutlist:project_edit' cl.pk %}" style="font-weight:600;color:var(--brown-dark);">{{ cl.name }}</a></td>
-        <td><a href="{% url 'projects:project_detail' cl.project.pk %}"><span class="lb-ref">{{ cl.project.lb_ref }}</span></a></td>
-        <td style="color:#888;font-size:0.85rem;">{{ cl.project.client_name }}</td>
+        <td>
+          <a href="{% url 'projects:project_detail' cl.project.pk %}">
+            {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
+              <span class="lb-ref">{{ cl.project.lb_ref }}</span>
+            {% else %}
+              <strong>{{ cl.project.display_ref }}</strong>
+            {% endif %}
+          </a>
+        </td>
+        <td style="color:#888;font-size:0.85rem;">{{ cl.project.client_name|default:"—" }}</td>
         <td style="color:#888;font-size:0.85rem;">{{ cl.created_by.get_full_name|default:cl.created_by.username|default:"—" }}</td>
         <td style="color:#888;font-size:0.85rem;">{{ cl.updated_at|date:"d M Y, g:ia" }}</td>
         <td style="text-align:right;white-space:nowrap;">

@@ -68,8 +68,16 @@
         <tbody>
           {% for job in jobs %}
             <tr>
-              <td><a href="{% url 'jobs:job_detail' job.pk %}"><span class="lb-ref">{{ job.project.lb_ref }}</span></a></td>
-              <td>{{ job.project.client_name }}</td>
+              <td>
+                <a href="{% url 'jobs:job_detail' job.pk %}">
+                  {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
+                    <span class="lb-ref">{{ job.project.lb_ref }}</span>
+                  {% else %}
+                    <strong>{{ job.project.display_ref }}</strong>
+                  {% endif %}
+                </a>
+              </td>
+              <td>{{ job.project.client_name|default:"—" }}</td>
               <td>{{ job.label|default:"—" }}</td>
               <td style="max-width:200px;">{{ job.project.site_address|truncatechars:50 }}</td>
               {% if request.user.is_lb_admin or request.user.is_lb_detailing %}

@@ -44,7 +44,7 @@ def _calc_subjob(sub_job):
         label, description, lineal_metres, unit_price, line_total
         (unit_price and line_total are None when not priced)
     """
-    organisation = sub_job.job.organisation
+    organisation = sub_job.job.project.organisation
     schedule = []
     subtotal = Decimal('0')
     has_unpriced = False

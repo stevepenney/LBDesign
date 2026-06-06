@@ -7,7 +7,7 @@ class LandingView(TemplateView):
 
     def dispatch(self, request, *args, **kwargs):
         if request.user.is_authenticated:
-            return redirect('jobs:job_list')
+            return redirect('projects:project_list')
         return super().dispatch(request, *args, **kwargs)
 
 

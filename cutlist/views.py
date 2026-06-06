@@ -28,6 +28,21 @@ def project_list(request):
 
 @login_required
 @require_POST
+def project_new_quick(request):
+    """Create a cutlist with a silently-created DRAFT project — no project selection needed."""
+    if not request.user.organisation and not request.user.is_lb_admin:
+        raise PermissionDenied
+    project = Project.objects.create(
+        organisation = request.user.organisation,
+        created_by   = request.user,
+        status       = Project.Status.DRAFT,
+    )
+    cutlist = CutlistProject.objects.create(project=project, created_by=request.user)
+    return redirect('cutlist:project_edit', pk=cutlist.pk)
+
+
+@login_required
+@require_POST
 def project_new(request, project_pk):
     project = get_object_or_404(Project, pk=project_pk)
     if not _assert_project_access(request.user, project):

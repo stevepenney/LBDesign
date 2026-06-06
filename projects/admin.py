@@ -1,5 +1,12 @@
 from django.contrib import admin
-from .models import Project
+from .models import Project, ProjectDocument
+
+
+class ProjectDocumentInline(admin.TabularInline):
+    model = ProjectDocument
+    extra = 0
+    fields = ['document_type', 'name', 'file', 'external_url', 'uploaded_by', 'uploaded_at']
+    readonly_fields = ['uploaded_by', 'uploaded_at']
 
 
 @admin.register(Project)
@@ -8,6 +15,7 @@ class ProjectAdmin(admin.ModelAdmin):
     list_filter   = ['status', 'organisation']
     search_fields = ['client_name', 'merchant_reference', 'site_address']
     readonly_fields = ['lb_job_number', 'created_at', 'updated_at']
+    inlines = [ProjectDocumentInline]
     fieldsets = (
         (None, {
             'fields': ('lb_job_number', 'organisation', 'status'),
@@ -26,3 +34,11 @@ class ProjectAdmin(admin.ModelAdmin):
         return obj.lb_ref
     lb_ref.short_description = 'LB Job #'
     lb_ref.admin_order_field = 'lb_job_number'
+
+
+@admin.register(ProjectDocument)
+class ProjectDocumentAdmin(admin.ModelAdmin):
+    list_display  = ['display_name', 'project', 'document_type', 'uploaded_by', 'uploaded_at']
+    list_filter   = ['document_type']
+    search_fields = ['name', 'project__client_name']
+    readonly_fields = ['uploaded_at']

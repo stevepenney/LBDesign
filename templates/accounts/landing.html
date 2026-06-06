@@ -58,7 +58,7 @@
 
         <form method="post" action="{% url 'accounts:login' %}">
           {% csrf_token %}
-          <input type="hidden" name="next" value="{% url 'jobs:job_list' %}">
+          <input type="hidden" name="next" value="{% url 'projects:project_list' %}">
 
           {% if form.errors %}
             <ul class="error-list">

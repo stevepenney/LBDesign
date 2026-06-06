@@ -5,6 +5,7 @@ app_name = 'cutlist'
 
 urlpatterns = [
     path('',                              views.project_list,      name='project_list'),
+    path('new/',                          views.project_new_quick, name='project_new_quick'),
     path('new/<int:project_pk>/',         views.project_new,       name='project_new'),
     path('<int:pk>/',                     views.project_edit,      name='project_edit'),
     path('<int:pk>/save/',                views.project_save,      name='project_save'),

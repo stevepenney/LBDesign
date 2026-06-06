@@ -154,21 +154,67 @@
     border-radius: 6px;
   }
   .empty-state p { margin-bottom: 1.25rem; }
+
+  .draft-banner {
+    background: #fefce8;
+    border: 1.5px solid #fbbf24;
+    border-radius: 8px;
+    padding: .85rem 1.25rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  .draft-banner__msg { font-size: 0.9rem; color: #78350f; font-weight: 500; }
+  .draft-banner__actions { display: flex; gap: .75rem; align-items: center; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div style="margin-bottom:1rem;">
-  <a href="{% url 'projects:project_detail' job.project.pk %}" style="font-size:.88rem;">&larr; Back to {{ job.project.lb_ref }}</a>
+  {% if job.project.status == 'draft' %}
+    <a href="{% url 'projects:project_list' %}" style="font-size:.88rem;">&larr; Projects</a>
+  {% else %}
+    <a href="{% url 'projects:project_detail' job.project.pk %}" style="font-size:.88rem;">&larr; Back to {% if request.user.is_lb_admin or request.user.is_lb_detailing %}{{ job.project.lb_ref }}{% else %}{{ job.project.display_ref }}{% endif %}</a>
+  {% endif %}
 </div>
+
+{% if job.project.status == 'draft' %}
+<div class="draft-banner" id="draft-banner">
+  <div>
+    <span class="draft-banner__msg">&#9998; Draft estimate — not yet saved.</span>
+    <span id="save-hint" style="display:none;margin-left:.75rem;font-size:0.82rem;color:#b45309;font-weight:600;">
+      Add a client name (in Project Details below) before saving.
+    </span>
+  </div>
+  <div class="draft-banner__actions">
+    <button type="button" id="save-project-btn" class="btn btn-primary">Save Project</button>
+    <form method="post" action="{% url 'projects:project_discard' job.project.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-secondary">Discard</button>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 <!-- Estimate header -->
 <div class="job-header">
   <div>
-    <div class="job-header__lb">{{ job.project.lb_ref }}</div>
-    {% if job.label %}<div class="job-header__label">{{ job.label }}</div>{% endif %}
+    {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
+      <div class="job-header__lb">{{ job.project.lb_ref }}</div>
+    {% else %}
+      <div class="job-header__lb" style="font-family:inherit;" id="project-display-ref">{{ job.project.display_ref }}</div>
+    {% endif %}
+    <div class="job-header__label editable-field"
+         data-field="label"
+         data-update-url="{% url 'jobs:job_update_field' job.pk %}"
+         data-placeholder="+ Add estimate label"
+         style="font-size:0.95rem;color:var(--charcoal);margin-top:.2rem;">{{ job.label }}</div>
     <div class="job-header__meta">
-      {{ job.project.client_name }} &mdash; {{ job.project.organisation.name }}
+      {% if job.project.client_name %}{{ job.project.client_name }} &mdash; {% endif %}
+      {{ job.project.organisation.name }}
       &mdash; created {{ job.created_at|date:"d M Y" }}
       {% if job.created_by %} by {{ job.created_by.get_full_name|default:job.created_by.username }}{% endif %}
     </div>
@@ -196,22 +242,31 @@
     <div class="card__body">
       <div class="detail-row">
         <div class="detail-label">Client Name</div>
-        <div class="detail-value">{{ job.project.client_name }}</div>
+        <div class="detail-value editable-field"
+             data-field="client_name"
+             data-update-url="{% url 'projects:project_update_field' job.project.pk %}"
+             data-placeholder="— click to add —"
+             id="field-client_name">{{ job.project.client_name }}</div>
       </div>
       <div class="detail-row">
         <div class="detail-label">Site Address</div>
-        <div class="detail-value">{{ job.project.site_address }}</div>
+        <div class="detail-value editable-field"
+             data-field="site_address"
+             data-update-url="{% url 'projects:project_update_field' job.project.pk %}"
+             data-multiline="true"
+             data-placeholder="— click to add —">{{ job.project.site_address }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Your Reference</div>
+        <div class="detail-value editable-field"
+             data-field="merchant_reference"
+             data-update-url="{% url 'projects:project_update_field' job.project.pk %}"
+             data-placeholder="— click to add —">{{ job.project.merchant_reference }}</div>
       </div>
       <div class="detail-row">
         <div class="detail-label">Merchant</div>
         <div class="detail-value">{{ job.project.organisation.name }}</div>
       </div>
-      {% if job.project.merchant_reference %}
-      <div class="detail-row">
-        <div class="detail-label">Your Reference</div>
-        <div class="detail-value">{{ job.project.merchant_reference }}</div>
-      </div>
-      {% endif %}
     </div>
   </div>
 
@@ -349,4 +404,155 @@
     <a href="{% url 'jobs:section_create' job.pk %}" class="btn btn-primary">+ Add Section</a>
   </div>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<style>
+  .editable-field {
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background .15s;
+    min-height: 1.1em;
+  }
+  .editable-field:hover { background: var(--tan-bg); }
+  .editable-field[data-empty]::after {
+    content: attr(data-placeholder);
+    color: #bbb;
+    font-style: italic;
+    font-size: 0.88em;
+  }
+  .inline-edit-input {
+    width: 100%;
+    padding: .3rem .5rem;
+    border: 1.5px solid var(--brown);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: inherit;
+    color: var(--brown-dark);
+    background: #fff;
+    box-sizing: border-box;
+    resize: vertical;
+  }
+  .inline-edit-input:focus { outline: none; }
+</style>
+<script>
+(function () {
+  const CSRF = "{{ csrf_token }}";
+  {% if job.project.status == 'draft' %}
+  const PROMOTE_URL   = "{% url 'projects:project_promote' job.project.pk %}";
+  const PROJECT_URL   = "{% url 'projects:project_detail' job.project.pk %}";
+  {% endif %}
+
+  function makeEditable(el) {
+    const placeholder = el.dataset.placeholder || '— click to add —';
+    const multiline   = el.dataset.multiline === 'true';
+    const updateUrl   = el.dataset.updateUrl;
+
+    if (!el.textContent.trim()) el.setAttribute('data-empty', '');
+    el.title = 'Click to edit';
+
+    el.addEventListener('click', function () {
+      if (el.querySelector('input, textarea')) return;
+
+      const current = el.textContent.trim();
+      el.removeAttribute('data-empty');
+
+      const input = document.createElement(multiline ? 'textarea' : 'input');
+      if (!multiline) input.type = 'text';
+      input.value       = current;
+      input.className   = 'inline-edit-input';
+      input.placeholder = placeholder;
+      if (multiline) input.rows = 3;
+
+      el.textContent = '';
+      el.appendChild(input);
+      input.focus();
+      if (!multiline) input.select();
+
+      let saved = false;
+
+      function save() {
+        if (saved) return;
+        saved = true;
+        const newVal = input.value.trim();
+        fetch(updateUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'csrfmiddlewaretoken=' + encodeURIComponent(CSRF) +
+                '&field=' + encodeURIComponent(el.dataset.field) +
+                '&value=' + encodeURIComponent(newVal),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          el.textContent = data.value || '';
+          if (!data.value) el.setAttribute('data-empty', '');
+          // Keep display-ref heading in sync when project fields change
+          const ref = document.getElementById('project-display-ref');
+          if (ref && (el.dataset.field === 'merchant_reference' || el.dataset.field === 'client_name')) {
+            const mr  = document.querySelector('[data-field="merchant_reference"]');
+            const cn  = document.querySelector('[data-field="client_name"]');
+            const mrV = mr ? mr.textContent.trim() : '';
+            const cnV = cn ? cn.textContent.trim() : '';
+            ref.textContent = mrV || cnV || 'Unlabelled';
+          }
+        })
+        .catch(function () {
+          el.textContent = current || '';
+          if (!current) el.setAttribute('data-empty', '');
+        });
+      }
+
+      function cancel() {
+        saved = true;
+        el.textContent = current || '';
+        if (!current) el.setAttribute('data-empty', '');
+      }
+
+      input.addEventListener('blur', save);
+      input.addEventListener('keydown', function (e) {
+        if (!multiline && e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { input.removeEventListener('blur', save); cancel(); }
+      });
+    });
+  }
+
+  document.querySelectorAll('.editable-field').forEach(makeEditable);
+
+  {% if job.project.status == 'draft' %}
+  const saveBtn  = document.getElementById('save-project-btn');
+  const saveHint = document.getElementById('save-hint');
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', function () {
+      const clientField = document.getElementById('field-client_name');
+      const clientVal   = clientField ? clientField.textContent.trim() : '';
+
+      if (!clientVal) {
+        saveHint.style.display = '';
+        if (clientField) clientField.click();
+        return;
+      }
+
+      saveHint.style.display = 'none';
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+
+      fetch(PROMOTE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'csrfmiddlewaretoken=' + encodeURIComponent(CSRF),
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.ok) window.location.href = PROJECT_URL;
+      })
+      .catch(function () {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Project';
+      });
+    });
+  }
+  {% endif %}
+})();
+</script>
 {% endblock %}
