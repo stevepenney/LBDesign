@@ -350,6 +350,326 @@
   }
 },
 {
+  "model": "projects.project",
+  "pk": 1,
+  "fields": {
+    "lb_job_number": 1,
+    "merchant_reference": "Test 1 ITM",
+    "client_name": "ASFF",
+    "site_address": "asdf",
+    "organisation": 1,
+    "created_by": 1,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.269Z",
+    "updated_at": "2026-06-05T09:42:48.269Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 2,
+  "fields": {
+    "lb_job_number": 2,
+    "merchant_reference": "2604-123 - Makers",
+    "client_name": "Client 1",
+    "site_address": "Address 1",
+    "organisation": 2,
+    "created_by": 2,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.282Z",
+    "updated_at": "2026-06-05T09:42:48.282Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 3,
+  "fields": {
+    "lb_job_number": 3,
+    "merchant_reference": "2026-001",
+    "client_name": "Kauri Property Group",
+    "site_address": "14 Rimu Road, Henderson, Auckland 0610",
+    "organisation": 5,
+    "created_by": 5,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.285Z",
+    "updated_at": "2026-06-05T09:42:48.285Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 4,
+  "fields": {
+    "lb_job_number": 4,
+    "merchant_reference": "2026-002",
+    "client_name": "Wilson Construction Ltd",
+    "site_address": "76 Fairy Springs Road, Rotorua 3015",
+    "organisation": 5,
+    "created_by": 7,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.289Z",
+    "updated_at": "2026-06-05T09:42:48.289Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 5,
+  "fields": {
+    "lb_job_number": 5,
+    "merchant_reference": "2026-003",
+    "client_name": "Taonga Build Group",
+    "site_address": "62 Sunset Drive, Papamoa, Tauranga 3118",
+    "organisation": 5,
+    "created_by": 5,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.293Z",
+    "updated_at": "2026-06-05T09:42:48.293Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 6,
+  "fields": {
+    "lb_job_number": 6,
+    "merchant_reference": "2026-004",
+    "client_name": "Maraenui Developments Ltd",
+    "site_address": "55 Kaimai Way, Matamata 3400",
+    "organisation": 5,
+    "created_by": 5,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.296Z",
+    "updated_at": "2026-06-05T09:42:48.297Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 7,
+  "fields": {
+    "lb_job_number": 7,
+    "merchant_reference": "2026-005",
+    "client_name": "Harris & Son Builders",
+    "site_address": "62 Sunset Drive, Papamoa, Tauranga 3118",
+    "organisation": 5,
+    "created_by": 7,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.301Z",
+    "updated_at": "2026-06-05T09:42:48.301Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 8,
+  "fields": {
+    "lb_job_number": 8,
+    "merchant_reference": "2026-006",
+    "client_name": "Pacific Edge Developments",
+    "site_address": "14 Rimu Road, Henderson, Auckland 0610",
+    "organisation": 6,
+    "created_by": 8,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.305Z",
+    "updated_at": "2026-06-05T09:42:48.305Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 9,
+  "fields": {
+    "lb_job_number": 9,
+    "merchant_reference": "2026-007",
+    "client_name": "Patel Developments",
+    "site_address": "41 Harbourview Road, Whanganui 4500",
+    "organisation": 7,
+    "created_by": 10,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.308Z",
+    "updated_at": "2026-06-05T09:42:48.308Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 10,
+  "fields": {
+    "lb_job_number": 10,
+    "merchant_reference": "2026-008",
+    "client_name": "Wilson Construction Ltd",
+    "site_address": "7 Rata Street, Pukekohe, Auckland 2120",
+    "organisation": 8,
+    "created_by": 12,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.312Z",
+    "updated_at": "2026-06-05T09:42:48.313Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 11,
+  "fields": {
+    "lb_job_number": 11,
+    "merchant_reference": "2026-009",
+    "client_name": "Wilson Construction Ltd",
+    "site_address": "3 Orewa Rise, Silverdale, Auckland 0992",
+    "organisation": 8,
+    "created_by": 12,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.316Z",
+    "updated_at": "2026-06-05T09:42:48.316Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 12,
+  "fields": {
+    "lb_job_number": 12,
+    "merchant_reference": "2026-010",
+    "client_name": "Patel Developments",
+    "site_address": "110 Main Road, Katikati 3129",
+    "organisation": 8,
+    "created_by": 12,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.320Z",
+    "updated_at": "2026-06-05T09:42:48.320Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 13,
+  "fields": {
+    "lb_job_number": 13,
+    "merchant_reference": "2026-011",
+    "client_name": "Southern Cross Homes",
+    "site_address": "19 Hillcrest Ave, Hamilton 3216",
+    "organisation": 8,
+    "created_by": 12,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.324Z",
+    "updated_at": "2026-06-05T09:42:48.324Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 14,
+  "fields": {
+    "lb_job_number": 14,
+    "merchant_reference": "2026-012",
+    "client_name": "Taonga Build Group",
+    "site_address": "7 Rata Street, Pukekohe, Auckland 2120",
+    "organisation": 8,
+    "created_by": 12,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.329Z",
+    "updated_at": "2026-06-05T09:42:48.329Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 15,
+  "fields": {
+    "lb_job_number": 15,
+    "merchant_reference": "2026-013",
+    "client_name": "Summit Homes NZ",
+    "site_address": "14 Rimu Road, Henderson, Auckland 0610",
+    "organisation": 9,
+    "created_by": 13,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.332Z",
+    "updated_at": "2026-06-05T09:42:48.332Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 16,
+  "fields": {
+    "lb_job_number": 16,
+    "merchant_reference": "2026-014",
+    "client_name": "Kauri Property Group",
+    "site_address": "27 Domain Road, Te Puke 3119",
+    "organisation": 9,
+    "created_by": 13,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.335Z",
+    "updated_at": "2026-06-05T09:42:48.335Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 17,
+  "fields": {
+    "lb_job_number": 17,
+    "merchant_reference": "Steves House",
+    "client_name": "Steve Penney",
+    "site_address": "12 My Street",
+    "organisation": 9,
+    "created_by": 13,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.339Z",
+    "updated_at": "2026-06-05T09:42:48.339Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 18,
+  "fields": {
+    "lb_job_number": 18,
+    "merchant_reference": "2605-113 — 15 Nairn Street",
+    "client_name": "",
+    "site_address": "",
+    "organisation": 3,
+    "created_by": 1,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T09:42:48.595Z",
+    "updated_at": "2026-06-05T09:42:48.595Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 21,
+  "fields": {
+    "lb_job_number": 21,
+    "merchant_reference": "ITM test",
+    "client_name": "Mr Smith",
+    "site_address": "12 Smith Street",
+    "organisation": 1,
+    "created_by": 3,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-05T22:30:38.502Z",
+    "updated_at": "2026-06-05T23:25:13.539Z"
+  }
+},
+{
+  "model": "projects.project",
+  "pk": 23,
+  "fields": {
+    "lb_job_number": 23,
+    "merchant_reference": "Test 2",
+    "client_name": "Steve",
+    "site_address": "Rangiora",
+    "organisation": 1,
+    "created_by": 3,
+    "status": "preliminary",
+    "notes": "",
+    "created_at": "2026-06-06T01:46:09.042Z",
+    "updated_at": "2026-06-06T01:47:02.441Z"
+  }
+},
+{
   "model": "jobs.job",
   "pk": 1,
   "fields": {
