@@ -14,6 +14,10 @@ class FreightSettingsAdmin(admin.ModelAdmin):
         ('Fuel Surcharge', {
             'fields': ('surcharge_enabled', 'surcharge_percentage'),
         }),
+        ('Hardware Allowance', {
+            'fields': ('hardware_allowance_pct',),
+            'description': 'Default % added to materials cost on every estimate. Individual estimates can override this.',
+        }),
     )
 
     def has_add_permission(self, request):
