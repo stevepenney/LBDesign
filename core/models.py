@@ -56,6 +56,12 @@ class FreightSettings(models.Model):
         default=0.00,
         help_text='Percentage surcharge applied to qualifying order totals when enabled.',
     )
+    hardware_allowance_pct = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=10.00,
+        help_text='Default hardware allowance % applied to all estimates. Individual estimates can override this.',
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

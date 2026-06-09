@@ -292,8 +292,28 @@
 
         <tr class="summary-rule"><td colspan="2"></td></tr>
         <tr class="summary-subtotal">
-          <td>Subtotal (excl. GST)</td>
+          <td>Materials subtotal</td>
           <td class="summary-amount">${{ job.subtotal|floatformat:2 }}</td>
+        </tr>
+        <tr>
+          <td>
+            Hardware allowance
+            (<span class="editable-field"
+                   id="hardware-pct-display"
+                   data-field="hardware_allowance_pct"
+                   data-update-url="{% url 'jobs:job_update_field' job.pk %}"
+                   data-reload="true"
+                   title="Click to change hardware allowance %"
+                   style="display:inline;cursor:pointer;border-radius:3px;">{{ effective_hardware_pct|floatformat:"-2" }}</span>%)
+            {% if job.hardware_allowance_pct is None %}<span style="font-size:.75rem;color:#aaa;" title="Using global default">default</span>{% endif %}
+          </td>
+          <td class="summary-amount">
+            {% if job.hardware_allowance_amount is not None %}
+              ${{ job.hardware_allowance_amount|floatformat:2 }}
+            {% else %}
+              <span class="summary-nil">&mdash;</span>
+            {% endif %}
+          </td>
         </tr>
         {% if job.freight_charge %}
         <tr>
@@ -447,9 +467,9 @@
     const placeholder = el.dataset.placeholder || '— click to add —';
     const multiline   = el.dataset.multiline === 'true';
     const updateUrl   = el.dataset.updateUrl;
+    const reloadAfter = el.dataset.reload === 'true';
 
     if (!el.textContent.trim()) el.setAttribute('data-empty', '');
-    el.title = 'Click to edit';
 
     el.addEventListener('click', function () {
       if (el.querySelector('input, textarea')) return;
@@ -484,6 +504,7 @@
         })
         .then(function (r) { return r.json(); })
         .then(function (data) {
+          if (reloadAfter && data.ok) { window.location.reload(); return; }
           el.textContent = data.value || '';
           if (!data.value) el.setAttribute('data-empty', '');
           // Keep display-ref heading in sync when project fields change

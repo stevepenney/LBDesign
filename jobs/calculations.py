@@ -155,14 +155,22 @@ def calc_freight(subtotal, freight_settings):
 
 
 def _update_job_freight(job):
-    """Recompute and store freight/surcharge for the whole job."""
+    """Recompute and store hardware allowance, freight, and surcharge for the whole job."""
     from django.db.models import Sum
-    subtotal = (
+    materials = (
         job.sections.aggregate(s=Sum('calculated_subtotal'))['s'] or Decimal('0')
     )
     freight_settings = FreightSettings.get()
-    freight_charge, surcharge = calc_freight(subtotal, freight_settings)
+    pct = (
+        _d(job.hardware_allowance_pct)
+        if job.hardware_allowance_pct is not None
+        else _d(freight_settings.hardware_allowance_pct)
+    )
+    hardware_amount = (materials * pct / Decimal('100')).quantize(_CENT)
+    pre_freight = materials + hardware_amount
+    freight_charge, surcharge = calc_freight(pre_freight, freight_settings)
     Job.objects.filter(pk=job.pk).update(
+        hardware_allowance_amount=hardware_amount,
         freight_charge=freight_charge,
         freight_surcharge=surcharge,
     )

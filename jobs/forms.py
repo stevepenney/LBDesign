@@ -9,12 +9,14 @@ class JobForm(forms.ModelForm):
 
     class Meta:
         model = Job
-        fields = ['label']
+        fields = ['label', 'hardware_allowance_pct']
         widgets = {
             'label': forms.TextInput(attrs={'placeholder': "e.g. Option A, Revised — leave blank for a single estimate"}),
+            'hardware_allowance_pct': forms.NumberInput(attrs={'step': '0.5', 'min': '0', 'max': '100', 'placeholder': 'e.g. 10'}),
         }
         labels = {
             'label': 'Estimate Label (optional)',
+            'hardware_allowance_pct': 'Hardware Allowance % (leave blank to use global default)',
         }
 
 

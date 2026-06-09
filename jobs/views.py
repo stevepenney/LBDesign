@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
@@ -71,14 +73,29 @@ def _assert_job_access(user, job):
 @login_required
 @require_POST
 def job_update_field(request, pk):
-    from django.http import JsonResponse
     job = get_object_or_404(Job, pk=pk)
     if not _assert_job_access(request.user, job):
         return JsonResponse({'ok': False}, status=403)
     field = request.POST.get('field', '')
     value = request.POST.get('value', '').strip()
-    if field not in {'label'}:
+    if field not in {'label', 'hardware_allowance_pct'}:
         return JsonResponse({'ok': False, 'error': 'Invalid field'}, status=400)
+
+    if field == 'hardware_allowance_pct':
+        if value == '':
+            job.hardware_allowance_pct = None
+        else:
+            try:
+                pct = Decimal(value)
+                if not (Decimal('0') <= pct <= Decimal('100')):
+                    return JsonResponse({'ok': False, 'error': 'Enter a value between 0 and 100'}, status=400)
+                job.hardware_allowance_pct = pct
+            except InvalidOperation:
+                return JsonResponse({'ok': False, 'error': 'Invalid percentage'}, status=400)
+        job.save(update_fields=['hardware_allowance_pct', 'updated_at'])
+        run_job_estimate(job)
+        return JsonResponse({'ok': True, 'reload': True})
+
     setattr(job, field, value)
     job.save(update_fields=[field, 'updated_at'])
     return JsonResponse({'ok': True, 'value': value})
@@ -118,10 +135,17 @@ def job_detail(request, pk):
         messages.error(request, 'You do not have access to that estimate.')
         return redirect('projects:project_list')
     sections = job.sections.prefetch_related('areas', 'additional_beams').all()
+    freight_settings = FreightSettings.get()
+    effective_hardware_pct = (
+        job.hardware_allowance_pct
+        if job.hardware_allowance_pct is not None
+        else freight_settings.hardware_allowance_pct
+    )
     return render(request, 'jobs/job_detail.html', {
         'job': job,
         'sections': sections,
-        'freight_settings': FreightSettings.get(),
+        'freight_settings': freight_settings,
+        'effective_hardware_pct': effective_hardware_pct,
     })
 
 
@@ -243,9 +267,10 @@ def job_duplicate(request, pk):
         return redirect('jobs:job_detail', pk=pk)
 
     new_job = Job.objects.create(
-        project    = job.project,
-        created_by = request.user,
-        label      = f'Copy of {job.label}' if job.label else 'Copy',
+        project                = job.project,
+        created_by             = request.user,
+        label                  = f'Copy of {job.label}' if job.label else 'Copy',
+        hardware_allowance_pct = job.hardware_allowance_pct,
     )
 
     for section in job.sections.prefetch_related('areas', 'additional_beams').all():

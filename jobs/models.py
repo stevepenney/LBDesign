@@ -24,7 +24,22 @@ class Job(models.Model):
         help_text="Optional label to distinguish multiple estimates on the same project, e.g. 'Option A'.",
     )
 
-    # Freight applied at job level (stored after calculation)
+    # Per-job hardware allowance override (null = use global FreightSettings default)
+    hardware_allowance_pct = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text='Override hardware allowance %. Leave blank to use the global default.',
+    )
+
+    # Stored totals computed by the calculation engine
+    hardware_allowance_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
     freight_charge = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -57,6 +72,8 @@ class Job(models.Model):
     @property
     def total(self):
         total = self.subtotal
+        if self.hardware_allowance_amount:
+            total += self.hardware_allowance_amount
         if self.freight_charge:
             total += self.freight_charge
         if self.freight_surcharge:
