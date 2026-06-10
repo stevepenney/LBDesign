@@ -62,6 +62,12 @@ class FreightSettings(models.Model):
         default=10.00,
         help_text='Default hardware allowance % applied to all estimates. Individual estimates can override this.',
     )
+    estimate_uncertainty_pct = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=30.00,
+        help_text='Total uncertainty band % for estimates. Displayed to merchants as ±half this value (e.g. 30 → ±15%).',
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

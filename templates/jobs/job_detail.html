@@ -329,8 +329,15 @@
         {% endif %}
         <tr class="summary-rule"><td colspan="2"></td></tr>
         <tr class="summary-total">
-          <td>Total (excl. GST)</td>
-          <td class="summary-amount"><strong>${{ job.total|floatformat:2 }}</strong></td>
+          <td>
+            Total (excl. GST)
+            <div style="font-size:0.75rem;color:#888;font-weight:400;margin-top:.15rem;">
+              ±{{ uncertainty_display_pct|floatformat:"-2" }}% indicative
+            </div>
+          </td>
+          <td class="summary-amount">
+            <strong>${{ job.display_total }}</strong>
+          </td>
         </tr>
       </table>
     </div>

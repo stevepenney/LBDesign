@@ -141,11 +141,13 @@ def job_detail(request, pk):
         if job.hardware_allowance_pct is not None
         else freight_settings.hardware_allowance_pct
     )
+    uncertainty_display_pct = freight_settings.estimate_uncertainty_pct / 2
     return render(request, 'jobs/job_detail.html', {
         'job': job,
         'sections': sections,
         'freight_settings': freight_settings,
         'effective_hardware_pct': effective_hardware_pct,
+        'uncertainty_display_pct': uncertainty_display_pct,
     })
 
 

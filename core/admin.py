@@ -18,6 +18,10 @@ class FreightSettingsAdmin(admin.ModelAdmin):
             'fields': ('hardware_allowance_pct',),
             'description': 'Default % added to materials cost on every estimate. Individual estimates can override this.',
         }),
+        ('Estimate Uncertainty', {
+            'fields': ('estimate_uncertainty_pct',),
+            'description': 'Total uncertainty band shown on estimates. Half this value is displayed as ±% (e.g. 30 → displayed as ±15%).',
+        }),
     )
 
     def has_add_permission(self, request):

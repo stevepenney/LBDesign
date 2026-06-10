@@ -70,6 +70,11 @@ class Job(models.Model):
         return sum(s.calculated_subtotal or 0 for s in self.sections.all())
 
     @property
+    def display_total(self):
+        """Total rounded to nearest $50 for merchant-facing display."""
+        return round(int(self.total) / 50) * 50
+
+    @property
     def total(self):
         total = self.subtotal
         if self.hardware_allowance_amount:
