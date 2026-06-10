@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     # Third-party
     'widget_tweaks',
+    'storages',
     # Local apps
     'accounts',
     'projects',
@@ -118,10 +119,54 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
+# Local media defaults (overridden below when USE_SPACES=True)
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Storage backends
+# In production set USE_SPACES=True and supply SPACES_* env vars.
+# Locally the filesystem is used; MEDIA_URL/MEDIA_ROOT above apply.
+#
+# DO Spaces env vars needed in production:
+#   USE_SPACES=True
+#   SPACES_KEY=<access-key-id>
+#   SPACES_SECRET=<secret-access-key>
+#   SPACES_BUCKET=<bucket-name>
+#   SPACES_REGION=syd1          (or whichever region your bucket is in)
+
+_USE_SPACES = config('USE_SPACES', default=False, cast=bool)
+
+if _USE_SPACES:
+    _spaces_region = config('SPACES_REGION', default='syd1')
+    _spaces_bucket = config('SPACES_BUCKET', default='')
+    AWS_ACCESS_KEY_ID       = config('SPACES_KEY',    default='')
+    AWS_SECRET_ACCESS_KEY   = config('SPACES_SECRET', default='')
+    AWS_STORAGE_BUCKET_NAME = _spaces_bucket
+    AWS_S3_REGION_NAME      = _spaces_region
+    AWS_S3_ENDPOINT_URL     = f'https://{_spaces_region}.digitaloceanspaces.com'
+    AWS_DEFAULT_ACL         = 'public-read'
+    AWS_S3_FILE_OVERWRITE   = False
+    AWS_QUERYSTRING_AUTH    = False
+    MEDIA_URL = f'https://{_spaces_bucket}.{_spaces_region}.digitaloceanspaces.com/media/'
+    STORAGES = {
+        'default': {
+            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+            'OPTIONS': {'location': 'media'},
+        },
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+        },
+    }
+else:
+    STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+        },
+    }
 
 
 # Default primary key
