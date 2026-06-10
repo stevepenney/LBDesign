@@ -92,6 +92,14 @@ class ProjectDocument(models.Model):
         return self.name or self.get_document_type_display()
 
     @property
+    def filename(self):
+        """Basename of the uploaded file (no path prefix)."""
+        if self.file:
+            from pathlib import PurePosixPath
+            return PurePosixPath(self.file.name).name
+        return ''
+
+    @property
     def link_url(self):
         if self.file:
             return self.file.url

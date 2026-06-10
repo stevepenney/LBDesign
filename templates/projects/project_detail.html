@@ -126,6 +126,12 @@
   }
   .empty-state p { margin-bottom: 1rem; }
 
+  /* Doc table inline editing */
+  .item-table td.editable-field { cursor: pointer; }
+  .item-table td.editable-field:hover { background: var(--tan-bg); }
+  .item-table td.editable-field .inline-edit-input { font-size: inherit; padding: .2rem .4rem; }
+  .doc-name-empty { color: #aaa !important; font-weight: 400 !important; font-style: italic; }
+
   /* Drop zone */
   .doc-dropzone {
     position: relative;
@@ -224,6 +230,7 @@
         <div class="detail-label">Client Name</div>
         <div class="detail-value editable-field"
              data-field="client_name"
+             data-update-url="{% url 'projects:project_update_field' project.pk %}"
              data-placeholder="— click to add —"
              id="field-client_name">{{ project.client_name }}</div>
       </div>
@@ -231,6 +238,7 @@
         <div class="detail-label">Site Address</div>
         <div class="detail-value editable-field"
              data-field="site_address"
+             data-update-url="{% url 'projects:project_update_field' project.pk %}"
              data-multiline="true"
              data-placeholder="— click to add —">{{ project.site_address }}</div>
       </div>
@@ -238,6 +246,7 @@
         <div class="detail-label">Your Reference</div>
         <div class="detail-value editable-field"
              data-field="merchant_reference"
+             data-update-url="{% url 'projects:project_update_field' project.pk %}"
              data-placeholder="— click to add —">{{ project.merchant_reference }}</div>
       </div>
       {% if project.notes %}
@@ -384,32 +393,45 @@
     <table class="item-table">
       <thead>
         <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>File / Link</th>
-          <th>Uploaded By</th>
-          <th>Date</th>
+          <th style="width:18%">Name</th>
+          <th style="width:10%">Type</th>
+          <th style="width:20%">Notes</th>
+          <th style="width:18%">File / Link</th>
+          <th style="width:14%">Uploaded By</th>
+          <th style="width:10%">Date</th>
           <th></th>
         </tr>
       </thead>
       <tbody id="docs-tbody">
         {% for doc in documents %}
         <tr>
-          <td><strong>{{ doc.display_name }}</strong>{% if doc.notes %}<br><span style="font-size:0.8rem;color:#888;">{{ doc.notes }}</span>{% endif %}</td>
-          <td><span style="font-size:0.78rem;text-transform:uppercase;letter-spacing:.05em;color:#888;">{{ doc.get_document_type_display }}</span></td>
-          <td>
-            {% if doc.link_url %}
-              {% if doc.file %}
-                <a href="{{ doc.link_url }}" target="_blank" rel="noopener">&#8595; Download</a>
-              {% else %}
-                <a href="{{ doc.link_url }}" target="_blank" rel="noopener">&#8599; Open link</a>
-              {% endif %}
+          <td class="editable-field{% if not doc.name %} doc-name-empty{% endif %}"
+              data-field="name"
+              data-update-url="{% url 'projects:document_update_field' project.pk doc.pk %}"
+              data-edit-value="{{ doc.name }}"
+              data-placeholder="— add name —">{{ doc.display_name }}</td>
+          <td class="editable-field"
+              data-field="document_type"
+              data-update-url="{% url 'projects:document_update_field' project.pk doc.pk %}"
+              data-input-type="select"
+              data-edit-value="{{ doc.document_type }}"
+              data-choices='{% if request.user.is_lb_admin or request.user.is_lb_detailing %}[["drawing","Drawing"],["design","Design File"],["quote","Quote"],["other","Other"]]{% else %}[["drawing","Drawing"],["other","Other"]]{% endif %}'>{{ doc.get_document_type_display }}</td>
+          <td class="editable-field"
+              data-field="notes"
+              data-update-url="{% url 'projects:document_update_field' project.pk doc.pk %}"
+              data-placeholder="—"
+              style="font-size:0.88rem;">{{ doc.notes }}</td>
+          <td style="font-size:0.85rem;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            {% if doc.file %}
+              <a href="{{ doc.link_url }}" target="_blank" rel="noopener" title="{{ doc.filename }}">{{ doc.filename|truncatechars:28 }} &#8595;</a>
+            {% elif doc.external_url %}
+              <a href="{{ doc.external_url }}" target="_blank" rel="noopener" title="{{ doc.external_url }}">{{ doc.external_url|truncatechars:28 }} &#8599;</a>
             {% else %}
               <span style="color:#bbb;">—</span>
             {% endif %}
           </td>
           <td style="color:#888;font-size:0.85rem;">{{ doc.uploaded_by.get_full_name|default:doc.uploaded_by.username|default:"—" }}</td>
-          <td style="color:#888;font-size:0.85rem;">{{ doc.uploaded_at|date:"d M Y" }}</td>
+          <td style="color:#888;font-size:0.85rem;">{{ doc.uploaded_at|date:"j M Y" }}</td>
           <td class="actions">
             {% if doc.uploaded_by == request.user or request.user.is_lb_admin or request.user.is_lb_detailing %}
             <form method="post" action="{% url 'projects:document_delete' project.pk doc.pk %}" style="display:inline;"
@@ -458,29 +480,129 @@
 </style>
 <script>
 (function () {
-  const UPDATE_URL = "{% url 'projects:project_update_field' project.pk %}";
-  const CSRF = "{{ csrf_token }}";
+  const CSRF       = "{{ csrf_token }}";
+  const UPLOAD_URL = "{% url 'projects:document_upload' project.pk %}";
+  const DOC_CHOICES = {% if request.user.is_lb_admin or request.user.is_lb_detailing %}[["drawing","Drawing"],["design","Design File"],["quote","Quote"],["other","Other"]]{% else %}[["drawing","Drawing"],["other","Other"]]{% endif %};
+
+  // ── Inline field editing ──────────────────────────────────────────────────
+
+  function makeEditable(el) {
+    const updateUrl  = el.dataset.updateUrl;
+    const field      = el.dataset.field;
+    const placeholder = el.dataset.placeholder || '— click to add —';
+    const multiline  = el.dataset.multiline === 'true';
+    const inputType  = el.dataset.inputType || 'text';
+    const choices    = inputType === 'select' ? JSON.parse(el.dataset.choices || '[]') : null;
+
+    if (!el.textContent.trim()) el.setAttribute('data-empty', '');
+
+    el.addEventListener('click', function () {
+      if (el.querySelector('input,textarea,select')) return;
+
+      const displayText = el.textContent.trim();
+      const editValue   = el.dataset.editValue !== undefined ? el.dataset.editValue : displayText;
+      el.removeAttribute('data-empty');
+
+      let input;
+      if (inputType === 'select') {
+        input = document.createElement('select');
+        input.className = 'inline-edit-input';
+        choices.forEach(function (pair) {
+          const opt = document.createElement('option');
+          opt.value = pair[0]; opt.textContent = pair[1];
+          if (pair[0] === editValue) opt.selected = true;
+          input.appendChild(opt);
+        });
+      } else {
+        input = document.createElement(multiline ? 'textarea' : 'input');
+        if (!multiline) input.type = 'text';
+        input.value       = editValue;
+        input.className   = 'inline-edit-input';
+        input.placeholder = placeholder;
+        if (multiline) input.rows = 3;
+      }
+
+      el.textContent = '';
+      el.appendChild(input);
+      input.focus();
+      if (input.select && !multiline && inputType !== 'select') input.select();
+
+      let saved = false;
+
+      function commit() {
+        if (saved) return;
+        saved = true;
+        const trimmed = (input.value.trim ? input.value.trim() : input.value);
+        fetch(updateUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'csrfmiddlewaretoken=' + encodeURIComponent(CSRF) +
+                '&field=' + encodeURIComponent(field) +
+                '&value=' + encodeURIComponent(trimmed),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          const newDisplay = data.value || '';
+          el.textContent = newDisplay;
+          if (!newDisplay) el.setAttribute('data-empty', '');
+          if (el.dataset.editValue !== undefined) el.dataset.editValue = trimmed;
+          // Toggle empty-name styling for doc name cells
+          if (field === 'name') el.classList.toggle('doc-name-empty', !trimmed);
+          // Keep display-ref heading in sync for project fields
+          const ref = document.getElementById('project-display-ref');
+          if (ref && (field === 'merchant_reference' || field === 'client_name')) {
+            const mr = document.querySelector('[data-field="merchant_reference"]');
+            const cn = document.querySelector('[data-field="client_name"]');
+            ref.textContent = (mr && mr.textContent.trim()) || (cn && cn.textContent.trim()) || 'Unlabelled';
+          }
+        })
+        .catch(function () {
+          el.textContent = displayText || '';
+          if (!displayText) el.setAttribute('data-empty', '');
+        });
+      }
+
+      function cancel() {
+        if (saved) return;
+        saved = true;
+        el.textContent = displayText || '';
+        if (!displayText) el.setAttribute('data-empty', '');
+      }
+
+      if (inputType === 'select') {
+        input.addEventListener('change', commit);
+        input.addEventListener('blur',   cancel);
+      } else {
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', function (e) {
+          if (!multiline && e.key === 'Enter') { e.preventDefault(); input.blur(); }
+          if (e.key === 'Escape') { input.removeEventListener('blur', commit); cancel(); }
+        });
+      }
+    });
+  }
+
+  document.querySelectorAll('.editable-field').forEach(makeEditable);
+
+  // ── Draft save / promote ──────────────────────────────────────────────────
 
   {% if project.status == 'draft' %}
   const PROMOTE_URL = "{% url 'projects:project_promote' project.pk %}";
-  const saveBtn  = document.getElementById('save-project-btn');
-  const saveHint = document.getElementById('save-hint');
+  const saveBtn     = document.getElementById('save-project-btn');
+  const saveHint    = document.getElementById('save-hint');
 
   if (saveBtn) {
     saveBtn.addEventListener('click', function () {
       const clientField = document.getElementById('field-client_name');
       const clientVal   = clientField ? clientField.textContent.trim() : '';
-
       if (!clientVal) {
         saveHint.style.display = '';
         if (clientField) clientField.click();
         return;
       }
-
       saveHint.style.display = 'none';
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving…';
-
       fetch(PROMOTE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -488,158 +610,74 @@
       })
       .then(function (r) { return r.json(); })
       .then(function (data) { if (data.ok) window.location.reload(); })
-      .catch(function () {
-        saveBtn.disabled = false;
-        saveBtn.textContent = 'Save Project';
-      });
+      .catch(function () { saveBtn.disabled = false; saveBtn.textContent = 'Save Project'; });
     });
   }
   {% endif %}
 
-  document.querySelectorAll('.editable-field').forEach(function (el) {
-    const placeholder = el.dataset.placeholder || '— click to add —';
-    const multiline   = el.dataset.multiline === 'true';
+  // ── Document drag-and-drop upload ─────────────────────────────────────────
 
-    if (!el.textContent.trim()) el.setAttribute('data-empty', '');
-    el.title = 'Click to edit';
+  var zone = document.getElementById('doc-dropzone');
+  if (zone) {
+    document.addEventListener('dragover', function (e) { e.preventDefault(); });
+    document.addEventListener('drop',     function (e) { e.preventDefault(); });
 
-    el.addEventListener('click', function () {
-      if (el.querySelector('input, textarea')) return;
-
-      const current = el.textContent.trim();
-      el.removeAttribute('data-empty');
-
-      const input = document.createElement(multiline ? 'textarea' : 'input');
-      if (!multiline) input.type = 'text';
-      input.value       = current;
-      input.className   = 'inline-edit-input';
-      input.placeholder = placeholder;
-      if (multiline) input.rows = 3;
-
-      el.textContent = '';
-      el.appendChild(input);
-      input.focus();
-      if (!multiline) input.select();
-
-      let saved = false;
-
-      function save() {
-        if (saved) return;
-        saved = true;
-        const newVal = input.value.trim();
-        fetch(UPDATE_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: 'csrfmiddlewaretoken=' + encodeURIComponent(CSRF) +
-                '&field=' + encodeURIComponent(el.dataset.field) +
-                '&value=' + encodeURIComponent(newVal),
-        })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          el.textContent = data.value || '';
-          if (!data.value) el.setAttribute('data-empty', '');
-        })
-        .catch(function () {
-          el.textContent = current || '';
-          if (!current) el.setAttribute('data-empty', '');
-        });
-      }
-
-      function cancel() {
-        saved = true;
-        el.textContent = current || '';
-        if (!current) el.setAttribute('data-empty', '');
-      }
-
-      input.addEventListener('blur', save);
-      input.addEventListener('keydown', function (e) {
-        if (!multiline && e.key === 'Enter') { e.preventDefault(); input.blur(); }
-        if (e.key === 'Escape') { input.removeEventListener('blur', save); cancel(); }
-      });
+    var dragCounter = 0;
+    zone.addEventListener('dragenter', function (e) { e.preventDefault(); dragCounter++; zone.classList.add('is-dragover'); });
+    zone.addEventListener('dragleave', function ()  { if (--dragCounter <= 0) { dragCounter = 0; zone.classList.remove('is-dragover'); } });
+    zone.addEventListener('dragover',  function (e) { e.preventDefault(); });
+    zone.addEventListener('drop', function (e) {
+      e.preventDefault();
+      dragCounter = 0;
+      zone.classList.remove('is-dragover');
+      Array.from(e.dataTransfer.files).forEach(uploadFile);
     });
-  });
-})();
-
-// ── Document drag-and-drop upload ─────────────────────────────────────────────
-(function () {
-  const UPLOAD_URL = "{% url 'projects:document_upload' project.pk %}";
-  const DROP_CSRF  = "{{ csrf_token }}";
-  const zone       = document.getElementById('doc-dropzone');
-  if (!zone) return;
-
-  // Prevent browser default file-open on drop anywhere on the page
-  document.addEventListener('dragover', function (e) { e.preventDefault(); });
-  document.addEventListener('drop',     function (e) { e.preventDefault(); });
-
-  let dragCounter = 0;
-
-  zone.addEventListener('dragenter', function (e) {
-    e.preventDefault();
-    dragCounter++;
-    zone.classList.add('is-dragover');
-  });
-
-  zone.addEventListener('dragleave', function () {
-    dragCounter--;
-    if (dragCounter <= 0) { dragCounter = 0; zone.classList.remove('is-dragover'); }
-  });
-
-  zone.addEventListener('dragover', function (e) { e.preventDefault(); });
-
-  zone.addEventListener('drop', function (e) {
-    e.preventDefault();
-    dragCounter = 0;
-    zone.classList.remove('is-dragover');
-    Array.from(e.dataTransfer.files).forEach(uploadFile);
-  });
-
-  function uploadFile(file) {
-    const fd = new FormData();
-    fd.append('csrfmiddlewaretoken', DROP_CSRF);
-    fd.append('file', file);
-
-    fetch(UPLOAD_URL, { method: 'POST', body: fd })
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        if (data.ok) {
-          appendDocRow(data.doc);
-          window.showToast('"' + data.doc.display_name + '" uploaded.', 'success');
-        } else {
-          window.showToast(data.error || 'Upload failed.', 'error');
-        }
-      })
-      .catch(function () {
-        window.showToast('Upload failed — check your connection.', 'error');
-      });
   }
 
   function escHtml(s) {
-    return String(s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function uploadFile(file) {
+    var fd = new FormData();
+    fd.append('csrfmiddlewaretoken', CSRF);
+    fd.append('file', file);
+    fetch(UPLOAD_URL, { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.ok) { appendDocRow(data.doc); window.showToast('"' + data.doc.filename + '" uploaded.', 'success'); }
+        else          { window.showToast(data.error || 'Upload failed.', 'error'); }
+      })
+      .catch(function () { window.showToast('Upload failed — check your connection.', 'error'); });
   }
 
   function appendDocRow(doc) {
-    document.getElementById('docs-empty').style.display = 'none';
+    document.getElementById('docs-empty').style.display     = 'none';
     document.getElementById('docs-table-wrap').style.display = '';
 
-    const deleteForm = `<form method="post" action="${escHtml(doc.delete_url)}" style="display:inline;"
-        onsubmit="return confirm('Remove this document?')">
-      <input type="hidden" name="csrfmiddlewaretoken" value="${escHtml(DROP_CSRF)}">
-      <button type="submit" class="btn-link" style="color:#c00;">Remove</button>
-    </form>`;
+    var choicesJson = escHtml(JSON.stringify(DOC_CHOICES));
+    var deleteForm  = '<form method="post" action="' + escHtml(doc.delete_url) + '" style="display:inline;" onsubmit="return confirm(\'Remove this document?\')">'
+                    + '<input type="hidden" name="csrfmiddlewaretoken" value="' + escHtml(CSRF) + '">'
+                    + '<button type="submit" class="btn-link" style="color:#c00;">Remove</button></form>';
 
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><strong>${escHtml(doc.display_name)}</strong></td>
-      <td><span style="font-size:0.78rem;text-transform:uppercase;letter-spacing:.05em;color:#888;">${escHtml(doc.type_display)}</span></td>
-      <td><a href="${escHtml(doc.link_url)}" target="_blank" rel="noopener">&#8595; Download</a></td>
-      <td style="color:#888;font-size:0.85rem;">${escHtml(doc.uploaded_by)}</td>
-      <td style="color:#888;font-size:0.85rem;">${escHtml(doc.uploaded_at)}</td>
-      <td class="actions">${deleteForm}</td>
-    `;
+    var fileCell = doc.link_url
+      ? '<a href="' + escHtml(doc.link_url) + '" target="_blank" rel="noopener" title="' + escHtml(doc.filename) + '">' + escHtml(doc.filename.length > 28 ? doc.filename.slice(0,25) + '…' : doc.filename) + ' &#8595;</a>'
+      : '<span style="color:#bbb;">—</span>';
+
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="editable-field doc-name-empty" data-field="name" data-update-url="' + escHtml(doc.update_url) + '" data-edit-value="" data-placeholder="— add name —">' + escHtml(doc.display_name) + '</td>' +
+      '<td class="editable-field" data-field="document_type" data-update-url="' + escHtml(doc.update_url) + '" data-input-type="select" data-edit-value="drawing" data-choices=\'' + choicesJson + '\'>' + escHtml(doc.type_display) + '</td>' +
+      '<td class="editable-field" data-field="notes" data-update-url="' + escHtml(doc.update_url) + '" data-placeholder="—" style="font-size:0.88rem;"></td>' +
+      '<td style="font-size:0.85rem;">' + fileCell + '</td>' +
+      '<td style="color:#888;font-size:0.85rem;">' + escHtml(doc.uploaded_by) + '</td>' +
+      '<td style="color:#888;font-size:0.85rem;">' + escHtml(doc.uploaded_at) + '</td>' +
+      '<td class="actions">' + deleteForm + '</td>';
+
     document.getElementById('docs-tbody').appendChild(tr);
+    tr.querySelectorAll('.editable-field').forEach(makeEditable);
   }
+
 })();
 </script>
 {% endblock %}

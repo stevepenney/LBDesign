@@ -240,19 +240,50 @@ def document_upload_ajax(request, pk):
         document_type=ProjectDocument.DocumentType.DRAWING,
         file=file,
     )
-    delete_url = reverse('projects:document_delete', args=[project.pk, doc.pk])
+    delete_url = reverse('projects:document_delete',      args=[project.pk, doc.pk])
+    update_url = reverse('projects:document_update_field', args=[project.pk, doc.pk])
     return JsonResponse({
         'ok': True,
         'doc': {
             'pk':           doc.pk,
             'display_name': doc.display_name,
+            'filename':     doc.filename,
             'type_display': doc.get_document_type_display(),
             'link_url':     doc.link_url,
             'uploaded_by':  request.user.get_full_name() or request.user.username,
-            'uploaded_at':  doc.uploaded_at.strftime('%-d %b %Y'),
+            'uploaded_at':  doc.uploaded_at.strftime('%d %b %Y').lstrip('0'),
             'delete_url':   delete_url,
+            'update_url':   update_url,
         },
     })
+
+
+@login_required
+@require_POST
+def document_update_field(request, pk, doc_pk):
+    project = get_object_or_404(Project, pk=pk)
+    doc     = get_object_or_404(ProjectDocument, pk=doc_pk, project=project)
+    if not _assert_project_access(request.user, project):
+        return JsonResponse({'ok': False}, status=403)
+
+    EDITABLE = {'name', 'notes', 'document_type'}
+    field = request.POST.get('field', '')
+    value = request.POST.get('value', '').strip()
+    if field not in EDITABLE:
+        return JsonResponse({'ok': False, 'error': 'Invalid field'}, status=400)
+
+    if field == 'document_type':
+        valid = {c[0] for c in ProjectDocument.DocumentType.choices}
+        if value not in valid:
+            return JsonResponse({'ok': False, 'error': 'Invalid type'}, status=400)
+        doc.document_type = value
+        doc.save(update_fields=['document_type'])
+        return JsonResponse({'ok': True, 'value': doc.get_document_type_display()})
+
+    setattr(doc, field, value)
+    doc.save(update_fields=[field])
+    display = doc.display_name if field == 'name' else value
+    return JsonResponse({'ok': True, 'value': display})
 
 
 @login_required
