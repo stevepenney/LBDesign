@@ -223,6 +223,39 @@ def project_undiscard(request, pk):
 # ── Document views ────────────────────────────────────────────────────────────
 
 @login_required
+@require_POST
+def document_upload_ajax(request, pk):
+    """Accept a raw file drop and create a ProjectDocument silently."""
+    project = get_object_or_404(Project, pk=pk)
+    if not _assert_project_access(request.user, project):
+        return JsonResponse({'ok': False, 'error': 'Access denied'}, status=403)
+
+    file = request.FILES.get('file')
+    if not file:
+        return JsonResponse({'ok': False, 'error': 'No file received'}, status=400)
+
+    doc = ProjectDocument.objects.create(
+        project=project,
+        uploaded_by=request.user,
+        document_type=ProjectDocument.DocumentType.DRAWING,
+        file=file,
+    )
+    delete_url = reverse('projects:document_delete', args=[project.pk, doc.pk])
+    return JsonResponse({
+        'ok': True,
+        'doc': {
+            'pk':           doc.pk,
+            'display_name': doc.display_name,
+            'type_display': doc.get_document_type_display(),
+            'link_url':     doc.link_url,
+            'uploaded_by':  request.user.get_full_name() or request.user.username,
+            'uploaded_at':  doc.uploaded_at.strftime('%-d %b %Y'),
+            'delete_url':   delete_url,
+        },
+    })
+
+
+@login_required
 def document_add(request, pk):
     project = get_object_or_404(Project, pk=pk)
     if not _assert_project_access(request.user, project):

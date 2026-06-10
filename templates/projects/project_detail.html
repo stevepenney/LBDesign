@@ -125,6 +125,29 @@
     margin-bottom: 1.5rem;
   }
   .empty-state p { margin-bottom: 1rem; }
+
+  /* Drop zone */
+  .doc-dropzone {
+    position: relative;
+  }
+  .doc-drop-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(101, 68, 35, 0.06);
+    border: 2.5px dashed var(--brown);
+    border-radius: 8px;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--brown);
+    pointer-events: none;
+    z-index: 10;
+  }
+  .doc-dropzone.is-dragover .doc-drop-overlay { display: flex; }
+  .doc-dropzone.is-dragover .card,
+  .doc-dropzone.is-dragover .empty-state { opacity: 0.4; }
 </style>
 {% endblock %}
 
@@ -348,8 +371,16 @@
   <a href="{% url 'projects:document_add' project.pk %}" class="btn btn-secondary" style="margin-left:1rem;">+ Add Document</a>
 </div>
 
-{% if documents %}
-  <div class="card">
+<div id="doc-dropzone" class="doc-dropzone">
+  <div class="doc-drop-overlay"><span>Drop to upload</span></div>
+
+  <div id="docs-empty" class="empty-state" style="margin-bottom:1.75rem;{% if documents %}display:none;{% endif %}">
+    <p>No documents yet. Upload drawings or add a cloud storage link.</p>
+    <p style="font-size:0.85rem;color:#bbb;margin-top:.25rem;">or drag &amp; drop files anywhere in this area</p>
+    <a href="{% url 'projects:document_add' project.pk %}" class="btn btn-secondary">+ Add Document</a>
+  </div>
+
+  <div id="docs-table-wrap" class="card"{% if not documents %} style="display:none"{% endif %}>
     <table class="item-table">
       <thead>
         <tr>
@@ -361,7 +392,7 @@
           <th></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="docs-tbody">
         {% for doc in documents %}
         <tr>
           <td><strong>{{ doc.display_name }}</strong>{% if doc.notes %}<br><span style="font-size:0.8rem;color:#888;">{{ doc.notes }}</span>{% endif %}</td>
@@ -393,12 +424,7 @@
       </tbody>
     </table>
   </div>
-{% else %}
-  <div class="empty-state" style="margin-bottom:1.75rem;">
-    <p>No documents yet. Upload drawings or add a cloud storage link.</p>
-    <a href="{% url 'projects:document_add' project.pk %}" class="btn btn-secondary">+ Add Document</a>
-  </div>
-{% endif %}
+</div>
 
 {% endblock %}
 
@@ -532,6 +558,88 @@
       });
     });
   });
+})();
+
+// ── Document drag-and-drop upload ─────────────────────────────────────────────
+(function () {
+  const UPLOAD_URL = "{% url 'projects:document_upload' project.pk %}";
+  const DROP_CSRF  = "{{ csrf_token }}";
+  const zone       = document.getElementById('doc-dropzone');
+  if (!zone) return;
+
+  // Prevent browser default file-open on drop anywhere on the page
+  document.addEventListener('dragover', function (e) { e.preventDefault(); });
+  document.addEventListener('drop',     function (e) { e.preventDefault(); });
+
+  let dragCounter = 0;
+
+  zone.addEventListener('dragenter', function (e) {
+    e.preventDefault();
+    dragCounter++;
+    zone.classList.add('is-dragover');
+  });
+
+  zone.addEventListener('dragleave', function () {
+    dragCounter--;
+    if (dragCounter <= 0) { dragCounter = 0; zone.classList.remove('is-dragover'); }
+  });
+
+  zone.addEventListener('dragover', function (e) { e.preventDefault(); });
+
+  zone.addEventListener('drop', function (e) {
+    e.preventDefault();
+    dragCounter = 0;
+    zone.classList.remove('is-dragover');
+    Array.from(e.dataTransfer.files).forEach(uploadFile);
+  });
+
+  function uploadFile(file) {
+    const fd = new FormData();
+    fd.append('csrfmiddlewaretoken', DROP_CSRF);
+    fd.append('file', file);
+
+    fetch(UPLOAD_URL, { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.ok) {
+          appendDocRow(data.doc);
+          window.showToast('"' + data.doc.display_name + '" uploaded.', 'success');
+        } else {
+          window.showToast(data.error || 'Upload failed.', 'error');
+        }
+      })
+      .catch(function () {
+        window.showToast('Upload failed — check your connection.', 'error');
+      });
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function appendDocRow(doc) {
+    document.getElementById('docs-empty').style.display = 'none';
+    document.getElementById('docs-table-wrap').style.display = '';
+
+    const deleteForm = `<form method="post" action="${escHtml(doc.delete_url)}" style="display:inline;"
+        onsubmit="return confirm('Remove this document?')">
+      <input type="hidden" name="csrfmiddlewaretoken" value="${escHtml(DROP_CSRF)}">
+      <button type="submit" class="btn-link" style="color:#c00;">Remove</button>
+    </form>`;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${escHtml(doc.display_name)}</strong></td>
+      <td><span style="font-size:0.78rem;text-transform:uppercase;letter-spacing:.05em;color:#888;">${escHtml(doc.type_display)}</span></td>
+      <td><a href="${escHtml(doc.link_url)}" target="_blank" rel="noopener">&#8595; Download</a></td>
+      <td style="color:#888;font-size:0.85rem;">${escHtml(doc.uploaded_by)}</td>
+      <td style="color:#888;font-size:0.85rem;">${escHtml(doc.uploaded_at)}</td>
+      <td class="actions">${deleteForm}</td>
+    `;
+    document.getElementById('docs-tbody').appendChild(tr);
+  }
 })();
 </script>
 {% endblock %}
