@@ -1,7 +1,9 @@
+from django import forms
 from django.contrib import admin
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
+from .help_registry import REGISTERED_TOPICS
 from .models import Feedback, FreightSettings, HelpTopic, RoofPitch, StairVoidSettings
 
 
@@ -54,15 +56,30 @@ class RoofPitchAdmin(admin.ModelAdmin):
         return f'{obj.pitch_factor:.4f}'
 
 
+class HelpTopicAdminForm(forms.ModelForm):
+    slug = forms.ChoiceField(
+        choices=[(s, f'{s}  —  {desc}') for s, desc in REGISTERED_TOPICS.items()],
+        help_text='Slugs are registered in core/help_registry.py whenever a {% help_trigger %} is added to a template.',
+    )
+
+    class Meta:
+        model = HelpTopic
+        fields = '__all__'
+
+
 @admin.register(HelpTopic)
 class HelpTopicAdmin(admin.ModelAdmin):
-    list_display = ['title', 'slug', 'sort_order', 'has_image']
+    form = HelpTopicAdminForm
+    list_display = ['title', 'slug', 'location', 'sort_order', 'has_image']
     list_editable = ['sort_order']
-    prepopulated_fields = {'slug': ('title',)}
     fields = ['title', 'slug', 'body', 'image', 'body_preview', 'sort_order']
     readonly_fields = ['body_preview']
 
-    @admin.display(description='Preview', boolean=True)
+    @admin.display(description='Template location')
+    def location(self, obj):
+        return REGISTERED_TOPICS.get(obj.slug, '—')
+
+    @admin.display(description='Image', boolean=True)
     def has_image(self, obj):
         return bool(obj.image)
 

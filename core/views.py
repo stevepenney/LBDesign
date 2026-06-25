@@ -25,9 +25,16 @@ def submit_feedback(request):
 
 @login_required
 def help_topic(request, slug):
-    topic = get_object_or_404(HelpTopic, slug=slug)
-    return JsonResponse({
-        'title': topic.title,
-        'body': topic.body,
-        'image_url': topic.image.url if topic.image else None,
-    })
+    try:
+        topic = HelpTopic.objects.get(slug=slug)
+        return JsonResponse({
+            'title': topic.title,
+            'body': topic.body,
+            'image_url': topic.image.url if topic.image else None,
+        })
+    except HelpTopic.DoesNotExist:
+        return JsonResponse({
+            'title': 'Help',
+            'body': '<p>No help content has been added for this topic yet.</p>',
+            'image_url': None,
+        })
