@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 
 from .models import Feedback, FreightSettings, HelpTopic, RoofPitch, StairVoidSettings
 
@@ -71,7 +72,7 @@ class HelpTopicAdmin(admin.ModelAdmin):
             return '—'
         return format_html(
             '<div style="border:1px solid #ddd;border-radius:4px;padding:1rem;max-width:700px;">{}</div>',
-            format_html(obj.body),
+            mark_safe(obj.body),
         )
 
 
