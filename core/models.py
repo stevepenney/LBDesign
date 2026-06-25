@@ -118,6 +118,29 @@ class StairVoidSettings(models.Model):
         return obj
 
 
+class HelpTopic(models.Model):
+    """
+    Admin-managed help content surfaced via "What's this?" links throughout the UI.
+    Reference topics in templates with {% help_trigger "slug" %}.
+    """
+    slug = models.SlugField(
+        unique=True,
+        help_text="Used in templates: {% help_trigger 'this-slug' %}",
+    )
+    title = models.CharField(max_length=200)
+    body = models.TextField(help_text='HTML displayed in the help panel. Supports bold, lists, links, etc.')
+    image = models.ImageField(upload_to='help/', null=True, blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['sort_order', 'slug']
+        verbose_name = 'Help Topic'
+        verbose_name_plural = 'Help Topics'
+
+    def __str__(self):
+        return f'{self.title} ({self.slug})'
+
+
 class Feedback(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

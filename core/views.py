@@ -1,8 +1,9 @@
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_POST
 
-from .models import Feedback
+from .models import Feedback, HelpTopic
 
 
 @login_required
@@ -20,3 +21,13 @@ def submit_feedback(request):
         screenshot=request.FILES.get('screenshot'),
     )
     return JsonResponse({'ok': True})
+
+
+@login_required
+def help_topic(request, slug):
+    topic = get_object_or_404(HelpTopic, slug=slug)
+    return JsonResponse({
+        'title': topic.title,
+        'body': topic.body,
+        'image_url': topic.image.url if topic.image else None,
+    })

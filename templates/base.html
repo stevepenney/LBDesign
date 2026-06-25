@@ -319,6 +319,173 @@
   </script>
   {% endif %}
 
+  <!-- Help panel (universal "What's this?" system) -->
+  {% if user.is_authenticated %}
+  <div class="help-panel" id="help-panel" aria-hidden="true" aria-modal="true" role="dialog">
+    <div class="help-panel__backdrop" id="help-panel-backdrop"></div>
+    <div class="help-panel__box">
+      <div class="help-panel__header">
+        <strong id="help-panel-title">Help</strong>
+        <button class="help-panel__close" id="help-panel-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="help-panel__body" id="help-panel-body">
+        <p class="help-panel__loading">Loading…</p>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .help-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      background: none;
+      border: 1px solid var(--brown-light, #c8a97a);
+      color: var(--brown, #7a5c2e);
+      border-radius: 2rem;
+      padding: 0.2rem 0.65rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      line-height: 1.4;
+      transition: background 0.15s, color 0.15s;
+      vertical-align: middle;
+    }
+    .help-trigger:hover {
+      background: var(--tan-bg, #f5efe6);
+      color: var(--brown-dark, #5a3e1b);
+    }
+    .help-trigger::before { content: '?'; font-weight: 700; }
+
+    .help-panel {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .help-panel.is-open { display: flex; }
+
+    .help-panel__backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+    }
+
+    .help-panel__box {
+      position: relative;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
+      width: min(580px, 94vw);
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .help-panel__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.85rem 1.25rem;
+      background: var(--brown, #7a5c2e);
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .help-panel__header strong { font-size: 1rem; }
+    .help-panel__close {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 1.5rem;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0 0.2rem;
+    }
+    .help-panel__close:hover { opacity: 0.75; }
+
+    .help-panel__body {
+      padding: 1.25rem 1.5rem 1.5rem;
+      overflow-y: auto;
+      font-size: 0.92rem;
+      line-height: 1.6;
+      color: var(--charcoal, #333);
+    }
+    .help-panel__body h2, .help-panel__body h3 {
+      margin-top: 1.2rem;
+      margin-bottom: 0.4rem;
+      font-size: 0.95rem;
+      color: var(--brown-dark, #5a3e1b);
+    }
+    .help-panel__body p { margin: 0 0 0.75rem; }
+    .help-panel__body ul, .help-panel__body ol {
+      padding-left: 1.4rem;
+      margin: 0 0 0.75rem;
+    }
+    .help-panel__body li { margin-bottom: 0.3rem; }
+    .help-panel__body strong { color: var(--brown-dark, #5a3e1b); }
+    .help-panel__img {
+      display: block;
+      max-width: 100%;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+      margin-top: 1rem;
+    }
+    .help-panel__loading { color: #999; font-style: italic; }
+    .help-panel__error { color: #b20000; }
+  </style>
+
+  <script>
+  (function () {
+    const panel    = document.getElementById('help-panel');
+    const backdrop = document.getElementById('help-panel-backdrop');
+    const closeBtn = document.getElementById('help-panel-close');
+    const titleEl  = document.getElementById('help-panel-title');
+    const bodyEl   = document.getElementById('help-panel-body');
+
+    function openPanel(slug) {
+      titleEl.textContent = 'Loading…';
+      bodyEl.innerHTML = '<p class="help-panel__loading">Loading…</p>';
+      panel.classList.add('is-open');
+      panel.setAttribute('aria-hidden', 'false');
+
+      fetch('{% url "core:help_topic" slug="__slug__" %}'.replace('__slug__', slug))
+        .then(r => r.json())
+        .then(data => {
+          titleEl.textContent = data.title;
+          let html = data.body;
+          if (data.image_url) {
+            html += '<img src="' + data.image_url + '" class="help-panel__img" alt="">';
+          }
+          bodyEl.innerHTML = html;
+        })
+        .catch(() => {
+          bodyEl.innerHTML = '<p class="help-panel__error">Could not load help content.</p>';
+        });
+    }
+
+    function closePanel() {
+      panel.classList.remove('is-open');
+      panel.setAttribute('aria-hidden', 'true');
+    }
+
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.help-trigger');
+      if (btn) { e.preventDefault(); openPanel(btn.dataset.helpSlug); }
+    });
+
+    closeBtn.addEventListener('click', closePanel);
+    backdrop.addEventListener('click', closePanel);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && panel.classList.contains('is-open')) closePanel();
+    });
+  })();
+  </script>
+  {% endif %}
+
   <!-- Scripts -->
   <script src="{% static 'js/base.js' %}"></script>
   {% block extra_js %}{% endblock %}

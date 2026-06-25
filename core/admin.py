@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import Feedback, FreightSettings, RoofPitch, StairVoidSettings
+from .models import Feedback, FreightSettings, HelpTopic, RoofPitch, StairVoidSettings
 
 
 @admin.register(FreightSettings)
@@ -51,6 +51,28 @@ class RoofPitchAdmin(admin.ModelAdmin):
     @admin.display(description='Factor (1/cos θ)')
     def pitch_factor_display(self, obj):
         return f'{obj.pitch_factor:.4f}'
+
+
+@admin.register(HelpTopic)
+class HelpTopicAdmin(admin.ModelAdmin):
+    list_display = ['title', 'slug', 'sort_order', 'has_image']
+    list_editable = ['sort_order']
+    prepopulated_fields = {'slug': ('title',)}
+    fields = ['title', 'slug', 'body', 'image', 'body_preview', 'sort_order']
+    readonly_fields = ['body_preview']
+
+    @admin.display(description='Preview', boolean=True)
+    def has_image(self, obj):
+        return bool(obj.image)
+
+    @admin.display(description='Body preview')
+    def body_preview(self, obj):
+        if not obj.body:
+            return '—'
+        return format_html(
+            '<div style="border:1px solid #ddd;border-radius:4px;padding:1rem;max-width:700px;">{}</div>',
+            format_html(obj.body),
+        )
 
 
 @admin.register(Feedback)
