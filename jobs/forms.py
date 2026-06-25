@@ -79,6 +79,14 @@ class SectionForm(forms.ModelForm):
             cleaned['include_stair_void_trimmers'] = False
             cleaned['stair_void_trimmer_product'] = None
 
+        if system_type == Section.SystemType.OTHER:
+            cleaned['include_boundary_joists'] = False
+            cleaned['boundary_perimeter_lm'] = None
+            cleaned['boundary_joist_product'] = None
+            cleaned['include_stair_void_trimmers'] = False
+            cleaned['stair_void_trimmer_product'] = None
+            cleaned['roof_pitch'] = None
+
         return cleaned
 
 
@@ -139,6 +147,17 @@ FloorRoofAreaFormSet = inlineformset_factory(
     extra=0,
     min_num=1,
     validate_min=True,
+    can_delete=True,
+)
+
+# Same formset but areas are optional — used for the 'Other' system type.
+FloorRoofAreaOptionalFormSet = inlineformset_factory(
+    Section,
+    FloorRoofArea,
+    form=FloorRoofAreaForm,
+    extra=0,
+    min_num=0,
+    validate_min=False,
     can_delete=True,
 )
 

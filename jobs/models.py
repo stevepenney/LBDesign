@@ -95,6 +95,7 @@ class Section(models.Model):
     class SystemType(models.TextChoices):
         MIDFLOOR = 'midfloor', 'Midfloor'
         ROOF = 'roof', 'Roof'
+        OTHER = 'other', 'Other'
 
     job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='sections')
     label = models.CharField(max_length=200, help_text="e.g. 'Unit 1 Midfloor'")
@@ -162,6 +163,10 @@ class Section(models.Model):
     @property
     def is_roof(self):
         return self.system_type == self.SystemType.ROOF
+
+    @property
+    def is_other(self):
+        return self.system_type == self.SystemType.OTHER
 
 
 class FloorRoofArea(models.Model):

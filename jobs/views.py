@@ -10,8 +10,15 @@ from core.models import FreightSettings
 from projects.models import Project
 from projects.views import _assert_project_access
 from .calculations import run_job_estimate, run_subjob_calculation
-from .forms import JobForm, SectionForm, FloorRoofAreaFormSet, AdditionalBeamFormSet
+from .forms import JobForm, SectionForm, FloorRoofAreaFormSet, FloorRoofAreaOptionalFormSet, AdditionalBeamFormSet
 from .models import Job, Section, FloorRoofArea, AdditionalBeam
+
+
+def _area_formset_cls(system_type):
+    """Return the right area formset class — Other sections have optional areas."""
+    if system_type == Section.SystemType.OTHER:
+        return FloorRoofAreaOptionalFormSet
+    return FloorRoofAreaFormSet
 
 
 @login_required
@@ -23,7 +30,8 @@ def estimate_quick(request):
 
     if request.method == 'POST':
         form    = SectionForm(request.POST)
-        area_fs = FloorRoofAreaFormSet(request.POST, prefix='areas')
+        AreaFS  = _area_formset_cls(request.POST.get('system_type'))
+        area_fs = AreaFS(request.POST, prefix='areas')
         beam_fs = AdditionalBeamFormSet(request.POST, prefix='beams')
 
         if form.is_valid() and area_fs.is_valid() and beam_fs.is_valid():
@@ -194,8 +202,9 @@ def section_create(request, job_pk):
         return redirect('projects:project_list')
 
     if request.method == 'POST':
-        form = SectionForm(request.POST)
-        area_fs = FloorRoofAreaFormSet(request.POST, prefix='areas')
+        form    = SectionForm(request.POST)
+        AreaFS  = _area_formset_cls(request.POST.get('system_type'))
+        area_fs = AreaFS(request.POST, prefix='areas')
         beam_fs = AdditionalBeamFormSet(request.POST, prefix='beams')
 
         if form.is_valid() and area_fs.is_valid() and beam_fs.is_valid():
@@ -210,7 +219,7 @@ def section_create(request, job_pk):
             messages.success(request, f'"{section.label}" added.')
             return redirect('jobs:job_detail', pk=job.pk)
     else:
-        form = SectionForm()
+        form    = SectionForm()
         area_fs = FloorRoofAreaFormSet(prefix='areas')
         beam_fs = AdditionalBeamFormSet(prefix='beams')
 
@@ -232,8 +241,9 @@ def section_edit(request, job_pk, pk):
         return redirect('projects:project_list')
 
     if request.method == 'POST':
-        form = SectionForm(request.POST, instance=section)
-        area_fs = FloorRoofAreaFormSet(request.POST, instance=section, prefix='areas')
+        form    = SectionForm(request.POST, instance=section)
+        AreaFS  = _area_formset_cls(request.POST.get('system_type'))
+        area_fs = AreaFS(request.POST, instance=section, prefix='areas')
         beam_fs = AdditionalBeamFormSet(request.POST, instance=section, prefix='beams')
 
         if form.is_valid() and area_fs.is_valid() and beam_fs.is_valid():
@@ -244,8 +254,9 @@ def section_edit(request, job_pk, pk):
             messages.success(request, f'"{section.label}" updated.')
             return redirect('jobs:job_detail', pk=job.pk)
     else:
-        form = SectionForm(instance=section)
-        area_fs = FloorRoofAreaFormSet(instance=section, prefix='areas')
+        form    = SectionForm(instance=section)
+        AreaFS  = _area_formset_cls(section.system_type)
+        area_fs = AreaFS(instance=section, prefix='areas')
         beam_fs = AdditionalBeamFormSet(instance=section, prefix='beams')
 
     return render(request, 'jobs/subjob_form.html', {

@@ -200,8 +200,9 @@
 <!-- ── Floor / Roof Areas ─────────────────────────────────── -->
 <div class="form-card">
   <div class="form-card__header">
-    Floor / Roof Areas
-    <span style="font-weight:400;font-size:.8rem;opacity:.8;margin-left:.5rem;">— at least one required</span>
+    Areas
+    <span id="areas-required-hint" style="font-weight:400;font-size:.8rem;opacity:.8;margin-left:.5rem;">— at least one required</span>
+    <span id="areas-optional-hint" style="font-weight:400;font-size:.8rem;opacity:.8;margin-left:.5rem;display:none;">— optional</span>
   </div>
   <div class="form-card__body">
 
@@ -391,14 +392,19 @@
 {% block extra_js %}
 <script>
   // ── System type show/hide ─────────────────────────────────
-  const systemTypeEl    = document.getElementById('id_system_type');
-  const midfloorSections = document.getElementById('midfloor-sections');
-  const roofSections     = document.getElementById('roof-sections');
+  const systemTypeEl      = document.getElementById('id_system_type');
+  const midfloorSections  = document.getElementById('midfloor-sections');
+  const roofSections      = document.getElementById('roof-sections');
+  const areasRequiredHint = document.getElementById('areas-required-hint');
+  const areasOptionalHint = document.getElementById('areas-optional-hint');
 
   function applySystemType() {
     const val = systemTypeEl.value;
-    midfloorSections.style.display = (val === 'midfloor') ? '' : 'none';
-    roofSections.style.display     = (val === 'roof')     ? '' : 'none';
+    midfloorSections.style.display  = (val === 'midfloor') ? '' : 'none';
+    roofSections.style.display      = (val === 'roof')     ? '' : 'none';
+    const isOther = (val === 'other');
+    areasRequiredHint.style.display = isOther ? 'none' : '';
+    areasOptionalHint.style.display = isOther ? ''     : 'none';
   }
   systemTypeEl.addEventListener('change', applySystemType);
   applySystemType();
