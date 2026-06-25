@@ -7,4 +7,5 @@ here so admins know what to fill in.
 
 REGISTERED_TOPICS = {
     'sections-overview': 'Job detail — Sections heading',
+    'area-description': 'Area description'
 }
