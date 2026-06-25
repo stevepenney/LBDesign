@@ -434,21 +434,25 @@
 
     function position(triggerEl) {
       const r = triggerEl.getBoundingClientRect();
-      let top  = r.bottom + GAP;
+      const spaceBelow = window.innerHeight - r.bottom;
+      const spaceAbove = r.top;
+
       let left = r.left;
-
-      // Flip left if it would overflow the right edge
       if (left + POPOVER_W > window.innerWidth - 12) {
-        left = Math.max(8, r.right - POPOVER_W);
+        left = Math.max(8, window.innerWidth - POPOVER_W - 12);
       }
-      // Flip above if it would overflow the bottom
-      const estHeight = Math.min(420, window.innerHeight * 0.5);
-      if (top + estHeight > window.innerHeight - 12) {
-        top = Math.max(8, r.top - estHeight - GAP);
-      }
-
-      popover.style.top  = top + 'px';
       popover.style.left = left + 'px';
+
+      if (spaceBelow >= 150 || spaceBelow >= spaceAbove) {
+        // Show below — anchor top of popover to bottom of trigger
+        popover.style.top    = (r.bottom + GAP) + 'px';
+        popover.style.bottom = 'auto';
+      } else {
+        // Show above — anchor bottom of popover to top of trigger.
+        // Using CSS bottom avoids needing to know the popover's rendered height.
+        popover.style.top    = 'auto';
+        popover.style.bottom = (window.innerHeight - r.top + GAP) + 'px';
+      }
     }
 
     function openPopover(slug, triggerEl) {
