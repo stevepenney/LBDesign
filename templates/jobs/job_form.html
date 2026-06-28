@@ -75,7 +75,11 @@
 
 {% block content %}
   <div style="margin-bottom:1rem;">
-    <a href="{% url 'projects:project_detail' project.pk %}" style="font-size:0.88rem;">&larr; Back to {{ project.lb_ref }}</a>
+    {% if job %}
+      <a href="{% url 'jobs:job_detail' job.pk %}" style="font-size:0.88rem;">&larr; Back to {% if request.user.is_lb_admin or request.user.is_lb_detailing %}{{ project.lb_ref }}{% else %}{{ project.display_ref }}{% endif %}</a>
+    {% else %}
+      <a href="{% url 'projects:project_detail' project.pk %}" style="font-size:0.88rem;">&larr; Back to {% if request.user.is_lb_admin or request.user.is_lb_detailing %}{{ project.lb_ref }}{% else %}{{ project.display_ref }}{% endif %}</a>
+    {% endif %}
   </div>
 
   <div class="project-summary">
