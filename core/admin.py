@@ -25,6 +25,10 @@ class FreightSettingsAdmin(admin.ModelAdmin):
             'fields': ('estimate_uncertainty_pct',),
             'description': 'Total uncertainty band shown on estimates. Half this value is displayed as ±% (e.g. 30 → displayed as ±15%).',
         }),
+        ('Wastage', {
+            'fields': ('wastage_pct',),
+            'description': 'Applied to all lineal metre quantities to account for off-cuts when cutting from discrete stock lengths.',
+        }),
     )
 
     def has_add_permission(self, request):

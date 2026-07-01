@@ -49,6 +49,9 @@ def _calc_subjob(sub_job):
     subtotal = Decimal('0')
     has_unpriced = False
 
+    freight_settings = FreightSettings.get()
+    wastage_factor = Decimal('1') + _d(freight_settings.wastage_pct) / Decimal('100')
+
     pitch_factor = Decimal('1')
     if sub_job.is_roof and sub_job.roof_pitch:
         pitch_factor = _d(sub_job.roof_pitch.pitch_factor)
@@ -58,7 +61,7 @@ def _calc_subjob(sub_job):
         if not area.joist_product:
             has_unpriced = True
             continue
-        lm = (_d(area.area_m2) / _d(area.spacing_m) * pitch_factor).quantize(_CENT)
+        lm = (_d(area.area_m2) / _d(area.spacing_m) * pitch_factor * wastage_factor).quantize(_CENT)
         price = get_product_price(area.joist_product, organisation)
         line_total = (lm * price).quantize(_CENT) if price else None
         if line_total:
@@ -78,7 +81,7 @@ def _calc_subjob(sub_job):
             and sub_job.include_boundary_joists
             and sub_job.boundary_joist_product
             and sub_job.boundary_perimeter_lm):
-        lm = (_d(sub_job.boundary_perimeter_lm) * _d('1.5')).quantize(_CENT)
+        lm = (_d(sub_job.boundary_perimeter_lm) * _d('1.5') * wastage_factor).quantize(_CENT)
         price = get_product_price(sub_job.boundary_joist_product, organisation)
         line_total = (lm * price).quantize(_CENT) if price else None
         if line_total:
@@ -97,7 +100,7 @@ def _calc_subjob(sub_job):
     if (sub_job.is_midfloor
             and sub_job.include_stair_void_trimmers
             and sub_job.stair_void_trimmer_product):
-        lm = _d(StairVoidSettings.get().allowance_lm)
+        lm = (_d(StairVoidSettings.get().allowance_lm) * wastage_factor).quantize(_CENT)
         price = get_product_price(sub_job.stair_void_trimmer_product, organisation)
         line_total = (lm * price).quantize(_CENT) if price else None
         if line_total:
@@ -117,7 +120,7 @@ def _calc_subjob(sub_job):
         if not beam.product:
             has_unpriced = True
             continue
-        lm = (_d(beam.length_m) * _d(beam.quantity)).quantize(_CENT)
+        lm = (_d(beam.length_m) * _d(beam.quantity) * wastage_factor).quantize(_CENT)
         price = get_product_price(beam.product, organisation)
         line_total = (lm * price).quantize(_CENT) if price else None
         if line_total:

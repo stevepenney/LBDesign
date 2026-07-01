@@ -68,6 +68,12 @@ class FreightSettings(models.Model):
         default=30.00,
         help_text='Total uncertainty band % for estimates. Displayed to merchants as ±half this value (e.g. 30 → ±15%).',
     )
+    wastage_pct = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=10.00,
+        help_text='Wastage % applied to all lineal metre quantities. Accounts for off-cuts when cutting from discrete stock lengths (typical: 5–15%).',
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
