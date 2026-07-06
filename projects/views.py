@@ -69,19 +69,44 @@ def _send_quote_request_email(project, request):
 @login_required
 def project_list(request):
     show_discarded = request.GET.get('discarded') == '1'
-    projects = _get_projects_for_user(request.user, include_discarded=True)
+    active_status  = request.GET.get('status', '')
+
+    base_qs = _get_projects_for_user(request.user, include_discarded=True)
+
     if show_discarded:
-        projects = projects.filter(status=Project.Status.DISCARDED)
+        projects = base_qs.filter(status=Project.Status.DISCARDED)
+        status_counts = []
+        active_status = ''
     else:
-        projects = projects.exclude(status__in=[Project.Status.DRAFT, Project.Status.DISCARDED])
+        visible_qs = base_qs.exclude(status=Project.Status.DISCARDED)
+        if active_status:
+            projects = visible_qs.filter(status=active_status)
+        else:
+            projects = visible_qs
+
+        # Build pill counts from the unfiltered visible set
+        from django.db.models import Count
+        counts_qs = (
+            visible_qs
+            .values('status')
+            .annotate(n=Count('id'))
+            .order_by('status')
+        )
+        status_label = dict(Project.Status.choices)
+        status_counts = [
+            {'status': row['status'], 'label': status_label.get(row['status'], row['status']), 'count': row['n']}
+            for row in counts_qs
+        ]
+
     projects = projects.prefetch_related('estimates', 'cutlist_projects')
-    discarded_count = _get_projects_for_user(request.user, include_discarded=True).filter(
-        status=Project.Status.DISCARDED
-    ).count()
+    discarded_count = base_qs.filter(status=Project.Status.DISCARDED).count()
+
     return render(request, 'projects/project_list.html', {
-        'projects':        projects,
-        'show_discarded':  show_discarded,
+        'projects':       projects,
+        'show_discarded': show_discarded,
         'discarded_count': discarded_count,
+        'status_counts':  status_counts,
+        'active_status':  active_status,
     })
 
 

@@ -85,6 +85,36 @@
     color: #666;
     margin-left: .3rem;
   }
+  .status-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+    margin-bottom: 1rem;
+  }
+  .status-filter a {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .3rem .8rem;
+    border-radius: 2rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-decoration: none;
+    border: 1.5px solid var(--border);
+    color: var(--charcoal);
+    background: var(--white);
+    transition: border-color .15s, background .15s;
+  }
+  .status-filter a:hover { border-color: var(--brown-light); background: var(--tan-bg); }
+  .status-filter a.active { border-color: var(--brown); background: var(--brown); color: #fff; }
+  .status-filter a.active .filter-count { background: rgba(255,255,255,.25); color: #fff; }
+  .filter-count {
+    background: var(--tan-bg);
+    border-radius: 2rem;
+    font-size: 0.7rem;
+    padding: .05rem .45rem;
+    color: #666;
+  }
 </style>
 {% endblock %}
 
@@ -104,6 +134,19 @@
       {% endif %}
     </div>
   </div>
+
+  {% if status_counts %}
+  <div class="status-filter">
+    <a href="?" class="{% if not active_status %}active{% endif %}">
+      All
+    </a>
+    {% for s in status_counts %}
+    <a href="?status={{ s.status }}" class="{% if active_status == s.status %}active{% endif %}">
+      {{ s.label }}<span class="filter-count">{{ s.count }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
 
   {% if projects %}
     <div class="card">
@@ -171,8 +214,13 @@
   {% else %}
     <div class="card">
       <div class="empty-state">
-        <p>No projects yet. Create your first project to get started.</p>
-        <a href="{% url 'projects:project_create' %}" class="btn btn-primary">+ New Project</a>
+        {% if active_status %}
+          <p>No projects with that status.</p>
+          <a href="?" class="btn btn-secondary">Clear filter</a>
+        {% else %}
+          <p>No projects yet. Create your first project to get started.</p>
+          <a href="{% url 'projects:project_create' %}" class="btn btn-primary">+ New Project</a>
+        {% endif %}
       </div>
     </div>
   {% endif %}
