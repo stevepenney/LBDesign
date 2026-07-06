@@ -1,3 +1,4 @@
+import math
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
@@ -149,13 +150,17 @@ def job_detail(request, pk):
         if job.hardware_allowance_pct is not None
         else freight_settings.hardware_allowance_pct
     )
-    uncertainty_display_pct = freight_settings.estimate_uncertainty_pct / 2
+    total = float(job.total)
+    band  = float(freight_settings.estimate_uncertainty_pct) / 100
+    estimate_low  = int(total * (1 - band * 0.30) // 50) * 50
+    estimate_high = math.ceil(total * (1 + band * 0.70) / 50) * 50
     return render(request, 'jobs/job_detail.html', {
         'job': job,
         'sections': sections,
         'freight_settings': freight_settings,
         'effective_hardware_pct': effective_hardware_pct,
-        'uncertainty_display_pct': uncertainty_display_pct,
+        'estimate_low':  f'{estimate_low:,}',
+        'estimate_high': f'{estimate_high:,}',
     })
 
 

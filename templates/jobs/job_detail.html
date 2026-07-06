@@ -333,17 +333,15 @@
         {% endif %}
         <tr class="summary-rule"><td colspan="2"></td></tr>
         <tr class="summary-total">
-          <td>
-            Total (excl. GST)
-            <div style="font-size:0.75rem;color:#888;font-weight:400;margin-top:.15rem;">
-              ±{{ uncertainty_display_pct|floatformat:"-2" }}% indicative
-            </div>
-          </td>
+          <td>Indicative range (excl. GST)</td>
           <td class="summary-amount">
-            <strong>${{ job.display_total }}</strong>
+            <strong>${{ estimate_low }} – ${{ estimate_high }}</strong>
           </td>
         </tr>
       </table>
+    </div>
+    <div style="padding:.65rem 1rem;border-top:1px solid var(--border);background:var(--tan-bg);font-size:0.75rem;color:#888;line-height:1.5;">
+      This is an indicative estimate based on information provided and is not a quotation. Actual pricing is subject to final measurements, product availability, and market conditions.
     </div>
   </div>
 </div>
