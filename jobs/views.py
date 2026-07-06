@@ -337,3 +337,21 @@ def section_delete(request, job_pk, pk):
         return redirect('jobs:job_detail', pk=job.pk)
 
     return render(request, 'jobs/subjob_confirm_delete.html', {'job': job, 'section': section})
+
+
+@login_required
+def job_breakdown(request, pk):
+    if not (request.user.is_lb_admin or request.user.is_lb_detailing):
+        messages.error(request, 'Access denied.')
+        return redirect('jobs:job_detail', pk=pk)
+
+    job = get_object_or_404(Job, pk=pk)
+    if not _assert_job_access(request.user, job):
+        messages.error(request, 'You do not have access to that estimate.')
+        return redirect('projects:project_list')
+
+    sections = job.sections.prefetch_related('areas', 'additional_beams').all()
+    return render(request, 'jobs/job_breakdown.html', {
+        'job': job,
+        'sections': sections,
+    })

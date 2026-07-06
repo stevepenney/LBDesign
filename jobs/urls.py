@@ -12,6 +12,7 @@ urlpatterns = [
     path('<int:pk>/update-field/',    views.job_update_field, name='job_update_field'),
     path('<int:pk>/recalculate/',     views.job_recalculate,  name='job_recalculate'),
     path('<int:pk>/duplicate/',       views.job_duplicate,   name='job_duplicate'),
+    path('<int:pk>/breakdown/',       views.job_breakdown,   name='job_breakdown'),
 
     # Sections (nested under an estimate)
     path('<int:job_pk>/sections/new/',              views.section_create, name='section_create'),

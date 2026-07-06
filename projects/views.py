@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from accounts.models import Organisation
 from .forms import ProjectDocumentForm, ProjectForm
 from .models import Project, ProjectDocument
 
@@ -112,15 +113,35 @@ def project_list(request):
 
 @login_required
 def project_create(request):
-    if not request.user.organisation and not request.user.is_lb_admin:
-        messages.error(request, 'Your account is not linked to an organisation. Contact LumberBank.')
-        return redirect('projects:project_list')
+    is_lb_staff = request.user.is_lb_admin or request.user.is_lb_detailing
+
+    if is_lb_staff:
+        org_pk = request.GET.get('org')
+        if not org_pk:
+            return redirect('projects:select_merchant')
+        org = get_object_or_404(Organisation, pk=org_pk)
+    else:
+        if not request.user.organisation:
+            messages.error(request, 'Your account is not linked to an organisation. Contact LumberBank.')
+            return redirect('projects:project_list')
+        org = request.user.organisation
+
     project = Project.objects.create(
-        organisation = request.user.organisation,
+        organisation = org,
         created_by   = request.user,
         status       = Project.Status.DRAFT,
     )
     return redirect('projects:project_detail', pk=project.pk)
+
+
+@login_required
+def select_merchant(request):
+    if not (request.user.is_lb_admin or request.user.is_lb_detailing):
+        messages.error(request, 'Access denied.')
+        return redirect('projects:project_list')
+
+    orgs = Organisation.objects.filter(is_merchant=True, is_active=True).order_by('name')
+    return render(request, 'projects/select_merchant.html', {'orgs': orgs})
 
 
 @login_required

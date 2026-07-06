@@ -230,6 +230,9 @@
       {% csrf_token %}
       <button type="submit" class="btn btn-secondary">Duplicate</button>
     </form>
+    {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
+    <a href="{% url 'jobs:job_breakdown' job.pk %}" class="btn btn-secondary">View Breakdown</a>
+    {% endif %}
   </div>
 </div>
 

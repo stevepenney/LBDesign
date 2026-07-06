@@ -130,7 +130,11 @@
         {% if discarded_count %}
           <a href="?discarded=1" style="font-size:0.85rem;color:#9ca3af;">{{ discarded_count }} discarded</a>
         {% endif %}
-        <a href="{% url 'projects:project_create' %}" class="btn btn-primary">+ New Project</a>
+        {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
+          <a href="{% url 'projects:select_merchant' %}" class="btn btn-primary">+ New Project</a>
+        {% else %}
+          <a href="{% url 'projects:project_create' %}" class="btn btn-primary">+ New Project</a>
+        {% endif %}
       {% endif %}
     </div>
   </div>
@@ -219,7 +223,11 @@
           <a href="?" class="btn btn-secondary">Clear filter</a>
         {% else %}
           <p>No projects yet. Create your first project to get started.</p>
-          <a href="{% url 'projects:project_create' %}" class="btn btn-primary">+ New Project</a>
+          {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
+            <a href="{% url 'projects:select_merchant' %}" class="btn btn-primary">+ New Project</a>
+          {% else %}
+            <a href="{% url 'projects:project_create' %}" class="btn btn-primary">+ New Project</a>
+          {% endif %}
         {% endif %}
       </div>
     </div>

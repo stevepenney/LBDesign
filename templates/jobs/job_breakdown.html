@@ -1,0 +1,187 @@
+{% extends 'base.html' %}
+
+{% block title %}Breakdown — {{ job.project.lb_ref }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .breakdown-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  .breakdown-header h1 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--brown-dark);
+    margin-bottom: .25rem;
+  }
+  .breakdown-header .meta { font-size: 0.85rem; color: #888; }
+
+  .section-block { margin-bottom: 2rem; }
+  .section-heading {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--white);
+    background: var(--brown-dark);
+    padding: .5rem 1rem;
+    border-radius: 6px 6px 0 0;
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+  }
+  .section-heading .type-badge {
+    font-size: 0.68rem;
+    background: rgba(255,255,255,.18);
+    padding: .1rem .5rem;
+    border-radius: 20px;
+  }
+
+  .breakdown-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    overflow: hidden;
+    background: var(--white);
+  }
+  .breakdown-table th {
+    background: var(--tan-bg);
+    color: var(--charcoal);
+    padding: .5rem .9rem;
+    text-align: left;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    border-bottom: 1px solid var(--border);
+  }
+  .breakdown-table th.num { text-align: right; }
+  .breakdown-table td {
+    padding: .55rem .9rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--brown-dark);
+    vertical-align: middle;
+  }
+  .breakdown-table tr:last-child td { border-bottom: none; }
+  .breakdown-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .breakdown-table .desc { color: #888; font-size: 0.8rem; font-style: italic; }
+  .unpriced { color: #b27000; font-size: 0.78rem; }
+
+  .section-subtotal {
+    text-align: right;
+    font-size: 0.85rem;
+    color: #888;
+    padding: .6rem 1rem;
+    border: 1px solid var(--border);
+    border-top: none;
+    background: var(--tan-bg);
+    border-radius: 0 0 6px 6px;
+    margin-top: -1px;
+  }
+  .section-subtotal strong { color: var(--brown-dark); }
+
+  .no-items { color: #aaa; font-style: italic; padding: 1rem; text-align: center; }
+
+  .grand-total {
+    text-align: right;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--brown-dark);
+    margin-top: 1.5rem;
+    padding: .9rem 1.25rem;
+    background: var(--white);
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:1rem;">
+  <a href="{% url 'jobs:job_detail' job.pk %}" style="font-size:.88rem;">&larr; Back to estimate</a>
+</div>
+
+<div class="breakdown-header">
+  <div>
+    <h1>{{ job.project.lb_ref }}{% if job.label %} — {{ job.label }}{% endif %}</h1>
+    <div class="meta">
+      {{ job.project.organisation.name }}
+      {% if job.project.client_name %} &mdash; {{ job.project.client_name }}{% endif %}
+      {% if job.project.site_address %} &mdash; {{ job.project.site_address }}{% endif %}
+    </div>
+  </div>
+  <div style="font-size:0.82rem;color:#aaa;">Member schedule breakdown</div>
+</div>
+
+{% for section in sections %}
+<div class="section-block">
+  <div class="section-heading">
+    {{ section.label }}
+    <span class="type-badge">{{ section.get_system_type_display }}</span>
+  </div>
+
+  {% with schedule=section.member_schedule %}
+  {% if schedule.items %}
+  <table class="breakdown-table">
+    <thead>
+      <tr>
+        <th>Member</th>
+        <th>Description</th>
+        <th class="num">LM</th>
+        <th class="num">Unit Price</th>
+        <th class="num">Line Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in schedule.items %}
+      <tr>
+        <td>{{ item.label }}</td>
+        <td class="desc">{{ item.description|default:"—" }}</td>
+        <td class="num">{{ item.lineal_metres|floatformat:2 }}</td>
+        <td class="num">
+          {% if item.unit_price is not None %}
+            ${{ item.unit_price|floatformat:2 }}
+          {% else %}
+            <span class="unpriced">Not priced</span>
+          {% endif %}
+        </td>
+        <td class="num">
+          {% if item.line_total is not None %}
+            ${{ item.line_total|floatformat:2 }}
+          {% else %}
+            <span class="unpriced">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="section-subtotal">
+    Section subtotal:
+    {% if section.calculated_subtotal is not None %}
+      <strong>${{ section.calculated_subtotal|floatformat:2 }}</strong>
+      {% if schedule.has_unpriced %}<span class="unpriced" title="Some items have no price">&#9888; partial</span>{% endif %}
+    {% else %}
+      <strong>—</strong>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="no-items">No line items calculated for this section.</div>
+  {% endif %}
+  {% endwith %}
+</div>
+{% empty %}
+<p style="color:#aaa;font-style:italic;">No sections in this estimate.</p>
+{% endfor %}
+
+<div class="grand-total">
+  Estimate total (excl. freight, hardware, GST): ${{ job.subtotal|floatformat:2 }}
+</div>
+{% endblock %}

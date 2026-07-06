@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+
+{% block title %}Select Merchant{% endblock %}
+
+{% block extra_css %}
+<style>
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  .merchant-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .merchant-card {
+    background: var(--white);
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    padding: 1.25rem;
+    text-decoration: none;
+    color: var(--brown-dark);
+    transition: border-color .15s, box-shadow .15s;
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+  }
+  .merchant-card:hover {
+    border-color: var(--brown);
+    box-shadow: 0 2px 8px rgba(0,0,0,.12);
+    text-decoration: none;
+    color: var(--brown-dark);
+  }
+  .merchant-card__icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--brown);
+    color: var(--white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+  .merchant-card__name { font-weight: 700; font-size: 0.95rem; line-height: 1.2; }
+  .empty-state {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: #aaa;
+    background: var(--tan-bg);
+    border: 2px dashed var(--border);
+    border-radius: 6px;
+  }
+  .empty-state p { margin-bottom: 1.25rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:1rem;">
+  <a href="{% url 'projects:project_list' %}" style="font-size:.88rem;">&larr; Back to Projects</a>
+</div>
+
+<div class="page-header">
+  <h1 class="page-title" style="margin-bottom:0;">Select Merchant</h1>
+  <a href="{% url 'accounts:organisation_create' %}" class="btn btn-secondary">+ New Merchant</a>
+</div>
+
+{% if orgs %}
+  <div class="merchant-grid">
+    {% for org in orgs %}
+    <a href="{% url 'projects:project_create' %}?org={{ org.pk }}" class="merchant-card">
+      <div class="merchant-card__icon">{{ org.name|slice:":1"|upper }}</div>
+      <div class="merchant-card__name">{{ org.name }}</div>
+    </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="empty-state">
+    <p>No active merchants set up yet.</p>
+    <a href="{% url 'accounts:organisation_create' %}" class="btn btn-primary">+ New Merchant</a>
+  </div>
+{% endif %}
+{% endblock %}
