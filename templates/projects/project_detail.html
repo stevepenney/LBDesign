@@ -199,9 +199,21 @@
     {% endif %}
   </div>
   <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
-    <span class="status-badge status-{{ project.status }}">{{ project.get_status_display }}</span>
+    {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
+      <select id="status-select"
+              class="status-badge status-{{ project.status }}"
+              data-update-url="{% url 'projects:project_update_status' project.pk %}"
+              data-csrf="{{ csrf_token }}"
+              style="cursor:pointer;border:none;appearance:none;-webkit-appearance:none;padding-right:1.25rem;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='currentColor' opacity='.6'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right .45rem center;">
+        {% for value, label in status_choices %}
+          <option value="{{ value }}"{% if project.status == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    {% else %}
+      <span class="status-badge status-{{ project.status }}">{{ project.get_status_display }}</span>
+    {% endif %}
     <a href="{% url 'projects:project_edit' project.pk %}" class="btn btn-secondary">Edit Project</a>
-    {% if project.status == 'preliminary' %}
+    {% if project.status == 'preliminary' and not request.user.is_lb_admin and not request.user.is_lb_detailing %}
     <form method="post" action="{% url 'projects:request_quote' project.pk %}"
           onsubmit="return confirm('Request a quote from LB? This will notify the detailing team and move the project to Quoting status.')">
       {% csrf_token %}
@@ -583,6 +595,34 @@
   }
 
   document.querySelectorAll('.editable-field').forEach(makeEditable);
+
+  // ── Status selector (lb staff only) ──────────────────────────────────────
+
+  var statusSelect = document.getElementById('status-select');
+  if (statusSelect) {
+    var STATUS_CLASSES = ['status-draft','status-preliminary','status-quoting','status-quoted','status-ordered','status-supplied','status-on_hold','status-cancelled'];
+    statusSelect.addEventListener('change', function () {
+      var newStatus = statusSelect.value;
+      var url       = statusSelect.dataset.updateUrl;
+      var csrf      = statusSelect.dataset.csrf;
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'csrfmiddlewaretoken=' + encodeURIComponent(csrf) + '&status=' + encodeURIComponent(newStatus),
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.ok) {
+          STATUS_CLASSES.forEach(function (c) { statusSelect.classList.remove(c); });
+          statusSelect.classList.add('status-' + newStatus);
+          window.showToast('Status updated to ' + data.label + '.', 'success');
+        } else {
+          window.showToast('Could not update status.', 'error');
+        }
+      })
+      .catch(function () { window.showToast('Could not update status.', 'error'); });
+    });
+  }
 
   // ── Draft save / promote ──────────────────────────────────────────────────
 

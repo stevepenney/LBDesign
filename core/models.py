@@ -29,9 +29,9 @@ class RoofPitch(models.Model):
         return 1 / math.cos(math.radians(float(self.pitch_degrees)))
 
 
-class FreightSettings(models.Model):
+class SystemSettings(models.Model):
     """
-    System-wide freight configuration managed by Lumberbank Admin.
+    System-wide configuration managed by Lumberbank Admin.
     Only one active record is used (singleton pattern enforced in admin).
     """
     freight_threshold = models.DecimalField(
@@ -77,11 +77,11 @@ class FreightSettings(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = 'Freight Settings'
-        verbose_name_plural = 'Freight Settings'
+        verbose_name = 'System Settings'
+        verbose_name_plural = 'System Settings'
 
     def __str__(self):
-        return f'Freight Settings (threshold: ${self.freight_threshold})'
+        return 'System Settings'
 
     def save(self, *args, **kwargs):
         # Enforce singleton — always use pk=1

@@ -7,7 +7,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from core.models import FreightSettings
+from core.models import SystemSettings
 from projects.models import Project
 from projects.views import _assert_project_access
 from .calculations import run_job_estimate, run_subjob_calculation
@@ -87,22 +87,25 @@ def job_update_field(request, pk):
         return JsonResponse({'ok': False}, status=403)
     field = request.POST.get('field', '')
     value = request.POST.get('value', '').strip()
-    if field not in {'label', 'hardware_allowance_pct'}:
+
+    PCT_FIELDS = {'hardware_allowance_pct', 'wastage_pct', 'estimate_uncertainty_pct'}
+    if field not in {'label'} | PCT_FIELDS:
         return JsonResponse({'ok': False, 'error': 'Invalid field'}, status=400)
 
-    if field == 'hardware_allowance_pct':
+    if field in PCT_FIELDS:
         if value == '':
-            job.hardware_allowance_pct = None
+            setattr(job, field, None)
         else:
             try:
                 pct = Decimal(value)
-                if not (Decimal('0') <= pct <= Decimal('100')):
-                    return JsonResponse({'ok': False, 'error': 'Enter a value between 0 and 100'}, status=400)
-                job.hardware_allowance_pct = pct
+                if not (Decimal('0') <= pct <= Decimal('200')):
+                    return JsonResponse({'ok': False, 'error': 'Enter a value between 0 and 200'}, status=400)
+                setattr(job, field, pct)
             except InvalidOperation:
                 return JsonResponse({'ok': False, 'error': 'Invalid percentage'}, status=400)
-        job.save(update_fields=['hardware_allowance_pct', 'updated_at'])
-        run_job_estimate(job)
+        job.save(update_fields=[field, 'updated_at'])
+        if field in {'hardware_allowance_pct', 'wastage_pct'}:
+            run_job_estimate(job)
         return JsonResponse({'ok': True, 'reload': True})
 
     setattr(job, field, value)
@@ -144,21 +147,33 @@ def job_detail(request, pk):
         messages.error(request, 'You do not have access to that estimate.')
         return redirect('projects:project_list')
     sections = job.sections.prefetch_related('areas', 'additional_beams').all()
-    freight_settings = FreightSettings.get()
+    system_settings = SystemSettings.get()
     effective_hardware_pct = (
         job.hardware_allowance_pct
         if job.hardware_allowance_pct is not None
-        else freight_settings.hardware_allowance_pct
+        else system_settings.hardware_allowance_pct
+    )
+    effective_uncertainty_pct = (
+        job.estimate_uncertainty_pct
+        if job.estimate_uncertainty_pct is not None
+        else system_settings.estimate_uncertainty_pct
+    )
+    effective_wastage_pct = (
+        job.wastage_pct
+        if job.wastage_pct is not None
+        else system_settings.wastage_pct
     )
     total = float(job.total)
-    band  = float(freight_settings.estimate_uncertainty_pct) / 100
+    band  = float(effective_uncertainty_pct) / 100
     estimate_low  = int(total * (1 - band * 0.30) // 50) * 50
     estimate_high = math.ceil(total * (1 + band * 0.70) / 50) * 50
     return render(request, 'jobs/job_detail.html', {
         'job': job,
         'sections': sections,
-        'freight_settings': freight_settings,
-        'effective_hardware_pct': effective_hardware_pct,
+        'system_settings': system_settings,
+        'effective_hardware_pct':     effective_hardware_pct,
+        'effective_wastage_pct':      effective_wastage_pct,
+        'effective_uncertainty_pct':  effective_uncertainty_pct,
         'estimate_low':  f'{estimate_low:,}',
         'estimate_high': f'{estimate_high:,}',
     })

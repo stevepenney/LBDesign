@@ -10,6 +10,7 @@ urlpatterns = [
     path('<int:pk>/',                   views.project_detail,       name='project_detail'),
     path('<int:pk>/edit/',              views.project_edit,         name='project_edit'),
     path('<int:pk>/promote/',           views.project_promote,      name='project_promote'),
+    path('<int:pk>/update-status/',     views.project_update_status, name='project_update_status'),
     path('<int:pk>/discard/',           views.project_discard,      name='project_discard'),
     path('<int:pk>/undiscard/',         views.project_undiscard,    name='project_undiscard'),
     path('<int:pk>/update-field/',      views.project_update_field, name='project_update_field'),

@@ -24,13 +24,18 @@ class Job(models.Model):
         help_text="Optional label to distinguish multiple estimates on the same project, e.g. 'Option A'.",
     )
 
-    # Per-job hardware allowance override (null = use global FreightSettings default)
+    # Per-job overrides — null means use the global SystemSettings value
     hardware_allowance_pct = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        null=True,
-        blank=True,
+        max_digits=5, decimal_places=2, null=True, blank=True,
         help_text='Override hardware allowance %. Leave blank to use the global default.',
+    )
+    wastage_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Override wastage %. Leave blank to use the global default.',
+    )
+    estimate_uncertainty_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Override estimate uncertainty band %. Leave blank to use the global default.',
     )
 
     # Stored totals computed by the calculation engine

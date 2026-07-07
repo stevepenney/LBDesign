@@ -4,35 +4,27 @@ from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
 from .help_registry import REGISTERED_TOPICS
-from .models import Feedback, FreightSettings, HelpTopic, RoofPitch, StairVoidSettings
+from .models import Feedback, HelpTopic, RoofPitch, StairVoidSettings, SystemSettings
 
 
-@admin.register(FreightSettings)
-class FreightSettingsAdmin(admin.ModelAdmin):
+@admin.register(SystemSettings)
+class SystemSettingsAdmin(admin.ModelAdmin):
     fieldsets = (
-        ('Freight Threshold', {
+        ('Freight', {
             'fields': ('freight_threshold', 'fixed_freight_fee'),
             'description': 'Orders below the threshold attract the fixed fee. Orders at or above are FIS.',
         }),
         ('Fuel Surcharge', {
             'fields': ('surcharge_enabled', 'surcharge_percentage'),
         }),
-        ('Hardware Allowance', {
-            'fields': ('hardware_allowance_pct',),
-            'description': 'Default % added to materials cost on every estimate. Individual estimates can override this.',
-        }),
-        ('Estimate Uncertainty', {
-            'fields': ('estimate_uncertainty_pct',),
-            'description': 'Total uncertainty band shown on estimates. Half this value is displayed as ±% (e.g. 30 → displayed as ±15%).',
-        }),
-        ('Wastage', {
-            'fields': ('wastage_pct',),
-            'description': 'Applied to all lineal metre quantities to account for off-cuts when cutting from discrete stock lengths.',
+        ('Estimation Defaults', {
+            'fields': ('hardware_allowance_pct', 'wastage_pct', 'estimate_uncertainty_pct'),
+            'description': 'Global defaults applied to all estimates. Individual estimates can override these.',
         }),
     )
 
     def has_add_permission(self, request):
-        return not FreightSettings.objects.exists()
+        return not SystemSettings.objects.exists()
 
     def has_delete_permission(self, request, obj=None):
         return False

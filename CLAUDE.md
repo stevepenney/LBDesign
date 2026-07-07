@@ -35,7 +35,7 @@ venv/Scripts/python manage.py shell
 | App | Owns |
 |-----|------|
 | `accounts` | Organisation, User (AbstractUser + role + org FK) |
-| `core` | FreightSettings (singleton), RoofPitch (lookup) |
+| `core` | SystemSettings (singleton), RoofPitch (lookup), StairVoidSettings (singleton), HelpTopic |
 | `products` | Product, PriceBook, PriceBookEntry; `pricing.py` price resolver |
 | `jobs` | Job, Section, FloorRoofArea, AdditionalBeam, DrawingUpload; `calculations.py` engine |
 | `cutlist` | Cutlist Optimizer (no models yet — pure JS tool served by a single view) |
@@ -55,7 +55,8 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
 - `RoofPitch.pitch_degrees` stores degrees. `pitch_factor` is a computed property:
   `1 / cos(radians(pitch_degrees))`. Do not add a stored pitch_factor field.
 - `PriceBook.is_default` — only one default allowed; `save()` enforces it.
-- `FreightSettings` is a singleton; always use `FreightSettings.get()`, never `.objects.first()`.
+- `SystemSettings` is a singleton; always use `SystemSettings.get()`, never `.objects.first()`.
+- `StairVoidSettings` is also a singleton; same rule applies.
 
 ### Pricing
 - Price lookup: `products/pricing.py → get_product_price(product, organisation)`
@@ -81,7 +82,7 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
 - `jobs:job_recalculate`
 
 ### Admin
-- `RoofPitch` and `FreightSettings` are in the **Core** admin section.
+- `RoofPitch`, `SystemSettings`, and `StairVoidSettings` are in the **Core** admin section.
 - `PriceBook` is in the **Products** admin section.
 - `Section` is in the **Jobs** admin section.
 
@@ -151,7 +152,7 @@ functional and must not change: LIB=yellow, LVL8=green, LVL11=cyan, LVL13=teal, 
 **Don't:**
 - Use "sub-job" anywhere in user-facing text or UI labels.
 - Add a stored `pitch_factor` field to RoofPitch — it's always computed.
-- Call `FreightSettings.objects.first()` — use `FreightSettings.get()`.
+- Call `SystemSettings.objects.first()` — use `SystemSettings.get()`.
 - Create new template files when editing an existing one works.
 - Add comments that describe *what* the code does — only add them when the *why* is non-obvious.
 - Over-engineer: no extra abstractions, fallbacks, or validation beyond what the task requires.

@@ -182,15 +182,35 @@ def project_detail(request, pk):
     estimates = project.estimates.prefetch_related('sections').order_by('-created_at')
     cutlists  = project.cutlist_projects.order_by('-updated_at')
     documents = project.documents.select_related('uploaded_by').all()
+    status_choices = [
+        (v, l) for v, l in Project.Status.choices
+        if v != Project.Status.DISCARDED
+    ]
     return render(request, 'projects/project_detail.html', {
-        'project':   project,
-        'estimates': estimates,
-        'cutlists':  cutlists,
-        'documents': documents,
+        'project':        project,
+        'estimates':      estimates,
+        'cutlists':       cutlists,
+        'documents':      documents,
+        'status_choices': status_choices,
     })
 
 
 # ── Project actions ───────────────────────────────────────────────────────────
+
+@login_required
+@require_POST
+def project_update_status(request, pk):
+    if not (request.user.is_lb_admin or request.user.is_lb_detailing):
+        return JsonResponse({'ok': False}, status=403)
+    project = get_object_or_404(Project, pk=pk)
+    status = request.POST.get('status', '')
+    valid = {s[0] for s in Project.Status.choices} - {Project.Status.DISCARDED}
+    if status not in valid:
+        return JsonResponse({'ok': False, 'error': 'Invalid status'}, status=400)
+    project.status = status
+    project.save(update_fields=['status', 'updated_at'])
+    return JsonResponse({'ok': True, 'label': project.get_status_display()})
+
 
 @login_required
 @require_POST

@@ -17,7 +17,7 @@ calc_freight(subtotal, freight_settings)
 
 from decimal import Decimal
 
-from core.models import FreightSettings, StairVoidSettings
+from core.models import SystemSettings, StairVoidSettings
 from products.pricing import get_product_price
 from .models import Job, Section
 
@@ -49,8 +49,9 @@ def _calc_subjob(sub_job):
     subtotal = Decimal('0')
     has_unpriced = False
 
-    freight_settings = FreightSettings.get()
-    wastage_factor = Decimal('1') + _d(freight_settings.wastage_pct) / Decimal('100')
+    freight_settings = SystemSettings.get()
+    effective_wastage = sub_job.job.wastage_pct if sub_job.job.wastage_pct is not None else freight_settings.wastage_pct
+    wastage_factor = Decimal('1') + _d(effective_wastage) / Decimal('100')
 
     pitch_factor = Decimal('1')
     if sub_job.is_roof and sub_job.roof_pitch:
@@ -163,7 +164,7 @@ def _update_job_freight(job):
     materials = (
         job.sections.aggregate(s=Sum('calculated_subtotal'))['s'] or Decimal('0')
     )
-    freight_settings = FreightSettings.get()
+    freight_settings = SystemSettings.get()
     pct = (
         _d(job.hardware_allowance_pct)
         if job.hardware_allowance_pct is not None
