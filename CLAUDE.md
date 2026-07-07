@@ -35,7 +35,7 @@ venv/Scripts/python manage.py shell
 | App | Owns |
 |-----|------|
 | `accounts` | Organisation, User (AbstractUser + role + org FK) |
-| `core` | SystemSettings (singleton), RoofPitch (lookup), StairVoidSettings (singleton), HelpTopic |
+| `core` | SystemSettings (singleton), RoofPitch (lookup), HelpTopic |
 | `products` | Product, PriceBook, PriceBookEntry; `pricing.py` price resolver |
 | `jobs` | Job, Section, FloorRoofArea, AdditionalBeam, DrawingUpload; `calculations.py` engine |
 | `cutlist` | Cutlist Optimizer (no models yet — pure JS tool served by a single view) |
@@ -56,7 +56,6 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
   `1 / cos(radians(pitch_degrees))`. Do not add a stored pitch_factor field.
 - `PriceBook.is_default` — only one default allowed; `save()` enforces it.
 - `SystemSettings` is a singleton; always use `SystemSettings.get()`, never `.objects.first()`.
-- `StairVoidSettings` is also a singleton; same rule applies.
 
 ### Pricing
 - Price lookup: `products/pricing.py → get_product_price(product, organisation)`
@@ -82,7 +81,7 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
 - `jobs:job_recalculate`
 
 ### Admin
-- `RoofPitch`, `SystemSettings`, and `StairVoidSettings` are in the **Core** admin section.
+- `RoofPitch` and `SystemSettings` are in the **Core** admin section.
 - `PriceBook` is in the **Products** admin section.
 - `Section` is in the **Jobs** admin section.
 

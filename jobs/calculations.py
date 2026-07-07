@@ -17,7 +17,7 @@ calc_freight(subtotal, freight_settings)
 
 from decimal import Decimal
 
-from core.models import SystemSettings, StairVoidSettings
+from core.models import SystemSettings
 from products.pricing import get_product_price
 from .models import Job, Section
 
@@ -101,7 +101,7 @@ def _calc_subjob(sub_job):
     if (sub_job.is_midfloor
             and sub_job.include_stair_void_trimmers
             and sub_job.stair_void_trimmer_product):
-        lm = (_d(StairVoidSettings.get().allowance_lm) * wastage_factor).quantize(_CENT)
+        lm = (_d(freight_settings.stair_void_allowance_lm) * wastage_factor).quantize(_CENT)
         price = get_product_price(sub_job.stair_void_trimmer_product, organisation)
         line_total = (lm * price).quantize(_CENT) if price else None
         if line_total:

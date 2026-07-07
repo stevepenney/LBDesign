@@ -74,6 +74,12 @@ class SystemSettings(models.Model):
         default=10.00,
         help_text='Wastage % applied to all lineal metre quantities. Accounts for off-cuts when cutting from discrete stock lengths (typical: 5–15%).',
     )
+    stair_void_allowance_lm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        default=0.00,
+        help_text='Standard lineal metre allowance applied when the stair void trimmer toggle is on.',
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -85,36 +91,6 @@ class SystemSettings(models.Model):
 
     def save(self, *args, **kwargs):
         # Enforce singleton — always use pk=1
-        self.pk = 1
-        super().save(*args, **kwargs)
-
-    @classmethod
-    def get(cls):
-        obj, _ = cls.objects.get_or_create(pk=1)
-        return obj
-
-
-class StairVoidSettings(models.Model):
-    """
-    System-wide stair void trimmer allowance, managed by Lumberbank Admin.
-    Singleton — always use StairVoidSettings.get(), never .objects.first().
-    """
-    allowance_lm = models.DecimalField(
-        max_digits=8,
-        decimal_places=2,
-        default=0.00,
-        help_text='Standard lineal metre allowance applied when the stair void trimmer toggle is on.',
-    )
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name = 'Stair Void Settings'
-        verbose_name_plural = 'Stair Void Settings'
-
-    def __str__(self):
-        return f'Stair Void Settings ({self.allowance_lm} lm)'
-
-    def save(self, *args, **kwargs):
         self.pk = 1
         super().save(*args, **kwargs)
 

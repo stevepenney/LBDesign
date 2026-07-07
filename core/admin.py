@@ -4,7 +4,7 @@ from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
 from .help_registry import REGISTERED_TOPICS
-from .models import Feedback, HelpTopic, RoofPitch, StairVoidSettings, SystemSettings
+from .models import Feedback, HelpTopic, RoofPitch, SystemSettings
 
 
 @admin.register(SystemSettings)
@@ -18,24 +18,13 @@ class SystemSettingsAdmin(admin.ModelAdmin):
             'fields': ('surcharge_enabled', 'surcharge_percentage'),
         }),
         ('Estimation Defaults', {
-            'fields': ('hardware_allowance_pct', 'wastage_pct', 'estimate_uncertainty_pct'),
-            'description': 'Global defaults applied to all estimates. Individual estimates can override these.',
+            'fields': ('hardware_allowance_pct', 'wastage_pct', 'estimate_uncertainty_pct', 'stair_void_allowance_lm'),
+            'description': 'Global defaults applied to all estimates. Individual estimates can override wastage, hardware allowance, and uncertainty.',
         }),
     )
 
     def has_add_permission(self, request):
         return not SystemSettings.objects.exists()
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-
-@admin.register(StairVoidSettings)
-class StairVoidSettingsAdmin(admin.ModelAdmin):
-    fields = ('allowance_lm',)
-
-    def has_add_permission(self, request):
-        return not StairVoidSettings.objects.exists()
 
     def has_delete_permission(self, request, obj=None):
         return False
