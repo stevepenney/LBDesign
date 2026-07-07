@@ -157,16 +157,15 @@
   .empty-state p { margin-bottom: 1.25rem; }
 
   .advanced-settings {
-    background: var(--white);
     border: 1px solid var(--border);
     border-radius: 6px;
     box-shadow: var(--shadow);
     margin-bottom: 1.75rem;
-    overflow: hidden;
   }
   .advanced-settings > summary {
     padding: .65rem 1rem;
     background: var(--tan-bg);
+    border-radius: 6px;
     font-size: 0.78rem;
     font-weight: 700;
     text-transform: uppercase;
@@ -179,6 +178,10 @@
     gap: .5rem;
     user-select: none;
   }
+  .advanced-settings[open] > summary {
+    border-radius: 6px 6px 0 0;
+    border-bottom: 1px solid var(--border);
+  }
   .advanced-settings > summary::-webkit-details-marker { display: none; }
   .advanced-settings > summary::before {
     content: '▸';
@@ -189,39 +192,41 @@
   .advanced-settings[open] > summary::before { transform: rotate(90deg); }
   .advanced-settings__body {
     padding: .75rem 1rem;
+    background: var(--white);
+    border-radius: 0 0 6px 6px;
     display: flex;
     flex-direction: column;
     gap: .6rem;
   }
-  .adv-row {
+  .est-row {
     display: flex;
     align-items: center;
     gap: 1.5rem;
     padding: .55rem .75rem;
     border-radius: 4px;
   }
-  .adv-row:hover { background: var(--tan-bg); }
-  .adv-label {
+  .est-row:hover { background: var(--tan-bg); }
+  .est-label {
     flex: 1;
     font-size: 0.88rem;
     color: var(--brown-dark);
     font-weight: 600;
   }
-  .adv-hint {
+  .est-hint {
     display: block;
     font-size: 0.75rem;
     color: #aaa;
     font-weight: 400;
     margin-top: .1rem;
   }
-  .adv-control {
+  .est-control {
     display: flex;
     align-items: center;
     gap: .6rem;
     min-width: 120px;
     justify-content: flex-end;
   }
-  .adv-value {
+  .est-value {
     font-size: 0.95rem;
     font-weight: 700;
     color: var(--charcoal);
@@ -232,9 +237,9 @@
     transition: border-color .15s, background .15s;
     font-variant-numeric: tabular-nums;
   }
-  .adv-value:hover { border-color: var(--border); background: #fff; }
-  .adv-value--overridden { color: var(--brown); }
-  .adv-value .adv-inline-input {
+  .est-value:hover { border-color: var(--border); background: #fff; }
+  .est-value--overridden { color: var(--brown); }
+  .est-value .est-inline-input {
     width: 5em;
     border: none;
     outline: none;
@@ -243,12 +248,12 @@
     text-align: right;
     color: inherit;
   }
-  .adv-default-tag {
+  .est-default-tag {
     font-size: 0.72rem;
     color: #bbb;
     font-style: italic;
   }
-  .adv-reset {
+  .est-reset {
     background: none;
     border: none;
     padding: 0;
@@ -258,7 +263,7 @@
     text-decoration: underline;
     font-family: inherit;
   }
-  .adv-reset:hover { color: var(--brown); }
+  .est-reset:hover { color: var(--brown); }
 
   .draft-banner {
     background: #fefce8;
@@ -444,59 +449,59 @@
 <details class="advanced-settings" id="advanced-settings">
   <summary>Advanced Settings</summary>
   <div class="advanced-settings__body">
-    <div class="adv-row">
-      <div class="adv-label">
+    <div class="est-row">
+      <div class="est-label">
         Wastage %
-        <span class="adv-hint">Applies to all lineal metre quantities</span>
+        <span class="est-hint">Applies to all lineal metre quantities</span>
       </div>
-      <div class="adv-control">
-        <span class="adv-value{% if job.wastage_pct is not None %} adv-value--overridden{% endif %}"
+      <div class="est-control">
+        <span class="est-value{% if job.wastage_pct is not None %} est-value--overridden{% endif %}"
               data-field="wastage_pct"
               data-update-url="{% url 'jobs:job_update_field' job.pk %}"
               data-global="{{ system_settings.wastage_pct|floatformat:'-2' }}"
               title="Click to edit">{{ effective_wastage_pct|floatformat:"-2" }}%</span>
         {% if job.wastage_pct is None %}
-          <span class="adv-default-tag">global default</span>
+          <span class="est-default-tag">global default</span>
         {% else %}
-          <button type="button" class="adv-reset" data-field="wastage_pct" data-update-url="{% url 'jobs:job_update_field' job.pk %}" title="Reset to global default ({{ system_settings.wastage_pct|floatformat:'-2' }}%)">reset</button>
+          <button type="button" class="est-reset" data-field="wastage_pct" data-update-url="{% url 'jobs:job_update_field' job.pk %}" title="Reset to global default ({{ system_settings.wastage_pct|floatformat:'-2' }}%)">reset</button>
         {% endif %}
       </div>
     </div>
 
-    <div class="adv-row">
-      <div class="adv-label">
+    <div class="est-row">
+      <div class="est-label">
         Hardware allowance %
-        <span class="adv-hint">Applied to materials subtotal</span>
+        <span class="est-hint">Applied to materials subtotal</span>
       </div>
-      <div class="adv-control">
-        <span class="adv-value{% if job.hardware_allowance_pct is not None %} adv-value--overridden{% endif %}"
+      <div class="est-control">
+        <span class="est-value{% if job.hardware_allowance_pct is not None %} est-value--overridden{% endif %}"
               data-field="hardware_allowance_pct"
               data-update-url="{% url 'jobs:job_update_field' job.pk %}"
               data-global="{{ system_settings.hardware_allowance_pct|floatformat:'-2' }}"
               title="Click to edit">{{ effective_hardware_pct|floatformat:"-2" }}%</span>
         {% if job.hardware_allowance_pct is None %}
-          <span class="adv-default-tag">global default</span>
+          <span class="est-default-tag">global default</span>
         {% else %}
-          <button type="button" class="adv-reset" data-field="hardware_allowance_pct" data-update-url="{% url 'jobs:job_update_field' job.pk %}" title="Reset to global default ({{ system_settings.hardware_allowance_pct|floatformat:'-2' }}%)">reset</button>
+          <button type="button" class="est-reset" data-field="hardware_allowance_pct" data-update-url="{% url 'jobs:job_update_field' job.pk %}" title="Reset to global default ({{ system_settings.hardware_allowance_pct|floatformat:'-2' }}%)">reset</button>
         {% endif %}
       </div>
     </div>
 
-    <div class="adv-row">
-      <div class="adv-label">
+    <div class="est-row">
+      <div class="est-label">
         Estimate uncertainty %
-        <span class="adv-hint">Total band used for the indicative range display</span>
+        <span class="est-hint">Total band used for the indicative range display</span>
       </div>
-      <div class="adv-control">
-        <span class="adv-value{% if job.estimate_uncertainty_pct is not None %} adv-value--overridden{% endif %}"
+      <div class="est-control">
+        <span class="est-value{% if job.estimate_uncertainty_pct is not None %} est-value--overridden{% endif %}"
               data-field="estimate_uncertainty_pct"
               data-update-url="{% url 'jobs:job_update_field' job.pk %}"
               data-global="{{ system_settings.estimate_uncertainty_pct|floatformat:'-2' }}"
               title="Click to edit">{{ effective_uncertainty_pct|floatformat:"-2" }}%</span>
         {% if job.estimate_uncertainty_pct is None %}
-          <span class="adv-default-tag">global default</span>
+          <span class="est-default-tag">global default</span>
         {% else %}
-          <button type="button" class="adv-reset" data-field="estimate_uncertainty_pct" data-update-url="{% url 'jobs:job_update_field' job.pk %}" title="Reset to global default ({{ system_settings.estimate_uncertainty_pct|floatformat:'-2' }}%)">reset</button>
+          <button type="button" class="est-reset" data-field="estimate_uncertainty_pct" data-update-url="{% url 'jobs:job_update_field' job.pk %}" title="Reset to global default ({{ system_settings.estimate_uncertainty_pct|floatformat:'-2' }}%)">reset</button>
         {% endif %}
       </div>
     </div>
@@ -723,14 +728,14 @@
     .catch(function () { window.showToast('Could not save.', 'error'); });
   }
 
-  document.querySelectorAll('.adv-value').forEach(function (el) {
+  document.querySelectorAll('.est-value').forEach(function (el) {
     el.addEventListener('click', function () {
       if (el.querySelector('input')) return;
       var currentText = el.textContent.trim().replace('%', '');
       var input = document.createElement('input');
       input.type = 'text';
       input.value = currentText;
-      input.className = 'adv-inline-input';
+      input.className = 'est-inline-input';
       el.textContent = '';
       el.appendChild(input);
       input.focus();
@@ -757,7 +762,7 @@
     });
   });
 
-  document.querySelectorAll('.adv-reset').forEach(function (btn) {
+  document.querySelectorAll('.est-reset').forEach(function (btn) {
     btn.addEventListener('click', function () {
       postField(btn.dataset.updateUrl, btn.dataset.field, '', function () {
         window.location.reload();
@@ -768,9 +773,9 @@
   // Restore open state across reloads
   var advEl = document.getElementById('advanced-settings');
   if (advEl) {
-    if (sessionStorage.getItem('adv-open') === '1') advEl.open = true;
+    if (sessionStorage.getItem('est-open') === '1') advEl.open = true;
     advEl.addEventListener('toggle', function () {
-      sessionStorage.setItem('adv-open', advEl.open ? '1' : '0');
+      sessionStorage.setItem('est-open', advEl.open ? '1' : '0');
     });
   }
 
