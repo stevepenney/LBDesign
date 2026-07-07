@@ -1,3 +1,5 @@
+import math
+
 from django.conf import settings as django_settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -8,6 +10,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from accounts.models import Organisation
+from core.models import SystemSettings
 from .forms import ProjectDocumentForm, ProjectForm
 from .models import Project, ProjectDocument
 
@@ -179,7 +182,25 @@ def project_detail(request, pk):
         messages.error(request, 'You do not have access to that project.')
         return redirect('projects:project_list')
 
-    estimates = project.estimates.prefetch_related('sections').order_by('-created_at')
+    system_settings = SystemSettings.get()
+    estimates_qs = project.estimates.prefetch_related('sections').order_by('-created_at')
+    estimates = []
+    for est in estimates_qs:
+        if est.subtotal:
+            total = float(est.total)
+            effective_uncertainty = float(
+                est.estimate_uncertainty_pct
+                if est.estimate_uncertainty_pct is not None
+                else system_settings.estimate_uncertainty_pct
+            )
+            band = effective_uncertainty / 100
+            est.range_low  = f'{int(total * (1 - band * 0.30) // 50) * 50:,}'
+            est.range_high = f'{math.ceil(total * (1 + band * 0.70) / 50) * 50:,}'
+        else:
+            est.range_low  = None
+            est.range_high = None
+        estimates.append(est)
+
     cutlists  = project.cutlist_projects.order_by('-updated_at')
     documents = project.documents.select_related('uploaded_by').all()
     status_choices = [

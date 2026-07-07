@@ -301,7 +301,7 @@
         <tr>
           <th>Label</th>
           <th>Sections</th>
-          <th style="text-align:right;">Total (excl. GST)</th>
+          <th style="text-align:right;">Indicative Range (excl. GST)</th>
           <th>Created</th>
           <th></th>
         </tr>
@@ -312,7 +312,7 @@
           <td><a href="{% url 'jobs:job_detail' est.pk %}"><strong>{{ est.label|default:"(unlabelled)" }}</strong></a></td>
           <td>{{ est.sections.count }}</td>
           <td style="text-align:right; font-variant-numeric:tabular-nums;">
-            {% if est.subtotal %}${{ est.total|floatformat:2 }}{% else %}<span style="color:#bbb;">&mdash;</span>{% endif %}
+            {% if est.range_low %}${{ est.range_low }} – ${{ est.range_high }}{% else %}<span style="color:#bbb;">&mdash;</span>{% endif %}
           </td>
           <td style="color:#888; font-size:0.85rem;">{{ est.created_at|date:"d M Y" }}</td>
           <td class="actions">
