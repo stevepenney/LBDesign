@@ -37,8 +37,9 @@ venv/Scripts/python manage.py shell
 | `accounts` | Organisation, User (AbstractUser + role + org FK) |
 | `core` | SystemSettings (singleton), RoofPitch (lookup), HelpTopic |
 | `products` | Product, PriceBook, PriceBookEntry; `pricing.py` price resolver |
-| `jobs` | Job, Section, FloorRoofArea, AdditionalBeam, DrawingUpload; `calculations.py` engine |
-| `cutlist` | Cutlist Optimizer (no models yet — pure JS tool served by a single view) |
+| `projects` | Project (org FK, status workflow, lb_job_number), ProjectDocument |
+| `jobs` | Job (an estimate, belongs to a Project), Section, FloorRoofArea, AdditionalBeam; `calculations.py` engine |
+| `cutlist` | Cutlist Optimizer — `CutlistProject` model (Project FK, state JSONField) + JS wizard |
 
 Templates live in `templates/` (project-level, not per-app).
 Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`.
@@ -56,6 +57,12 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
   `1 / cos(radians(pitch_degrees))`. Do not add a stored pitch_factor field.
 - `PriceBook.is_default` — only one default allowed; `save()` enforces it.
 - `SystemSettings` is a singleton; always use `SystemSettings.get()`, never `.objects.first()`.
+- `Job.label` defaults to `'Untitled Estimate'` (mirrors `CutlistProject.name` defaulting to
+  `'Untitled Cutlist'`) — new estimates are never blank-labelled. Inline-editable on `job_detail.html`.
+- All "quick create" entry points (`projects:project_create`, `jobs:estimate_quick`/`job_create`,
+  `cutlist:project_new_quick`/`project_new`) create records directly with `status=PRELIMINARY` and
+  no blocking form — every field is inline-editable afterwards. The old `DRAFT` status +
+  save/discard gate is legacy; don't reintroduce it for new creation flows.
 
 ### Pricing
 - Price lookup: `products/pricing.py → get_product_price(product, organisation)`
@@ -106,29 +113,43 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
 ## Cutlist Optimizer
 
 A browser-based bin-packing tool for optimising timber cutting lists. Integrated Django app
-with `CutlistProject` model (org FK, job FK optional, state JSONField). Template at
-`templates/cutlist/project_edit.html`, JS at `static/js/cutlist.js`, CSS at `static/css/cutlist.css`.
+with `CutlistProject` model (Project FK, `name` CharField default `'Untitled Cutlist'`, state
+JSONField). Template at `templates/cutlist/project_edit.html`, JS at `static/js/cutlist.js`,
+CSS at `static/css/cutlist.css`.
 
 ### Architecture
 State lives in a single `project` JS object (jobDetails, tabs[], activeTabId, skippedData).
+`jobDetails` only holds cutlist-specific settings (`preparedBy`, `kerfWidth`) — client/site/
+reference info is NOT duplicated in JS state; it lives on the shared `projects.Project` record
+and is shown in a "Project Details" card at the top of the page (same inline-edit pattern as
+`jobs/job_detail.html`, posting to `projects:project_update_field`).
 `wizard` object tracks `reachedStep`. DOM always rendered from state, never read back.
 Key functions:
 - `parseCSVIntoTabs(csvText)` — parses CSV, populates `project.tabs[]`, max 5 member types
 - `calculateOptimization(tabId)` — First Fit Decreasing algorithm
 - `advancedOptimizeAll(silent)` — post-process: offcut reuse + bin consolidation; `silent=true` suppresses toasts/saves when called from wizard
 - `runOptimisation()` — async wizard action: validates → FFD → advanced → renders tabs → saves → advances to Step 4
-- `saveProject()` — POSTs full state to `/cutlist/<pk>/save/`
+- `saveProject()` — POSTs full state to `/cutlist/<pk>/save/` (does not rename the cutlist)
 - `restoreProject(data)` — restores from saved state (page load or JSON import)
 - `resetFromStep(n)` — clears downstream DOM + locks steps when re-processing
 
+`CutlistProject.name` is inline-editable in the page header (like `Job.label` on the estimate
+page) via `cutlist:project_update_field` — POST `field=name&value=...`, blank falls back to
+`'Untitled Cutlist'`. It is no longer auto-derived from a description field.
+
 ### Wizard (5 steps — vertical accordion)
-1. **Job Details** — common project metadata
+1. **Cutlist Settings** — `preparedBy`, `kerfWidth` only (project/client info lives in the
+   Project Details card above the wizard, not in this step)
 2. **Import Cuts** — textarea (also drop zone for CSV files)
 3. **Review Cuts** — per-member collapsible panels (start collapsed); cuts grouped + collapsible by group within each panel
 4. **Results** — member tabs with cutting diagrams; click cut segment to edit inline (Feature 3)
 5. **Summary & Export** — stock order table; Save / Export JSON / Import JSON / Print
 
 Navigation: free to jump to any previously reached step. Actions (Optimise, Next) reset downstream steps.
+
+Print view (`cutlist:project_print`) sources client/site/reference/lb_ref from
+`window.CUTLIST_PROJECT_INFO` (rendered server-side from `project.project.*`), not from
+`jobDetails` — only `preparedBy`/`kerfWidth` still come from the saved state.
 
 ### CSS
 `cutlist.css` uses `base.css` variables (no separate palette). Timber bin colours are

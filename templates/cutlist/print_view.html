@@ -163,6 +163,13 @@
   {{ project.state|json_script:"print-state-data" }}
   <script>
     window.CUTLIST_PRINT_MODE = true;
+    window.CUTLIST_PROJECT_INFO = {
+      name: "{{ project.name|escapejs }}",
+      lbRef: "{{ project.project.lb_ref|escapejs }}",
+      clientName: "{{ project.project.client_name|escapejs }}",
+      siteAddress: "{{ project.project.site_address|escapejs }}",
+      merchantReference: "{{ project.project.merchant_reference|escapejs }}"
+    };
     (function () {
       const el = document.getElementById('print-state-data');
       window.CUTLIST_STATE = el ? JSON.parse(el.textContent) : null;
@@ -225,6 +232,7 @@
 
     function buildSummaryPage() {
       const jd   = project.jobDetails;
+      const info = window.CUTLIST_PROJECT_INFO || {};
       const tabs = project.tabs.filter(t => t.results);
       const today = new Date().toLocaleDateString('en-AU', {
         day: '2-digit', month: 'short', year: 'numeric'
@@ -236,9 +244,10 @@
         <div class="print-header">
           <h1>Cutlist Optimisation Report</h1>
           <div class="print-meta-grid">
-            <span class="print-meta-label">Job:</span>          <span>${esc(jd.jobNumber)}</span>
-            <span class="print-meta-label">Description:</span>  <span>${esc(jd.jobDescription)}</span>
-            <span class="print-meta-label">Client:</span>        <span>${esc(jd.client)}</span>
+            <span class="print-meta-label">Job:</span>          <span>${esc(info.lbRef)}</span>
+            <span class="print-meta-label">Client:</span>        <span>${esc(info.clientName)}</span>
+            <span class="print-meta-label">Site:</span>          <span>${esc(info.siteAddress)}</span>
+            <span class="print-meta-label">Reference:</span>    <span>${esc(info.merchantReference)}</span>
             <span class="print-meta-label">Prepared by:</span>  <span>${esc(jd.preparedBy)}</span>
             <span class="print-meta-label">Date:</span>          <span>${today}</span>
             <span class="print-meta-label">Kerf width:</span>   <span>${jd.kerfWidth}mm</span>
@@ -362,8 +371,8 @@
 
     function buildDiagramPages() {
       const pages  = [];
-      const jd     = project.jobDetails;
-      const jobRef = [jd.jobNumber, jd.jobDescription].filter(Boolean).join(' — ');
+      const info   = window.CUTLIST_PROJECT_INFO || {};
+      const jobRef = [info.lbRef, info.name].filter(Boolean).join(' — ');
 
       project.tabs.filter(t => t.results).forEach(tab => {
         const { bins, kerfWidth } = tab.results;

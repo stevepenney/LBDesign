@@ -4,9 +4,6 @@
 
 const project = {
     jobDetails: {
-        jobNumber: '',
-        jobDescription: '',
-        client: '',
         preparedBy: '',
         kerfWidth: 25
     },
@@ -30,19 +27,13 @@ function getTab(tabId) { return project.tabs.find(t => t.id === tabId); }
 function getActiveTab() { return getTab(project.activeTabId); }
 
 function readJobDetailsFromDOM() {
-    project.jobDetails.jobNumber      = document.getElementById('jobNumber').value;
-    project.jobDetails.jobDescription = document.getElementById('jobDescription').value;
-    project.jobDetails.client         = document.getElementById('client').value;
-    project.jobDetails.preparedBy     = document.getElementById('preparedBy').value;
-    project.jobDetails.kerfWidth      = parseFloat(document.getElementById('kerfWidth').value) || 25;
+    project.jobDetails.preparedBy = document.getElementById('preparedBy').value;
+    project.jobDetails.kerfWidth  = parseFloat(document.getElementById('kerfWidth').value) || 25;
 }
 
 function writeJobDetailsToDOM() {
-    document.getElementById('jobNumber').value      = project.jobDetails.jobNumber;
-    document.getElementById('jobDescription').value = project.jobDetails.jobDescription;
-    document.getElementById('client').value         = project.jobDetails.client;
-    document.getElementById('preparedBy').value     = project.jobDetails.preparedBy;
-    document.getElementById('kerfWidth').value      = project.jobDetails.kerfWidth;
+    document.getElementById('preparedBy').value = project.jobDetails.preparedBy;
+    document.getElementById('kerfWidth').value  = project.jobDetails.kerfWidth;
 }
 
 // =============================================================================
@@ -60,10 +51,8 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 function initJobDetailListeners() {
-    ['jobNumber', 'jobDescription', 'client', 'preparedBy'].forEach(id => {
-        document.getElementById(id).addEventListener('input', e => {
-            project.jobDetails[id] = e.target.value;
-        });
+    document.getElementById('preparedBy').addEventListener('input', e => {
+        project.jobDetails.preparedBy = e.target.value;
     });
     document.getElementById('kerfWidth').addEventListener('input', e => {
         project.jobDetails.kerfWidth = parseFloat(e.target.value) || 25;
@@ -159,8 +148,9 @@ function markStepDone(n) {
 
 function completeStep1() {
     readJobDetailsFromDOM();
-    const label = [project.jobDetails.jobNumber, project.jobDetails.jobDescription]
-        .filter(Boolean).join(' — ') || 'Set';
+    const label = project.jobDetails.preparedBy
+        ? `Prepared by ${project.jobDetails.preparedBy}`
+        : 'Set';
     setStepMeta(1, label);
     markStepDone(1);
     advanceToStep(2);
@@ -1609,12 +1599,14 @@ function exportProjectJSON() {
         }))
     };
 
-    const jobNum   = project.jobDetails.jobNumber || 'untitled';
+    const titleEl  = document.getElementById('projectTitle');
+    const nameSlug = ((titleEl && titleEl.textContent.trim()) || 'untitled')
+        .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'untitled';
     const dateStr  = new Date().toISOString().split('T')[0];
     const blob     = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
     const url      = window.URL.createObjectURL(blob);
     const a        = document.createElement('a');
-    a.href = url; a.download = `cutlist_${jobNum}_${dateStr}.json`;
+    a.href = url; a.download = `cutlist_${nameSlug}_${dateStr}.json`;
     document.body.appendChild(a); a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
@@ -1626,8 +1618,9 @@ function restoreProject(projectData) {
     if (projectData.jobDetails) {
         Object.assign(project.jobDetails, projectData.jobDetails);
         writeJobDetailsToDOM();
-        const label = [project.jobDetails.jobNumber, project.jobDetails.jobDescription]
-            .filter(Boolean).join(' — ');
+        const label = project.jobDetails.preparedBy
+            ? `Prepared by ${project.jobDetails.preparedBy}`
+            : 'Set';
         setStepMeta(1, label);
         markStepDone(1);
     }

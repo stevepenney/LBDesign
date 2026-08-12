@@ -21,6 +21,7 @@ class Job(models.Model):
     label = models.CharField(
         max_length=100,
         blank=True,
+        default='Untitled Estimate',
         help_text="Optional label to distinguish multiple estimates on the same project, e.g. 'Option A'.",
     )
 

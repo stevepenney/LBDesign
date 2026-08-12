@@ -1,21 +1,9 @@
 /* ── Cutlist Optimizer — site-integrated styles ───────────────
    Relies on base.css for: variables, .btn, .btn-primary,
-   .btn-secondary, body/font, .container, .sub-header.
+   .btn-secondary, body/font, .container.
    This file adds: wizard layout, cutlist-specific components,
    and timber-type bin colours (never change those).
    ──────────────────────────────────────────────────────────── */
-
-/* ── Sub-header project identity ─────────────────────────── */
-.cutlist-project-name {
-  margin-left: auto;
-  font-weight: 600;
-  font-size: 0.875rem;
-  color: var(--brown-dark);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 260px;
-}
 
 .cutlist-save-indicator {
   font-size: 0.78rem;

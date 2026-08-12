@@ -113,7 +113,26 @@
   .item-table td { padding: .55rem .75rem; border-bottom: 1px solid var(--border); }
   .item-table tbody tr:last-child td { border-bottom: none; }
   .item-table tbody tr:hover td { background: var(--tan-bg); }
-  .item-table .actions a { margin-right: .5rem; font-size: 0.82rem; }
+  .item-table .actions { white-space: nowrap; }
+  .icon-actions { display: flex; gap: .3rem; align-items: center; justify-content: flex-end; }
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    border: none;
+    background: none;
+    color: var(--brown);
+    font-size: 0.95rem;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background .15s, color .15s;
+  }
+  .icon-btn:hover { background: var(--tan-bg); color: var(--brown-dark); }
+  .icon-btn--danger { color: #b91c1c; }
+  .icon-btn--danger:hover { background: #fee2e2; color: #991b1b; }
 
   .empty-state {
     text-align: center;
@@ -316,12 +335,17 @@
           </td>
           <td style="color:#888; font-size:0.85rem;">{{ est.created_at|date:"d M Y" }}</td>
           <td class="actions">
-            <a href="{% url 'jobs:job_detail' est.pk %}">View</a>
-            <a href="{% url 'jobs:job_edit' est.pk %}">Edit</a>
-            <form method="post" action="{% url 'jobs:job_duplicate' est.pk %}" style="display:inline;">
-              {% csrf_token %}
-              <button type="submit" class="btn-link">Duplicate</button>
-            </form>
+            <div class="icon-actions">
+              <form method="post" action="{% url 'jobs:job_duplicate' est.pk %}" style="display:inline;">
+                {% csrf_token %}
+                <button type="submit" class="icon-btn" title="Duplicate" aria-label="Duplicate"><i class="bi bi-files"></i></button>
+              </form>
+              <form method="post" action="{% url 'jobs:job_delete' est.pk %}" style="display:inline;"
+                    onsubmit="return confirm('Delete this estimate? This cannot be undone.')">
+                {% csrf_token %}
+                <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete"><i class="bi bi-trash"></i></button>
+              </form>
+            </div>
           </td>
         </tr>
         {% endfor %}
@@ -360,16 +384,17 @@
           <td><a href="{% url 'cutlist:project_edit' cl.pk %}"><strong>{{ cl.name }}</strong></a></td>
           <td style="color:#888; font-size:0.85rem;">{{ cl.updated_at|date:"d M Y H:i" }}</td>
           <td class="actions">
-            <a href="{% url 'cutlist:project_edit' cl.pk %}">Open</a>
-            <form method="post" action="{% url 'cutlist:project_duplicate' cl.pk %}" style="display:inline;">
-              {% csrf_token %}
-              <button type="submit" class="btn-link">Duplicate</button>
-            </form>
-            <form method="post" action="{% url 'cutlist:project_delete' cl.pk %}" style="display:inline;"
-                  onsubmit="return confirm('Delete this cutlist?')">
-              {% csrf_token %}
-              <button type="submit" class="btn-link" style="color:#c00;">Delete</button>
-            </form>
+            <div class="icon-actions">
+              <form method="post" action="{% url 'cutlist:project_duplicate' cl.pk %}" style="display:inline;">
+                {% csrf_token %}
+                <button type="submit" class="icon-btn" title="Duplicate" aria-label="Duplicate"><i class="bi bi-files"></i></button>
+              </form>
+              <form method="post" action="{% url 'cutlist:project_delete' cl.pk %}" style="display:inline;"
+                    onsubmit="return confirm('Delete this cutlist?')">
+                {% csrf_token %}
+                <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete"><i class="bi bi-trash"></i></button>
+              </form>
+            </div>
           </td>
         </tr>
         {% endfor %}

@@ -1,11 +1,14 @@
 import json
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from accounts.models import Organisation
 from projects.models import Project
 from projects.views import _assert_project_access, _get_projects_for_user
 from .models import CutlistProject
@@ -27,15 +30,25 @@ def project_list(request):
 
 
 @login_required
-@require_POST
 def project_new_quick(request):
-    """Create a cutlist with a silently-created DRAFT project — no project selection needed."""
-    if not request.user.organisation and not request.user.is_lb_admin:
-        raise PermissionDenied
+    """Create a project + blank cutlist in one step and go straight to it."""
+    is_lb_staff = request.user.is_lb_admin or request.user.is_lb_detailing
+
+    if is_lb_staff:
+        org_pk = request.GET.get('org')
+        if not org_pk:
+            return redirect(f"{reverse('projects:select_merchant')}?next=cutlist")
+        org = get_object_or_404(Organisation, pk=org_pk)
+    else:
+        if not request.user.organisation:
+            messages.error(request, 'Your account is not linked to an organisation. Contact LumberBank.')
+            return redirect('projects:project_list')
+        org = request.user.organisation
+
     project = Project.objects.create(
-        organisation = request.user.organisation,
+        organisation = org,
         created_by   = request.user,
-        status       = Project.Status.DRAFT,
+        status       = Project.Status.PRELIMINARY,
     )
     cutlist = CutlistProject.objects.create(project=project, created_by=request.user)
     return redirect('cutlist:project_edit', pk=cutlist.pk)
@@ -72,18 +85,25 @@ def project_save(request, pk):
     except json.JSONDecodeError:
         return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
 
-    job_details = data.get('jobDetails', {})
-    name_parts = [
-        cutlist.project.lb_ref,
-        job_details.get('jobDescription', '').strip(),
-    ]
-    name = ' — '.join(p for p in name_parts if p) or 'Untitled Cutlist'
-
-    cutlist.name  = name[:100]
     cutlist.state = data
-    cutlist.save()
+    cutlist.save(update_fields=['state', 'updated_at'])
 
     return JsonResponse({'ok': True, 'name': cutlist.name})
+
+
+@login_required
+@require_POST
+def project_update_field(request, pk):
+    cutlist = get_object_or_404(CutlistProject, pk=pk)
+    _assert_cutlist_access(request.user, cutlist)
+
+    if request.POST.get('field') != 'name':
+        return JsonResponse({'ok': False, 'error': 'Invalid field'}, status=400)
+
+    value = request.POST.get('value', '').strip()
+    cutlist.name = value[:100] or 'Untitled Cutlist'
+    cutlist.save(update_fields=['name', 'updated_at'])
+    return JsonResponse({'ok': True, 'value': cutlist.name})
 
 
 @login_required

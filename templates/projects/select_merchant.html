@@ -69,14 +69,19 @@
 </div>
 
 <div class="page-header">
-  <h1 class="page-title" style="margin-bottom:0;">Select Merchant</h1>
+  <h1 class="page-title" style="margin-bottom:0;">
+    Select Merchant
+    {% if next == 'estimate' %}<span style="font-weight:400;">&mdash; New Estimate</span>
+    {% elif next == 'cutlist' %}<span style="font-weight:400;">&mdash; New Cutlist</span>
+    {% endif %}
+  </h1>
   <a href="{% url 'accounts:organisation_create' %}" class="btn btn-secondary">+ New Merchant</a>
 </div>
 
 {% if orgs %}
   <div class="merchant-grid">
     {% for org in orgs %}
-    <a href="{% url 'projects:project_create' %}?org={{ org.pk }}" class="merchant-card">
+    <a href="{{ target_url }}?org={{ org.pk }}" class="merchant-card">
       <div class="merchant-card__icon">{{ org.name|slice:":1"|upper }}</div>
       <div class="merchant-card__name">{{ org.name }}</div>
     </a>

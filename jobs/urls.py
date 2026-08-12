@@ -7,11 +7,11 @@ urlpatterns = [
     path('quick/',                    views.estimate_quick, name='estimate_quick'),
     path('new/<int:project_pk>/',     views.job_create,    name='job_create'),
     path('<int:pk>/',                 views.job_detail, name='job_detail'),
-    path('<int:pk>/edit/',            views.job_edit,   name='job_edit'),
 
     path('<int:pk>/update-field/',    views.job_update_field, name='job_update_field'),
     path('<int:pk>/recalculate/',     views.job_recalculate,  name='job_recalculate'),
     path('<int:pk>/duplicate/',       views.job_duplicate,   name='job_duplicate'),
+    path('<int:pk>/delete/',          views.job_delete,      name='job_delete'),
     path('<int:pk>/breakdown/',       views.job_breakdown,   name='job_breakdown'),
 
     # Sections (nested under an estimate)

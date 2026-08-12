@@ -5,13 +5,15 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from accounts.models import Organisation
 from core.models import SystemSettings
 from projects.models import Project
 from projects.views import _assert_project_access
 from .calculations import run_job_estimate, run_subjob_calculation
-from .forms import JobForm, SectionForm, FloorRoofAreaFormSet, FloorRoofAreaOptionalFormSet, AdditionalBeamFormSet
+from .forms import SectionForm, FloorRoofAreaFormSet, FloorRoofAreaOptionalFormSet, AdditionalBeamFormSet
 from .models import Job, Section, FloorRoofArea, AdditionalBeam
 
 
@@ -24,45 +26,27 @@ def _area_formset_cls(system_type):
 
 @login_required
 def estimate_quick(request):
-    """Entry point with no project — silently creates a DRAFT project+job on first calculate."""
-    if not request.user.organisation and not request.user.is_lb_admin:
-        messages.error(request, 'Your account is not linked to an organisation. Contact LumberBank.')
-        return redirect('projects:project_list')
+    """Create a project + blank estimate in one step and go straight to it."""
+    is_lb_staff = request.user.is_lb_admin or request.user.is_lb_detailing
 
-    if request.method == 'POST':
-        form    = SectionForm(request.POST)
-        AreaFS  = _area_formset_cls(request.POST.get('system_type'))
-        area_fs = AreaFS(request.POST, prefix='areas')
-        beam_fs = AdditionalBeamFormSet(request.POST, prefix='beams')
-
-        if form.is_valid() and area_fs.is_valid() and beam_fs.is_valid():
-            project = Project.objects.create(
-                organisation = request.user.organisation,
-                created_by   = request.user,
-                status       = Project.Status.DRAFT,
-            )
-            job = Job.objects.create(project=project, created_by=request.user)
-            section = form.save(commit=False)
-            section.job = job
-            section.save()
-            area_fs.instance = section
-            area_fs.save()
-            beam_fs.instance = section
-            beam_fs.save()
-            run_subjob_calculation(section)
-            return redirect('jobs:job_detail', pk=job.pk)
+    if is_lb_staff:
+        org_pk = request.GET.get('org')
+        if not org_pk:
+            return redirect(f"{reverse('projects:select_merchant')}?next=estimate")
+        org = get_object_or_404(Organisation, pk=org_pk)
     else:
-        form    = SectionForm()
-        area_fs = FloorRoofAreaFormSet(prefix='areas')
-        beam_fs = AdditionalBeamFormSet(prefix='beams')
+        if not request.user.organisation:
+            messages.error(request, 'Your account is not linked to an organisation. Contact LumberBank.')
+            return redirect('projects:project_list')
+        org = request.user.organisation
 
-    return render(request, 'jobs/subjob_form.html', {
-        'job': None,
-        'form': form,
-        'area_formset': area_fs,
-        'beam_formset': beam_fs,
-        'action': 'Quick Estimate',
-    })
+    project = Project.objects.create(
+        organisation = org,
+        created_by   = request.user,
+        status       = Project.Status.PRELIMINARY,
+    )
+    job = Job.objects.create(project=project, created_by=request.user)
+    return redirect('jobs:job_detail', pk=job.pk)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -123,21 +107,9 @@ def job_create(request, project_pk):
         messages.error(request, 'You do not have access to that project.')
         return redirect('projects:project_list')
 
-    if request.method == 'POST':
-        form = JobForm(request.POST)
-        if form.is_valid():
-            job = form.save(commit=False)
-            job.project = project
-            job.created_by = request.user
-            job.save()
-            messages.success(request, 'Estimate created.')
-            return redirect('jobs:job_detail', pk=job.pk)
-    else:
-        form = JobForm()
-
-    return render(request, 'jobs/job_form.html', {
-        'form': form, 'project': project, 'action': 'New Estimate',
-    })
+    job = Job.objects.create(project=project, created_by=request.user)
+    messages.success(request, 'Estimate created.')
+    return redirect('jobs:job_detail', pk=job.pk)
 
 
 @login_required
@@ -176,27 +148,6 @@ def job_detail(request, pk):
         'effective_uncertainty_pct':  effective_uncertainty_pct,
         'estimate_low':  f'{estimate_low:,}',
         'estimate_high': f'{estimate_high:,}',
-    })
-
-
-@login_required
-def job_edit(request, pk):
-    job = get_object_or_404(Job, pk=pk)
-    if not _assert_job_access(request.user, job):
-        messages.error(request, 'You do not have access to that estimate.')
-        return redirect('projects:project_list')
-
-    if request.method == 'POST':
-        form = JobForm(request.POST, instance=job)
-        if form.is_valid():
-            form.save()
-            messages.success(request, 'Estimate updated.')
-            return redirect('jobs:job_detail', pk=job.pk)
-    else:
-        form = JobForm(instance=job)
-
-    return render(request, 'jobs/job_form.html', {
-        'form': form, 'job': job, 'project': job.project, 'action': 'Edit Estimate',
     })
 
 
@@ -337,6 +288,20 @@ def job_duplicate(request, pk):
                 length_m=beam.length_m,
                 quantity=beam.quantity,
             )
+
+
+@login_required
+@require_POST
+def job_delete(request, pk):
+    job = get_object_or_404(Job, pk=pk)
+    if not _assert_job_access(request.user, job):
+        messages.error(request, 'You do not have access to that estimate.')
+        return redirect('projects:project_list')
+
+    project_pk = job.project.pk
+    job.delete()
+    messages.success(request, 'Estimate deleted.')
+    return redirect('projects:project_detail', pk=project_pk)
 
     messages.success(request, 'Estimate duplicated.')
     return redirect('jobs:job_detail', pk=new_job.pk)

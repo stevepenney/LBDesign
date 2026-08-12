@@ -132,7 +132,7 @@ def project_create(request):
     project = Project.objects.create(
         organisation = org,
         created_by   = request.user,
-        status       = Project.Status.DRAFT,
+        status       = Project.Status.PRELIMINARY,
     )
     return redirect('projects:project_detail', pk=project.pk)
 
@@ -143,8 +143,19 @@ def select_merchant(request):
         messages.error(request, 'Access denied.')
         return redirect('projects:project_list')
 
+    next_ = request.GET.get('next', 'project')
+    target_url_name = {
+        'project':  'projects:project_create',
+        'estimate': 'jobs:estimate_quick',
+        'cutlist':  'cutlist:project_new_quick',
+    }.get(next_, 'projects:project_create')
+
     orgs = Organisation.objects.filter(is_merchant=True, is_active=True).order_by('name')
-    return render(request, 'projects/select_merchant.html', {'orgs': orgs})
+    return render(request, 'projects/select_merchant.html', {
+        'orgs': orgs,
+        'target_url': reverse(target_url_name),
+        'next': next_,
+    })
 
 
 @login_required

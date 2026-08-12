@@ -131,8 +131,12 @@
           <a href="?discarded=1" style="font-size:0.85rem;color:#9ca3af;">{{ discarded_count }} discarded</a>
         {% endif %}
         {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
+          <a href="{% url 'projects:select_merchant' %}?next=estimate" class="btn btn-secondary">+ New Estimate</a>
+          <a href="{% url 'projects:select_merchant' %}?next=cutlist" class="btn btn-secondary">+ New Cutlist</a>
           <a href="{% url 'projects:select_merchant' %}" class="btn btn-primary">+ New Project</a>
         {% else %}
+          <a href="{% url 'jobs:estimate_quick' %}" class="btn btn-secondary">+ New Estimate</a>
+          <a href="{% url 'cutlist:project_new_quick' %}" class="btn btn-secondary">+ New Cutlist</a>
           <a href="{% url 'projects:project_create' %}" class="btn btn-primary">+ New Project</a>
         {% endif %}
       {% endif %}

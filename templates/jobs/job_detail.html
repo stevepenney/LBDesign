@@ -330,7 +330,6 @@
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
-    <a href="{% url 'jobs:job_edit' job.pk %}" class="btn btn-secondary">Edit Estimate</a>
     <form method="post" action="{% url 'jobs:job_recalculate' job.pk %}" style="display:inline;">
       {% csrf_token %}
       <button type="submit" class="btn btn-secondary">Recalculate</button>

@@ -5,12 +5,91 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/cutlist.css' %}">
+<style>
+  .card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    margin-bottom: .6rem;
+  }
+  .card__header {
+    background: var(--brown);
+    color: var(--white);
+    padding: .6rem 1rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+  }
+  .card__body {
+    padding: 1rem;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+  }
+  @media (max-width: 700px) { .card__body { grid-template-columns: 1fr; } }
+  .detail-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: #999;
+    margin-bottom: .2rem;
+  }
+  .detail-value { font-size: 0.92rem; color: var(--brown-dark); white-space: pre-line; }
+  .editable-field {
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background .15s;
+    min-height: 1.2em;
+  }
+  .editable-field:hover { background: var(--tan-bg); }
+  .editable-field[data-empty]::after {
+    content: attr(data-placeholder);
+    color: #bbb;
+    font-style: italic;
+  }
+  .inline-edit-input {
+    width: 100%;
+    padding: .3rem .5rem;
+    border: 1.5px solid var(--brown);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: inherit;
+    color: var(--brown-dark);
+    background: #fff;
+    box-sizing: border-box;
+    resize: vertical;
+  }
+  .inline-edit-input:focus { outline: none; }
+
+  .cutlist-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+  }
+  .cutlist-header__lb    { font-size: 1.5rem; font-weight: 700; color: var(--brown-dark); font-family: monospace; }
+  .cutlist-header__label { font-size: 1rem; color: var(--charcoal); margin-top: .1rem; }
+  .cutlist-header__meta  { font-size: 0.82rem; color: #888; margin-top: .2rem; }
+</style>
 {% endblock %}
 
-{% block sub_header %}
+{% block content %}
+
+<div style="margin-bottom:1rem;">
+  <a href="{% url 'projects:project_detail' project.project.pk %}" style="font-size:.88rem;">&larr; Back to
+    {% if request.user.is_lb_admin or request.user.is_lb_detailing %}{{ project.project.lb_ref }}{% else %}{{ project.project.display_ref }}{% endif %}
+  </a>
+</div>
+
 {% if project.project.status == 'draft' %}
-<div style="background:#fefce8;border-bottom:1.5px solid #fbbf24;padding:.6rem 1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;">
-  <span style="font-size:0.88rem;color:#78350f;font-weight:500;">&#9998; Draft cutlist — not yet saved.</span>
+<div style="background:#fefce8;border:1.5px solid #fbbf24;border-radius:8px;padding:.85rem 1.25rem;margin-bottom:1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;">
+  <span style="font-size:0.9rem;color:#78350f;font-weight:500;">&#9998; Draft cutlist — not yet saved.</span>
   <div style="display:flex;gap:.75rem;align-items:center;">
     <a href="{% url 'projects:project_edit' project.project.pk %}" class="btn btn-primary" style="font-size:0.82rem;padding:.35rem .9rem;">Save Project</a>
     <form method="post" action="{% url 'projects:project_discard' project.project.pk %}">
@@ -20,30 +99,68 @@
   </div>
 </div>
 {% endif %}
-<div class="sub-header">
-  <div class="sub-header__inner">
-    <a href="{% url 'projects:project_detail' project.project.pk %}">
-      &#8592;
-      {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
-        {{ project.project.lb_ref }}
-      {% else %}
-        {{ project.project.display_ref }}
-      {% endif %}
-    </a>
-    <span class="cutlist-project-name" id="projectTitle">{{ project.name }}</span>
+
+<!-- Cutlist header -->
+<div class="cutlist-header">
+  <div>
+    {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
+      <div class="cutlist-header__lb">{{ project.project.lb_ref }}</div>
+    {% else %}
+      <div class="cutlist-header__lb" style="font-family:inherit;">{{ project.project.display_ref }}</div>
+    {% endif %}
+    <div class="cutlist-header__label editable-field"
+         id="projectTitle"
+         data-field="name"
+         data-update-url="{% url 'cutlist:project_update_field' project.pk %}"
+         data-placeholder="+ Add cutlist label">{{ project.name }}</div>
+    <div class="cutlist-header__meta">
+      {% if project.project.client_name %}{{ project.project.client_name }} &mdash; {% endif %}
+      {{ project.project.organisation.name }}
+      &mdash; created {{ project.created_at|date:"d M Y" }}
+      {% if project.created_by %} by {{ project.created_by.get_full_name|default:project.created_by.username }}{% endif %}
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:1rem;">
     <span class="cutlist-save-indicator" id="saveIndicator">&#10003; Saved</span>
   </div>
 </div>
-{% endblock %}
 
-{% block content %}
+<!-- Project details -->
+<div class="card">
+  <div class="card__header">Project Details</div>
+  <div class="card__body">
+    <div>
+      <div class="detail-label">Client Name</div>
+      <div class="detail-value editable-field"
+           data-field="client_name"
+           data-update-url="{% url 'projects:project_update_field' project.project.pk %}"
+           data-placeholder="— click to add —">{{ project.project.client_name }}</div>
+    </div>
+    <div>
+      <div class="detail-label">Site Address</div>
+      <div class="detail-value editable-field"
+           data-field="site_address"
+           data-update-url="{% url 'projects:project_update_field' project.project.pk %}"
+           data-multiline="true"
+           data-placeholder="— click to add —">{{ project.project.site_address }}</div>
+    </div>
+    <div>
+      <div class="detail-label">Your Reference</div>
+      <div class="detail-value editable-field"
+           data-field="merchant_reference"
+           data-update-url="{% url 'projects:project_update_field' project.project.pk %}"
+           data-placeholder="— click to add —">{{ project.project.merchant_reference }}</div>
+    </div>
+  </div>
+</div>
+
 <div class="wizard-layout">
 
-  <!-- ── Step 1: Job Details ───────────────────────────────── -->
+  <!-- ── Step 1: Cutlist Settings ───────────────────────────── -->
   <div class="wizard-step step--open" data-step="1" id="step-1">
     <div class="step-header" onclick="goToStep(1)">
       <span class="step-badge">1</span>
-      <span class="step-title">Job Details</span>
+      <span class="step-title">Cutlist Settings</span>
       <span class="step-meta" id="step-1-meta"></span>
       <svg class="step-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none"
            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -52,18 +169,6 @@
     </div>
     <div class="step-body" id="step-1-body">
       <div class="step-form-grid">
-        <div class="form-group">
-          <label for="jobNumber">Job Number</label>
-          <input type="text" id="jobNumber" maxlength="10" placeholder="e.g. 2601-125">
-        </div>
-        <div class="form-group">
-          <label for="jobDescription">Description</label>
-          <input type="text" id="jobDescription" maxlength="50" placeholder="e.g. House at 55 Main St">
-        </div>
-        <div class="form-group">
-          <label for="client">Client</label>
-          <input type="text" id="client" maxlength="50" placeholder="e.g. ABC Construction">
-        </div>
         <div class="form-group">
           <label for="preparedBy">Prepared By</label>
           <input type="text" id="preparedBy" maxlength="20" placeholder="e.g. John">
@@ -225,4 +330,77 @@
   })();
 </script>
 <script src="{% static 'js/cutlist.js' %}"></script>
+<script>
+(function () {
+  const CSRF = "{{ csrf_token }}";
+
+  function makeEditable(el) {
+    const updateUrl   = el.dataset.updateUrl;
+    const field       = el.dataset.field;
+    const placeholder = el.dataset.placeholder || '— click to add —';
+    const multiline   = el.dataset.multiline === 'true';
+
+    if (!el.textContent.trim()) el.setAttribute('data-empty', '');
+
+    el.addEventListener('click', function () {
+      if (el.querySelector('input,textarea')) return;
+
+      const displayText = el.textContent.trim();
+      el.removeAttribute('data-empty');
+
+      const input = document.createElement(multiline ? 'textarea' : 'input');
+      if (!multiline) input.type = 'text';
+      input.value       = displayText;
+      input.className   = 'inline-edit-input';
+      input.placeholder = placeholder;
+      if (multiline) input.rows = 3;
+
+      el.textContent = '';
+      el.appendChild(input);
+      input.focus();
+      if (input.select && !multiline) input.select();
+
+      let saved = false;
+
+      function commit() {
+        if (saved) return;
+        saved = true;
+        const trimmed = input.value.trim();
+        fetch(updateUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'csrfmiddlewaretoken=' + encodeURIComponent(CSRF) +
+                '&field=' + encodeURIComponent(field) +
+                '&value=' + encodeURIComponent(trimmed),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          const newDisplay = data.value || '';
+          el.textContent = newDisplay;
+          if (!newDisplay) el.setAttribute('data-empty', '');
+        })
+        .catch(function () {
+          el.textContent = displayText || '';
+          if (!displayText) el.setAttribute('data-empty', '');
+        });
+      }
+
+      function cancel() {
+        if (saved) return;
+        saved = true;
+        el.textContent = displayText || '';
+        if (!displayText) el.setAttribute('data-empty', '');
+      }
+
+      input.addEventListener('blur', commit);
+      input.addEventListener('keydown', function (e) {
+        if (!multiline && e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { input.removeEventListener('blur', commit); cancel(); }
+      });
+    });
+  }
+
+  document.querySelectorAll('.editable-field').forEach(makeEditable);
+})();
+</script>
 {% endblock %}
