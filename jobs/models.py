@@ -267,6 +267,10 @@ class CutlistImportLine(models.Model):
     )
     length_m = models.DecimalField(max_digits=8, decimal_places=2)
     quantity = models.PositiveIntegerField(default=1)
+    tab_index = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Index into the source cutlist state.tabs[] this line was mapped from — used to join back to the per-stick stock order for display.',
+    )
 
     class Meta:
         ordering = ['id']

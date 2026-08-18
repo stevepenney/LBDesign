@@ -579,6 +579,32 @@
       </div>
       {% endif %}
 
+      {% if sj.priced_cutlist_lines %}
+      <div style="margin-top:.75rem;">
+        <div class="detail-label" style="margin-bottom:.4rem;">Cutlist Stock Order</div>
+        <table class="areas-table">
+          <thead><tr><th>Zone</th><th>Product</th><th>Length (m)</th><th>Qty</th><th>Total</th></tr></thead>
+          <tbody>
+            {% for row in sj.priced_cutlist_lines %}
+            <tr>
+              <td>{{ row.group }}</td>
+              <td>{{ row.product }}</td>
+              <td>{{ row.length_m|floatformat:1 }}</td>
+              <td>{{ row.qty }}</td>
+              <td>
+                {% if row.line_total is not None %}
+                  ${{ row.line_total|floatformat:2 }}
+                {% else %}
+                  <span class="summary-nil">&mdash;</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
       <div class="subtotal-row">
         Sub-total:
         {% if sj.calculated_subtotal is not None %}

@@ -13,11 +13,45 @@ from accounts.models import Organisation
 from core.models import SystemSettings
 from cutlist.models import CutlistProject
 from products.models import Product
+from products.pricing import get_product_price
 from projects.models import Project
 from projects.views import _assert_project_access
 from .calculations import run_job_estimate, run_subjob_calculation
 from .forms import SectionForm, FloorRoofAreaFormSet, FloorRoofAreaOptionalFormSet, AdditionalBeamFormSet
 from .models import Job, Section, FloorRoofArea, AdditionalBeam, CutlistImportLine
+
+
+def _priced_cutlist_lines(section):
+    """
+    Per-stick pricing breakdown for a cutlist-derived section: one row per
+    actual stock line (zone, product, length, qty, cost), priced via the same
+    get_product_price resolver the calculation engine uses. This is purely a
+    display breakdown of the section's existing calculated_subtotal — it
+    doesn't feed back into pricing.
+    """
+    cutlist = section.job.source_cutlist
+    if not cutlist:
+        return []
+    product_by_tab = {
+        line.tab_index: line.product
+        for line in section.cutlist_import_lines.select_related('product').all()
+        if line.tab_index is not None
+    }
+    organisation = section.job.project.organisation
+    rows = []
+    for row in cutlist.stock_order():
+        product = product_by_tab.get(row['tab_index'])
+        price = get_product_price(product, organisation) if product else None
+        length_m = Decimal(str(row['length_m']))
+        line_total = (length_m * row['qty'] * price).quantize(Decimal('0.01')) if price else None
+        rows.append({
+            'group': row['group'] or '—',
+            'product': product or row['product'],
+            'length_m': length_m,
+            'qty': row['qty'],
+            'line_total': line_total,
+        })
+    return rows
 
 
 def _area_formset_cls(system_type):
@@ -138,7 +172,7 @@ def cutlist_convert_to_estimate(request, cutlist_pk):
     product_ids = [v for v in mapping.values() if v]
     products = Product.objects.filter(pk__in=product_ids, is_active=True).in_bulk()
 
-    lines = []  # (product, net_length_m)
+    lines = []  # (product, net_length_m, tab_index)
     net_total = Decimal('0')
     gross_total = Decimal('0')
     for idx, tab in enumerate(tabs):
@@ -152,7 +186,7 @@ def cutlist_convert_to_estimate(request, cutlist_pk):
             continue
         net_total += net_mm
         gross_total += gross_mm
-        lines.append((product, (net_mm / Decimal('1000')).quantize(Decimal('0.01'))))
+        lines.append((product, (net_mm / Decimal('1000')).quantize(Decimal('0.01')), idx))
 
     if not lines or net_total == 0:
         return JsonResponse(
@@ -174,8 +208,8 @@ def cutlist_convert_to_estimate(request, cutlist_pk):
         system_type=Section.SystemType.OTHER,
     )
     CutlistImportLine.objects.bulk_create([
-        CutlistImportLine(section=section, product=product, length_m=length_m)
-        for product, length_m in lines
+        CutlistImportLine(section=section, product=product, length_m=length_m, tab_index=tab_index)
+        for product, length_m, tab_index in lines
     ])
     run_job_estimate(job)
 
@@ -188,7 +222,11 @@ def job_detail(request, pk):
     if not _assert_job_access(request.user, job):
         messages.error(request, 'You do not have access to that estimate.')
         return redirect('projects:project_list')
-    sections = job.sections.prefetch_related('areas', 'additional_beams').all()
+    sections = list(job.sections.prefetch_related('areas', 'additional_beams', 'cutlist_import_lines').all())
+    if job.source_cutlist_id:
+        for sj in sections:
+            if sj.cutlist_import_lines.all():
+                sj.priced_cutlist_lines = _priced_cutlist_lines(sj)
     system_settings = SystemSettings.get()
     effective_hardware_pct = (
         job.hardware_allowance_pct
