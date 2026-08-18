@@ -281,6 +281,7 @@
         <button class="btn btn-secondary" id="loadProjectBtn">Import JSON</button>
         <input type="file" id="loadProjectInput" accept=".json" style="display:none;">
         <button class="btn btn-secondary" id="printBtn">Print / PDF</button>
+        <button class="btn btn-primary" id="convertToEstimateBtn" onclick="openConvertModal()">Convert to Estimate &rarr;</button>
       </div>
     </div>
   </div>
@@ -316,17 +317,37 @@
   </div>
 </div>
 
+<!-- ── Convert to estimate modal ─────────────────────────── -->
+<div id="convertEstimateModal" class="modal-overlay" style="display:none;"
+     onclick="if(event.target===this)closeConvertModal()">
+  <div class="modal-box">
+    <h3>Convert to Estimate</h3>
+    <p class="modal-hint">Map each member to a price-book product. Unmapped members are left out of the estimate.</p>
+    <div id="convertModalRows"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="convertSubmitBtn" onclick="submitConvertToEstimate()">Create Estimate</button>
+      <button class="btn btn-secondary" onclick="closeConvertModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 {% csrf_token %}
 {% endblock %}
 
 {% block extra_js %}
 {{ project.state|json_script:"cutlist-state-data" }}
+{{ products|json_script:"cutlist-products-data" }}
 <script>
   window.CUTLIST_PROJECT_PK  = {{ project.pk }};
   window.CUTLIST_PRINT_URL   = "{% url 'cutlist:project_print' project.pk %}";
+  window.CUTLIST_CONVERT_URL = "{% url 'jobs:cutlist_convert' project.pk %}";
   (function () {
     const el = document.getElementById('cutlist-state-data');
     window.CUTLIST_STATE = el ? JSON.parse(el.textContent) : null;
+  })();
+  (function () {
+    const el = document.getElementById('cutlist-products-data');
+    window.CUTLIST_PRODUCTS = el ? JSON.parse(el.textContent) : [];
   })();
 </script>
 <script src="{% static 'js/cutlist.js' %}"></script>

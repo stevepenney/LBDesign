@@ -69,7 +69,7 @@ function initGlobalEventListeners() {
     document.getElementById('loadProjectInput').addEventListener('change', loadProject);
     document.getElementById('printBtn').addEventListener('click', openPrintView);
     document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') closeCutEditor();
+        if (e.key === 'Escape') { closeCutEditor(); closeConvertModal(); }
     });
 }
 
@@ -1553,6 +1553,78 @@ function exportSummaryToCSV(stockData, hasGroups) {
     document.body.appendChild(a); a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
+}
+
+// =============================================================================
+// CONVERT TO ESTIMATE
+// =============================================================================
+
+function openConvertModal() {
+    const calculatedTabs = project.tabs
+        .map((tab, idx) => ({ tab, idx }))
+        .filter(({ tab }) => tab.results);
+    if (calculatedTabs.length === 0) { showToast('Optimise at least one member first', 'error'); return; }
+
+    const products = window.CUTLIST_PRODUCTS || [];
+    const rowsHTML = calculatedTabs.map(({ tab, idx }) => {
+        const timberType = getTimberType(tab.memberName);
+        const guess = timberType !== 'OTHER'
+            ? products.find(p => p.name.toUpperCase().includes(timberType))
+            : null;
+        const options = products.map(p =>
+            `<option value="${p.id}" ${guess && guess.id === p.id ? 'selected' : ''}>${p.name} (${p.product_type__name})</option>`
+        ).join('');
+        return `
+            <div class="form-group">
+                <label>${tab.memberName}</label>
+                <select data-tab-index="${idx}" class="convert-product-select">
+                    <option value="">— skip this member —</option>
+                    ${options}
+                </select>
+            </div>`;
+    }).join('');
+
+    document.getElementById('convertModalRows').innerHTML = rowsHTML;
+    document.getElementById('convertEstimateModal').style.display = 'flex';
+}
+
+function closeConvertModal() {
+    document.getElementById('convertEstimateModal').style.display = 'none';
+}
+
+async function submitConvertToEstimate() {
+    const mapping = {};
+    document.querySelectorAll('.convert-product-select').forEach(sel => {
+        if (sel.value) mapping[sel.dataset.tabIndex] = parseInt(sel.value, 10);
+    });
+    if (Object.keys(mapping).length === 0) {
+        showToast('Map at least one member to a product first', 'error');
+        return;
+    }
+
+    const submitBtn = document.getElementById('convertSubmitBtn');
+    submitBtn.disabled = true;
+
+    await saveProject();
+
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+    try {
+        const resp = await fetch(window.CUTLIST_CONVERT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ mapping })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            window.location.href = data.redirect;
+        } else {
+            showToast(data.error || 'Conversion failed', 'error');
+            submitBtn.disabled = false;
+        }
+    } catch (e) {
+        showToast('Conversion failed', 'error');
+        submitBtn.disabled = false;
+    }
 }
 
 // =============================================================================

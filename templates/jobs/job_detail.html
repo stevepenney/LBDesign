@@ -327,6 +327,9 @@
       {{ job.project.organisation.name }}
       &mdash; created {{ job.created_at|date:"d M Y" }}
       {% if job.created_by %} by {{ job.created_by.get_full_name|default:job.created_by.username }}{% endif %}
+      {% if job.source_cutlist_id %}
+        &mdash; <a href="{% url 'cutlist:project_edit' job.source_cutlist_id %}">&#9881; From Cutlist</a>
+      {% endif %}
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">

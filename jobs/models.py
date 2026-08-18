@@ -18,6 +18,14 @@ class Job(models.Model):
         null=True,
         related_name='created_jobs',
     )
+    source_cutlist = models.ForeignKey(
+        'cutlist.CutlistProject',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='generated_jobs',
+        help_text='Set when this estimate was created from a cutlist stock order.',
+    )
     label = models.CharField(
         max_length=100,
         blank=True,
@@ -237,6 +245,34 @@ class AdditionalBeam(models.Model):
 
     def __str__(self):
         return f'{self.product.name} x{self.quantity} @ {self.length_m}m'
+
+    @property
+    def lineal_metres(self):
+        return float(self.length_m) * self.quantity
+
+
+class CutlistImportLine(models.Model):
+    """
+    A priced member line created by converting a cutlist stock order into an
+    estimate. length_m is the net lineal metres required for the member —
+    wastage is applied via the section's job-level wastage_pct, not baked in here.
+    """
+    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='cutlist_import_lines')
+    product = models.ForeignKey(
+        'products.Product',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cutlist_import_lines',
+    )
+    length_m = models.DecimalField(max_digits=8, decimal_places=2)
+    quantity = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self):
+        return f'{self.product} x{self.quantity} @ {self.length_m}m'
 
     @property
     def lineal_metres(self):

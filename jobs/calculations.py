@@ -136,6 +136,26 @@ def _calc_subjob(sub_job):
             'line_total': str(line_total) if line_total else None,
         })
 
+    # ── Cutlist import lines ────────────────────────────────────────────────
+    for line in sub_job.cutlist_import_lines.select_related('product').all():
+        if not line.product:
+            has_unpriced = True
+            continue
+        lm = (_d(line.length_m) * _d(line.quantity) * wastage_factor).quantize(_CENT)
+        price = get_product_price(line.product, organisation)
+        line_total = (lm * price).quantize(_CENT) if price else None
+        if line_total:
+            subtotal += line_total
+        else:
+            has_unpriced = True
+        schedule.append({
+            'label': 'Cutlist output',
+            'description': str(line.product),
+            'lineal_metres': str(lm),
+            'unit_price': str(price) if price else None,
+            'line_total': str(line_total) if line_total else None,
+        })
+
     return subtotal, schedule, has_unpriced
 
 
@@ -215,6 +235,7 @@ def run_job_estimate(job):
     for sub_job in job.sections.prefetch_related(
         'areas__joist_product',
         'additional_beams__product',
+        'cutlist_import_lines__product',
         'boundary_joist_product',
         'stair_void_trimmer_product',
         'roof_pitch',

@@ -6,6 +6,7 @@ app_name = 'jobs'
 urlpatterns = [
     path('quick/',                    views.estimate_quick, name='estimate_quick'),
     path('new/<int:project_pk>/',     views.job_create,    name='job_create'),
+    path('cutlist/<int:cutlist_pk>/convert/', views.cutlist_convert_to_estimate, name='cutlist_convert'),
     path('<int:pk>/',                 views.job_detail, name='job_detail'),
 
     path('<int:pk>/update-field/',    views.job_update_field, name='job_update_field'),

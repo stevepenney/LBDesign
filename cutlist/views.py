@@ -9,6 +9,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from accounts.models import Organisation
+from products.models import Product
 from projects.models import Project
 from projects.views import _assert_project_access, _get_projects_for_user
 from .models import CutlistProject
@@ -71,7 +72,15 @@ def project_new(request, project_pk):
 def project_edit(request, pk):
     cutlist = get_object_or_404(CutlistProject, pk=pk)
     _assert_cutlist_access(request.user, cutlist)
-    return render(request, 'cutlist/project_edit.html', {'project': cutlist})
+    products = list(
+        Product.objects.filter(is_active=True)
+        .select_related('product_type')
+        .values('id', 'name', 'product_type__name')
+    )
+    return render(request, 'cutlist/project_edit.html', {
+        'project': cutlist,
+        'products': products,
+    })
 
 
 @login_required

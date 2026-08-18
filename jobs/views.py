@@ -1,3 +1,4 @@
+import json
 import math
 from decimal import Decimal, InvalidOperation
 
@@ -10,11 +11,13 @@ from django.views.decorators.http import require_POST
 
 from accounts.models import Organisation
 from core.models import SystemSettings
+from cutlist.models import CutlistProject
+from products.models import Product
 from projects.models import Project
 from projects.views import _assert_project_access
 from .calculations import run_job_estimate, run_subjob_calculation
 from .forms import SectionForm, FloorRoofAreaFormSet, FloorRoofAreaOptionalFormSet, AdditionalBeamFormSet
-from .models import Job, Section, FloorRoofArea, AdditionalBeam
+from .models import Job, Section, FloorRoofArea, AdditionalBeam, CutlistImportLine
 
 
 def _area_formset_cls(system_type):
@@ -110,6 +113,73 @@ def job_create(request, project_pk):
     job = Job.objects.create(project=project, created_by=request.user)
     messages.success(request, 'Estimate created.')
     return redirect('jobs:job_detail', pk=job.pk)
+
+
+@login_required
+@require_POST
+def cutlist_convert_to_estimate(request, cutlist_pk):
+    """
+    Convert a completed cutlist stock order into a priced estimate.
+
+    Members are mapped to real products client-side; the net lineal metres
+    and blended real wastage % come from the cutlist's own optimizer results
+    (totalCutLength / totalStockUsed), not recalculated here.
+    """
+    cutlist = get_object_or_404(CutlistProject, pk=cutlist_pk)
+    if not _assert_project_access(request.user, cutlist.project):
+        return JsonResponse({'ok': False, 'error': 'No access'}, status=403)
+
+    try:
+        mapping = json.loads(request.body).get('mapping', {})
+    except json.JSONDecodeError:
+        return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+
+    tabs = (cutlist.state or {}).get('tabs', [])
+    product_ids = [v for v in mapping.values() if v]
+    products = Product.objects.filter(pk__in=product_ids, is_active=True).in_bulk()
+
+    lines = []  # (product, net_length_m)
+    net_total = Decimal('0')
+    gross_total = Decimal('0')
+    for idx, tab in enumerate(tabs):
+        product = products.get(mapping.get(str(idx)))
+        results = tab.get('results')
+        if not product or not results:
+            continue
+        net_mm = Decimal(str(results.get('totalCutLength', 0)))
+        gross_mm = Decimal(str(results.get('totalStockUsed', 0)))
+        if net_mm <= 0:
+            continue
+        net_total += net_mm
+        gross_total += gross_mm
+        lines.append((product, (net_mm / Decimal('1000')).quantize(Decimal('0.01'))))
+
+    if not lines or net_total == 0:
+        return JsonResponse(
+            {'ok': False, 'error': 'Map at least one member to a product first.'}, status=400
+        )
+
+    wastage_pct = ((gross_total - net_total) / net_total * 100).quantize(Decimal('0.01'))
+
+    job = Job.objects.create(
+        project=cutlist.project,
+        created_by=request.user,
+        label=cutlist.name,
+        wastage_pct=wastage_pct,
+        source_cutlist=cutlist,
+    )
+    section = Section.objects.create(
+        job=job,
+        label=cutlist.name,
+        system_type=Section.SystemType.OTHER,
+    )
+    CutlistImportLine.objects.bulk_create([
+        CutlistImportLine(section=section, product=product, length_m=length_m)
+        for product, length_m in lines
+    ])
+    run_job_estimate(job)
+
+    return JsonResponse({'ok': True, 'redirect': reverse('jobs:job_detail', args=[job.pk])})
 
 
 @login_required

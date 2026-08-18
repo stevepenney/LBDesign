@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Job, Section, FloorRoofArea, AdditionalBeam, DrawingUpload
+from .models import Job, Section, FloorRoofArea, AdditionalBeam, CutlistImportLine, DrawingUpload
 
 
 class FloorRoofAreaInline(admin.TabularInline):
@@ -10,6 +10,12 @@ class FloorRoofAreaInline(admin.TabularInline):
 
 class AdditionalBeamInline(admin.TabularInline):
     model = AdditionalBeam
+    extra = 0
+    fields = ['product', 'length_m', 'quantity']
+
+
+class CutlistImportLineInline(admin.TabularInline):
+    model = CutlistImportLine
     extra = 0
     fields = ['product', 'length_m', 'quantity']
 
@@ -49,4 +55,4 @@ class SectionAdmin(admin.ModelAdmin):
     list_filter   = ['system_type']
     search_fields = ['label', 'job__project__client_name']
     readonly_fields = ['calculated_subtotal', 'member_schedule']
-    inlines = [FloorRoofAreaInline, AdditionalBeamInline]
+    inlines = [FloorRoofAreaInline, AdditionalBeamInline, CutlistImportLineInline]
