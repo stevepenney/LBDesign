@@ -138,10 +138,17 @@ def _calc_subjob(sub_job):
 
     # ── Cutlist import lines ────────────────────────────────────────────────
     for line in sub_job.cutlist_import_lines.select_related('product').all():
+        lm = (_d(line.length_m) * _d(line.quantity) * wastage_factor).quantize(_CENT)
         if not line.product:
             has_unpriced = True
+            schedule.append({
+                'label': 'Cutlist output',
+                'description': line.product_description or 'Unmatched cutlist member',
+                'lineal_metres': str(lm),
+                'unit_price': None,
+                'line_total': '0.00',
+            })
             continue
-        lm = (_d(line.length_m) * _d(line.quantity) * wastage_factor).quantize(_CENT)
         price = get_product_price(line.product, organisation)
         line_total = (lm * price).quantize(_CENT) if price else None
         if line_total:

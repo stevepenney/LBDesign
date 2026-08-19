@@ -41,9 +41,13 @@ def _priced_cutlist_lines(section):
     rows = []
     for row in cutlist.stock_order():
         product = product_by_tab.get(row['tab_index'])
-        price = get_product_price(product, organisation) if product else None
         length_m = Decimal(str(row['length_m']))
-        line_total = (length_m * row['qty'] * price).quantize(Decimal('0.01')) if price else None
+        if product:
+            price = get_product_price(product, organisation)
+            line_total = (length_m * row['qty'] * price).quantize(Decimal('0.01')) if price else None
+        else:
+            # No product was matched during conversion — zero-cost placeholder, flagged elsewhere via has_unpriced.
+            line_total = Decimal('0.00')
         rows.append({
             'group': row['group'] or '—',
             'product': product or row['product'],
@@ -172,13 +176,12 @@ def cutlist_convert_to_estimate(request, cutlist_pk):
     product_ids = [v for v in mapping.values() if v]
     products = Product.objects.filter(pk__in=product_ids, is_active=True).in_bulk()
 
-    lines = []  # (product, net_length_m, tab_index)
+    lines = []  # (product, net_length_m, tab_index, member_name)
     net_total = Decimal('0')
     gross_total = Decimal('0')
     for idx, tab in enumerate(tabs):
-        product = products.get(mapping.get(str(idx)))
         results = tab.get('results')
-        if not product or not results:
+        if not results:
             continue
         net_mm = Decimal(str(results.get('totalCutLength', 0)))
         gross_mm = Decimal(str(results.get('totalStockUsed', 0)))
@@ -186,11 +189,17 @@ def cutlist_convert_to_estimate(request, cutlist_pk):
             continue
         net_total += net_mm
         gross_total += gross_mm
-        lines.append((product, (net_mm / Decimal('1000')).quantize(Decimal('0.01')), idx))
+        product = products.get(mapping.get(str(idx)))
+        lines.append((
+            product,
+            (net_mm / Decimal('1000')).quantize(Decimal('0.01')),
+            idx,
+            tab.get('memberName', ''),
+        ))
 
     if not lines or net_total == 0:
         return JsonResponse(
-            {'ok': False, 'error': 'Map at least one member to a product first.'}, status=400
+            {'ok': False, 'error': 'Optimise at least one member before converting.'}, status=400
         )
 
     wastage_pct = ((gross_total - net_total) / net_total * 100).quantize(Decimal('0.01'))
@@ -200,6 +209,7 @@ def cutlist_convert_to_estimate(request, cutlist_pk):
         created_by=request.user,
         label=cutlist.name,
         wastage_pct=wastage_pct,
+        estimate_uncertainty_pct=Decimal('0'),
         source_cutlist=cutlist,
     )
     section = Section.objects.create(
@@ -208,8 +218,11 @@ def cutlist_convert_to_estimate(request, cutlist_pk):
         system_type=Section.SystemType.OTHER,
     )
     CutlistImportLine.objects.bulk_create([
-        CutlistImportLine(section=section, product=product, length_m=length_m, tab_index=tab_index)
-        for product, length_m, tab_index in lines
+        CutlistImportLine(
+            section=section, product=product, length_m=length_m,
+            tab_index=tab_index, product_description=member_name,
+        )
+        for product, length_m, tab_index, member_name in lines
     ])
     run_job_estimate(job)
 

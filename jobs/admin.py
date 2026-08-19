@@ -17,7 +17,7 @@ class AdditionalBeamInline(admin.TabularInline):
 class CutlistImportLineInline(admin.TabularInline):
     model = CutlistImportLine
     extra = 0
-    fields = ['product', 'length_m', 'quantity']
+    fields = ['product', 'product_description', 'length_m', 'quantity']
 
 
 class DrawingUploadInline(admin.TabularInline):

@@ -265,6 +265,10 @@ class CutlistImportLine(models.Model):
         blank=True,
         related_name='cutlist_import_lines',
     )
+    product_description = models.CharField(
+        max_length=200, blank=True,
+        help_text='Raw member name from the cutlist, kept as a placeholder label when no product was matched.',
+    )
     length_m = models.DecimalField(max_digits=8, decimal_places=2)
     quantity = models.PositiveIntegerField(default=1)
     tab_index = models.PositiveIntegerField(
@@ -276,7 +280,8 @@ class CutlistImportLine(models.Model):
         ordering = ['id']
 
     def __str__(self):
-        return f'{self.product} x{self.quantity} @ {self.length_m}m'
+        label = self.product or self.product_description or 'Unmatched member'
+        return f'{label} x{self.quantity} @ {self.length_m}m'
 
     @property
     def lineal_metres(self):
