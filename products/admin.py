@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Product, ProductType, PriceBook, PriceBookEntry
+from .models import Product, ProductType, PriceBook, PriceBookEntry, TimberTypeDefaultStockLengths
 
 
 @admin.register(ProductType)
@@ -45,8 +45,20 @@ class ProductAdmin(admin.ModelAdmin):
                 'use_as_beam',
             ),
         }),
+        ('Cutlist Optimizer', {
+            'description': 'Stock lengths offered as defaults when a cutlist member is linked '
+                            'to this product. Leave blank to use the generic default for this '
+                            "product's timber type (see Timber Type Default Stock Lengths).",
+            'fields': ('stock_lengths',),
+        }),
     )
     ordering = ['product_type__sort_order', 'sort_order', 'name']
+
+
+@admin.register(TimberTypeDefaultStockLengths)
+class TimberTypeDefaultStockLengthsAdmin(admin.ModelAdmin):
+    list_display = ['timber_type', 'stock_lengths']
+    ordering = ['timber_type']
 
 
 class PriceBookEntryInline(admin.TabularInline):

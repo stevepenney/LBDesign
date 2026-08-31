@@ -35,11 +35,61 @@ class Product(models.Model):
     use_as_stair_void_trimmer = models.BooleanField(default=False, verbose_name='Stair Void Trimmer')
     use_as_beam               = models.BooleanField(default=False, verbose_name='Beam')
 
+    stock_lengths = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text='Comma-separated stock lengths available for this product, in mm '
+                   '(e.g. "7200, 6000, 5400, 4800, 3600"). Used as the Cutlist Optimizer\'s '
+                   'default stock list when a cutlist member is linked to this product. Leave '
+                   'blank to fall back to the generic default for this product\'s timber type.',
+    )
+
     class Meta:
         ordering = ['product_type__sort_order', 'product_type__name', 'sort_order', 'name']
 
     def __str__(self):
         return f'{self.name} ({self.product_type})'
+
+    def stock_lengths_list(self):
+        if not self.stock_lengths:
+            return []
+        return [int(v) for v in self.stock_lengths.split(',') if v.strip()]
+
+
+class TimberTypeDefaultStockLengths(models.Model):
+    """
+    Fallback default stock lengths (mm) per broad timber type — used by the Cutlist Optimizer
+    for any member that isn't linked to a specific Product (mapping is optional; wholesale
+    merchant customers use the tool directly and may never touch the product catalog).
+
+    `timber_type` mirrors getTimberType() in static/js/cutlist.js exactly (LIB/LVL8/LVL11/
+    LVL13/GL/OTHER, the same classification the cutting-diagram colours already use) — keep
+    both in sync.
+    """
+    class TimberType(models.TextChoices):
+        LIB   = 'LIB',   'I-Beam / LIB'
+        LVL8  = 'LVL8',  'LVL8'
+        LVL11 = 'LVL11', 'LVL11'
+        LVL13 = 'LVL13', 'LVL13'
+        GL    = 'GL',    'Glulam'
+        OTHER = 'OTHER', 'Other'
+
+    timber_type = models.CharField(max_length=10, choices=TimberType, unique=True)
+    stock_lengths = models.CharField(
+        max_length=200,
+        help_text='Comma-separated stock lengths in mm (e.g. "7200, 6000, 5400, 4800, 3600").',
+    )
+
+    class Meta:
+        verbose_name = 'Timber Type Default Stock Lengths'
+        verbose_name_plural = 'Timber Type Default Stock Lengths'
+        ordering = ['timber_type']
+
+    def __str__(self):
+        return f'{self.get_timber_type_display()}: {self.stock_lengths}'
+
+    def stock_lengths_list(self):
+        return [int(v) for v in self.stock_lengths.split(',') if v.strip()]
 
 
 class PriceBook(models.Model):

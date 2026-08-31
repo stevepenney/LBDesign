@@ -7,6 +7,7 @@ urlpatterns = [
     path('',                              views.project_list,      name='project_list'),
     path('new/',                          views.project_new_quick, name='project_new_quick'),
     path('new/<int:project_pk>/',         views.project_new,       name='project_new'),
+    path('member-mapping/save/',          views.member_mapping_save, name='member_mapping_save'),
     path('<int:pk>/',                     views.project_edit,      name='project_edit'),
     path('<int:pk>/save/',                views.project_save,      name='project_save'),
     path('<int:pk>/update-field/',        views.project_update_field, name='project_update_field'),

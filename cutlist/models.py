@@ -57,3 +57,31 @@ class CutlistProject(models.Model):
                 })
         rows.sort(key=lambda r: (r['group'], r['product'], -r['length_m']))
         return rows
+
+
+class MemberProductMapping(models.Model):
+    """
+    Remembers which real Product a raw (freeform, typically CSV-imported) cutlist member
+    name resolves to, so recurring names auto-link to a product on future imports without
+    the user having to map them again.
+
+    Keyed on a whitespace/case-normalized form of the name since real-world CSV exports vary
+    in formatting for the same product (e.g. "LIB 240.88s" vs "LIB240.88s").
+    """
+    normalized_name = models.CharField(max_length=100, unique=True)
+    raw_name = models.CharField(
+        max_length=100,
+        help_text='Most recent raw text this was set from (for display only).',
+    )
+    product = models.ForeignKey(
+        'products.Product',
+        on_delete=models.CASCADE,
+        related_name='member_mappings',
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['raw_name']
+
+    def __str__(self):
+        return f'{self.raw_name} → {self.product.name}'

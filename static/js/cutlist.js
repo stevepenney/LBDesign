@@ -18,6 +18,9 @@ let tabCounter    = 0;
 let binIdCounter  = 0;
 let _editTabId    = null;
 let _editCutIndex = null;
+let _stickEditTabId = null;
+let _stickEditBinId = null;
+let _dragSource      = null; // { tabId, binId, cutIndex }
 
 // =============================================================================
 // STATE ACCESSORS
@@ -211,16 +214,34 @@ function getTimberType(memberName) {
     return 'OTHER';
 }
 
-function getDefaultStockLengths(memberName) {
-    const framingSizes = ['150x45', '200x45', '240x45', '300x45', '300x63'];
-    if (memberName.toLowerCase().includes('lvl8')) {
-        return [6000];
-    } else if (memberName.toLowerCase().includes('lib')) {
-        return [7200, 6000, 4800, 4200, 3600, 3000];
-    } else if (framingSizes.some(size => memberName.toLowerCase().includes(size))) {
-        return [7200, 6000, 5400, 4800, 3600];
+// Whitespace/case-normalized lookup key — mirrors _normalize_member_name() in cutlist/views.py.
+function normalizeMemberName(name) {
+    return (name || '').replace(/\s+/g, '').toUpperCase();
+}
+
+function lookupMemberProductId(memberName) {
+    const mapping = (window.CUTLIST_MEMBER_MAPPINGS || {})[normalizeMemberName(memberName)];
+    return mapping ? mapping.product_id : null;
+}
+
+// Last-resort safety net only — used if the DB-backed timber-type default is somehow missing
+// (e.g. a fresh install before the seed migration runs). Normal operation never reaches this.
+const FALLBACK_STOCK_LENGTHS = [7200, 6000, 5400, 4800, 3600];
+
+// Default stock lengths for a new tab: prefer the specific list for a linked Product (editable
+// in Django admin — Product.stock_lengths), else the broader per-timber-type default (also
+// admin-editable — TimberTypeDefaultStockLengths), else the hardcoded safety net above.
+function getDefaultStockLengths(memberName, productId) {
+    if (productId) {
+        const product = (window.CUTLIST_PRODUCTS || []).find(p => p.id === productId);
+        if (product && product.stock_lengths) {
+            const lengths = product.stock_lengths.split(',').map(v => parseInt(v.trim(), 10)).filter(v => !isNaN(v));
+            if (lengths.length) return lengths;
+        }
     }
-    return [7200, 6000, 5400, 4800, 3600];
+    const timberType = getTimberType(memberName);
+    const byType = (window.CUTLIST_TIMBER_TYPE_DEFAULTS || {})[timberType];
+    return (byType && byType.length) ? byType : FALLBACK_STOCK_LENGTHS;
 }
 
 // =============================================================================
@@ -257,11 +278,13 @@ function parseCSVIntoTabs(csvText) {
     tabCounter          = 0;
 
     memberNames.slice(0, 5).forEach(memberName => {
-        const cuts  = sortAndCombineCuts(parsedData[memberName]);
-        const tabId = `tab-${tabCounter++}`;
+        const cuts      = sortAndCombineCuts(parsedData[memberName]);
+        const tabId     = `tab-${tabCounter++}`;
+        const productId = lookupMemberProductId(memberName);
         project.tabs.push({
             id: tabId, memberName, cuts,
-            stockLengths: getDefaultStockLengths(memberName),
+            stockLengths: getDefaultStockLengths(memberName, productId),
+            productId,
             cutTolerance: 50, overlengthSplitStock: 6000, results: null
         });
     });
@@ -403,14 +426,26 @@ function generateReviewMemberBodyHTML(tab) {
             <button class="btn-small" onclick="removeStock('${tab.id}', ${index})">×</button>
         </div>`).join('');
 
+    const products = window.CUTLIST_PRODUCTS || [];
+    const productOptions = products.map(p =>
+        `<option value="${p.id}" ${tab.productId === p.id ? 'selected' : ''}>${p.name} (${p.product_type__name})</option>`
+    ).join('');
+
     return `
         <div class="member-settings">
-            <div class="settings-grid" style="grid-template-columns:1fr 1fr 1fr;">
+            <div class="settings-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;">
                 <div class="form-group">
                     <label>Member Size</label>
                     <input type="text" class="member-name" maxlength="20" value="${tab.memberName}"
                            placeholder="e.g. 240x45 LIB"
                            style="font-weight:700;color:var(--brown-dark);">
+                </div>
+                <div class="form-group">
+                    <label>Product</label>
+                    <select class="member-product">
+                        <option value="">— Not linked (generic defaults) —</option>
+                        ${productOptions}
+                    </select>
                 </div>
                 <div class="form-group">
                     <label>Cut Tolerance (mm)</label>
@@ -452,6 +487,11 @@ function attachReviewEventListeners(tabId) {
         if (nameSpan) nameSpan.textContent = e.target.value;
     });
 
+    section.querySelector('.member-product')?.addEventListener('change', e => {
+        tab.productId = e.target.value ? parseInt(e.target.value, 10) : null;
+        saveMemberMapping(tab.memberName, tab.productId);
+    });
+
     section.querySelector('.cut-tolerance')?.addEventListener('input', e => {
         tab.cutTolerance = parseFloat(e.target.value) || 0;
     });
@@ -478,6 +518,19 @@ function attachReviewEventListeners(tabId) {
             tab.stockLengths[index] = parseFloat(e.target.value) || 0;
         });
     });
+}
+
+// Remembers a raw member name -> Product link so it auto-applies on future imports (fire and
+// forget, mirroring the auto-save convention used for manual stick overrides — this is a
+// low-stakes, easily-corrected convenience mapping, not something worth blocking the UI on).
+function saveMemberMapping(rawName, productId) {
+    if (!rawName) return;
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+    fetch(window.CUTLIST_MEMBER_MAPPING_SAVE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({ raw_name: rawName, product_id: productId })
+    }).catch(e => console.error('Member mapping save failed:', e));
 }
 
 function toggleReviewMember(tabId) {
@@ -507,7 +560,8 @@ function addManualMember() {
         id: tabId,
         memberName: `Member ${tabCounter}`,
         cuts: [],
-        stockLengths: getDefaultStockLengths(''),
+        stockLengths: getDefaultStockLengths('', null),
+        productId: null,
         cutTolerance: 50,
         overlengthSplitStock: 6000,
         results: null
@@ -878,12 +932,27 @@ function generateCuttingDiagram(bin, stickNumber, kerfWidth, tabId) {
     const diagramWidth  = 60;
     const kerfHeightPx  = 4;
 
-    const timberClass = timberType ? `timber-${timberType.toLowerCase()}` : 'timber-other';
+    const timberClass  = timberType ? `timber-${timberType.toLowerCase()}` : 'timber-other';
+    const editable      = !!tabId; // false in print view (tabId is null there)
+    const overrideClass = bin.manualOverride ? ' stick-manual-override' : '';
+
+    const stickLabelClass = editable ? ' stick-label-clickable' : '';
+    const stickLabelClick = editable ? ` onclick="openStickEditor('${tabId}', ${bin.id})"` : '';
+    const dropHandlers = editable
+        ? ` ondragover="handleStickDragOver(event)" ondragleave="handleStickDragLeave(event)" ondrop="handleStickDrop(event, '${tabId}', ${bin.id})"`
+        : '';
 
     let html = `
-        <div class="stick-diagram ${timberClass}" data-bin-id="${bin.id}">
-            <div class="stick-label">Stick ${stickNumber}<br>${stockLength}mm</div>
-            <div class="stick" style="height:${diagramHeight}px;width:${diagramWidth}px;">`;
+        <div class="stick-diagram ${timberClass}${overrideClass}" data-bin-id="${bin.id}">
+            <div class="stick-label${stickLabelClass}" title="${editable ? 'Click to change stock length' : ''}"${stickLabelClick}>Stick ${stickNumber}<br>${stockLength}mm</div>`;
+
+    if (bin.manualOverride) {
+        html += editable
+            ? `<span class="override-badge">Manually adjusted</span><span class="override-reset-link" onclick="clearBinOverride('${tabId}', ${bin.id})">Reset to optimised</span>`
+            : `<span class="override-badge">Manually adjusted</span>`;
+    }
+
+    html += `<div class="stick" style="height:${diagramHeight}px;width:${diagramWidth}px;"${dropHandlers}>`;
 
     const totalNonKerfHeight = diagramHeight - ((cuts.length - 1) * kerfHeightPx);
     const usableLength       = stockLength - ((cuts.length - 1) * kerfWidth) - remaining;
@@ -898,8 +967,12 @@ function generateCuttingDiagram(bin, stickNumber, kerfWidth, tabId) {
         const cutHeight      = (cutLength / usableLength) * totalNonKerfHeight;
         const cutClass       = isSplitPiece ? 'cut-segment-split' : 'cut-segment';
         const clickableClass = (cutIndex !== undefined && tabId) ? ' cut-clickable' : '';
+        const draggableClass = editable ? ' cut-draggable' : '';
         const onclickAttr    = (cutIndex !== undefined && tabId)
             ? ` onclick="openCutEditor('${tabId}', ${cutIndex})"` : '';
+        const dragAttr = editable
+            ? ` draggable="true" ondragstart="handleCutDragStart(event, '${tabId}', ${bin.id}, ${index})"`
+            : '';
 
         let displayLabel;
         if (isSplitPiece && cutLength === stockLength) {
@@ -908,10 +981,10 @@ function generateCuttingDiagram(bin, stickNumber, kerfWidth, tabId) {
             displayLabel = mark ? `${mark}: ${Math.round(displayLength)}` : Math.round(displayLength);
         }
 
-        const titleText = `${isSplitPiece ? 'Split piece: ' : ''}${Math.round(cutLength)}mm${mark ? ' [' + mark + ']' : ''}${cutIndex !== undefined ? '\nClick to edit' : ''}`;
+        const titleText = `${isSplitPiece ? 'Split piece: ' : ''}${Math.round(cutLength)}mm${mark ? ' [' + mark + ']' : ''}${cutIndex !== undefined ? '\nClick to edit' : ''}${editable ? '\nDrag to move to another stick' : ''}`;
 
         html += `
-            <div class="${cutClass}${clickableClass}" style="height:${cutHeight}px;" title="${titleText}"${onclickAttr}>
+            <div class="${cutClass}${clickableClass}${draggableClass}" style="height:${cutHeight}px;" title="${titleText}"${onclickAttr}${dragAttr}>
                 <span class="cut-label">${displayLabel}</span>
             </div>`;
 
@@ -975,6 +1048,17 @@ function saveCutEdit() {
     if (isNaN(newLength)   || newLength < 1)   { showToast('Please enter a valid length',   'error'); return; }
     if (isNaN(newQuantity) || newQuantity < 1)  { showToast('Please enter a valid quantity', 'error'); return; }
 
+    // Editing the raw cut invalidates this tab's whole layout — unlike a plain re-optimise
+    // there's no reliable way to tell which overridden sticks are unaffected, so this clears
+    // all of them for the tab rather than trying to preserve some.
+    const overriddenCount = tab.results ? tab.results.bins.filter(b => b.manualOverride).length : 0;
+    if (overriddenCount > 0 && !confirm(
+        `This tab has ${overriddenCount} manually-adjusted stick${overriddenCount !== 1 ? 's' : ''}. ` +
+        `Editing this cut will clear ${overriddenCount !== 1 ? 'them' : 'it'} and re-optimise this tab from scratch. Continue?`
+    )) {
+        return;
+    }
+
     tab.cuts[_editCutIndex] = { ...tab.cuts[_editCutIndex], length: newLength, quantity: newQuantity, mark: newMark, group: newGroup };
 
     const tabId = _editTabId;
@@ -986,10 +1070,248 @@ function saveCutEdit() {
 }
 
 // =============================================================================
+// STICK LENGTH EDITOR (manual override)
+// =============================================================================
+
+function openStickEditor(tabId, binId) {
+    const tab = getTab(tabId);
+    if (!tab || !tab.results) return;
+    const bin = tab.results.bins.find(b => b.id === binId);
+    if (!bin) return;
+
+    _stickEditTabId = tabId;
+    _stickEditBinId = binId;
+
+    const kerfWidth  = project.jobDetails.kerfWidth;
+    const usedLength = bin.cuts.reduce((sum, cut) => sum + (typeof cut === 'object' ? cut.length : cut), 0)
+        + (bin.cuts.length - 1) * kerfWidth;
+
+    const select = document.getElementById('stickEditorLength');
+    select.innerHTML = [...new Set(tab.stockLengths)]
+        .filter(l => l >= usedLength)
+        .sort((a, b) => a - b)
+        .map(l => `<option value="${l}" ${l === bin.stockLength ? 'selected' : ''}>${l}mm</option>`)
+        .join('');
+
+    if (!select.options.length) {
+        showToast("No stock length in this member's list is long enough for these pieces", 'error');
+        return;
+    }
+
+    document.getElementById('stickEditorHint').textContent =
+        `${bin.cuts.length} piece${bin.cuts.length !== 1 ? 's' : ''} using ${usedLength}mm. Choose any stock length that fits — this locks the stick so a later re-optimise won't change it.`;
+
+    document.getElementById('stickEditorModal').style.display = 'flex';
+}
+
+function closeStickEditor() {
+    document.getElementById('stickEditorModal').style.display = 'none';
+    _stickEditTabId = null;
+    _stickEditBinId = null;
+}
+
+function saveStickEdit() {
+    if (_stickEditTabId === null || _stickEditBinId === null) return;
+    const tab = getTab(_stickEditTabId);
+    if (!tab || !tab.results) return;
+    const bin = tab.results.bins.find(b => b.id === _stickEditBinId);
+    if (!bin) return;
+
+    const newLength = parseInt(document.getElementById('stickEditorLength').value, 10);
+    if (isNaN(newLength)) { closeStickEditor(); return; }
+
+    const kerfWidth  = project.jobDetails.kerfWidth;
+    const usedLength = bin.cuts.reduce((sum, cut) => sum + (typeof cut === 'object' ? cut.length : cut), 0)
+        + (bin.cuts.length - 1) * kerfWidth;
+
+    bin.stockLength    = newLength;
+    bin.remaining       = newLength - usedLength;
+    bin.manualOverride  = true;
+
+    const tabId = _stickEditTabId;
+    closeStickEditor();
+    refreshOverriddenTab(tabId);
+}
+
+function clearBinOverride(tabId, binId) {
+    const tab = getTab(tabId);
+    if (!tab || !tab.results) return;
+    const bin = tab.results.bins.find(b => b.id === binId);
+    if (!bin) return;
+    delete bin.manualOverride;
+    refreshOverriddenTab(tabId);
+}
+
+// Re-renders one tab's diagrams + Step 5 summary and auto-saves — used after any manual
+// override edit (stick length change, drag/drop) so the lock can't be lost before the user
+// remembers to hit Save, unlike Feature 3's cut editor which leaves saving to the user.
+function refreshOverriddenTab(tabId) {
+    displayResults(tabId);
+    updateSummary();
+    const totalSticks = project.tabs.reduce((s, t) => t.results ? s + t.results.stockCount : s, 0);
+    setStepMeta(4, `${totalSticks} stick${totalSticks !== 1 ? 's' : ''}`);
+    saveProject();
+}
+
+// =============================================================================
+// DRAG CUTS BETWEEN STICKS (manual override)
+// =============================================================================
+
+function handleCutDragStart(event, tabId, binId, cutIndex) {
+    _dragSource = { tabId, binId, cutIndex };
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', ''); // Firefox requires data to be set for drag to start
+}
+
+function canDropCutOnBin(source, tab, targetBin) {
+    if (!source || !tab || !tab.results || !targetBin) return false;
+    if (targetBin.id === source.binId) return false;
+    const sourceBin = tab.results.bins.find(b => b.id === source.binId);
+    if (!sourceBin) return false;
+    const cut = sourceBin.cuts[source.cutIndex];
+    if (!cut) return false;
+    const cutLength   = typeof cut === 'object' ? cut.length : cut;
+    const kerfWidth   = project.jobDetails.kerfWidth;
+    const spaceNeeded = cutLength + (targetBin.cuts.length > 0 ? kerfWidth : 0);
+    return targetBin.remaining >= spaceNeeded;
+}
+
+function handleStickDragOver(event) {
+    if (!_dragSource) return;
+    event.preventDefault();
+    const stickEl = event.currentTarget;
+    const tab     = getTab(_dragSource.tabId);
+    const binId   = parseInt(stickEl.closest('.stick-diagram').dataset.binId, 10);
+    const targetBin = tab && tab.results ? tab.results.bins.find(b => b.id === binId) : null;
+    const valid   = canDropCutOnBin(_dragSource, tab, targetBin);
+    stickEl.classList.toggle('drag-over-valid', valid);
+    stickEl.classList.toggle('drag-over-invalid', !valid);
+    event.dataTransfer.dropEffect = valid ? 'move' : 'none';
+}
+
+function handleStickDragLeave(event) {
+    event.currentTarget.classList.remove('drag-over-valid', 'drag-over-invalid');
+}
+
+function handleStickDrop(event, tabId, targetBinId) {
+    event.preventDefault();
+    event.currentTarget.classList.remove('drag-over-valid', 'drag-over-invalid');
+
+    const source = _dragSource;
+    _dragSource = null;
+    if (!source || source.tabId !== tabId) return;
+
+    const tab = getTab(tabId);
+    if (!tab || !tab.results) return;
+
+    const targetBin = tab.results.bins.find(b => b.id === targetBinId);
+    if (!canDropCutOnBin(source, tab, targetBin)) {
+        showToast("That piece won't fit on this stick", 'error');
+        return;
+    }
+
+    const sourceBin = tab.results.bins.find(b => b.id === source.binId);
+    const cut        = sourceBin.cuts[source.cutIndex];
+    const cutLength  = typeof cut === 'object' ? cut.length : cut;
+    const kerfWidth  = project.jobDetails.kerfWidth;
+
+    sourceBin.cuts.splice(source.cutIndex, 1);
+    targetBin.cuts.push(cut);
+    targetBin.remaining -= (cutLength + (targetBin.cuts.length > 1 ? kerfWidth : 0));
+    targetBin.manualOverride = true;
+
+    if (sourceBin.cuts.length === 0) {
+        tab.results.bins = tab.results.bins.filter(b => b.id !== sourceBin.id);
+    } else {
+        const usedLength = sourceBin.cuts.reduce((sum, c) => sum + (typeof c === 'object' ? c.length : c), 0)
+            + (sourceBin.cuts.length - 1) * kerfWidth;
+        sourceBin.remaining      = sourceBin.stockLength - usedLength;
+        sourceBin.manualOverride = true;
+    }
+
+    tab.results.stockCount     = tab.results.bins.length;
+    tab.results.totalStockUsed = calculateTotalMaterial(tab.results.bins);
+
+    refreshOverriddenTab(tabId);
+}
+
+// =============================================================================
 // RUN OPTIMISATION (background — replaces "Calculate All" button)
 // =============================================================================
 
+function hasManualOverrides() {
+    return project.tabs.some(t => t.results && t.results.bins.some(b => b.manualOverride));
+}
+
+function openOverrideGuardModal() {
+    const count = project.tabs.reduce((s, t) =>
+        s + (t.results ? t.results.bins.filter(b => b.manualOverride).length : 0), 0);
+    document.getElementById('overrideGuardHint').textContent =
+        `${count} stick${count !== 1 ? 's have' : ' has'} been manually adjusted. ` +
+        `Re-optimising can either clear ${count !== 1 ? 'those adjustments' : 'that adjustment'} and start fresh, ` +
+        `or leave ${count !== 1 ? 'them' : 'it'} exactly as set and re-optimise everything else around ${count !== 1 ? 'them' : 'it'}.`;
+    document.getElementById('overrideGuardModal').style.display = 'flex';
+}
+
+function closeOverrideGuardModal() {
+    document.getElementById('overrideGuardModal').style.display = 'none';
+}
+
 async function runOptimisation() {
+    if (hasManualOverrides()) {
+        openOverrideGuardModal();
+        return;
+    }
+    await performOptimisation(false);
+}
+
+// Runs FFD for a tab while respecting any locked (manualOverride) bins: their pieces are
+// temporarily subtracted from the raw cut quantities so FFD doesn't regenerate duplicates,
+// then the locked bins are merged back into the freshly-computed results unchanged.
+function runFFDRespectingLocks(tabId) {
+    const tab = getTab(tabId);
+    const lockedBins = (tab.results && tab.results.bins) ? tab.results.bins.filter(b => b.manualOverride) : [];
+
+    if (lockedBins.length === 0) {
+        calculateOptimization(tabId);
+        return;
+    }
+
+    const consumed = {};
+    lockedBins.forEach(bin => {
+        bin.cuts.forEach(cut => {
+            const idx = typeof cut === 'object' ? cut.cutIndex : undefined;
+            if (idx === undefined) return;
+            consumed[idx] = (consumed[idx] || 0) + 1;
+        });
+    });
+
+    const originalQuantities = {};
+    Object.entries(consumed).forEach(([idx, count]) => {
+        const cut = tab.cuts[idx];
+        if (!cut) return;
+        originalQuantities[idx] = cut.quantity;
+        cut.quantity = Math.max(0, cut.quantity - count);
+    });
+
+    calculateOptimization(tabId);
+
+    Object.entries(originalQuantities).forEach(([idx, qty]) => { tab.cuts[idx].quantity = qty; });
+
+    const kerfWidth = project.jobDetails.kerfWidth;
+    tab.results.bins = tab.results.bins.concat(lockedBins);
+    tab.results.stockCount     = tab.results.bins.length;
+    tab.results.totalStockUsed = calculateTotalMaterial(tab.results.bins);
+    const lockedCutLength = lockedBins.reduce((sum, bin) =>
+        sum + bin.cuts.reduce((s, c) => s + (typeof c === 'object' ? (c.displayLength ?? c.length) : c), 0), 0);
+    tab.results.totalCutLength = (tab.results.totalCutLength || 0) + lockedCutLength;
+    const totalKerfLoss = tab.results.bins.reduce((sum, bin) => sum + (bin.cuts.length - 1) * kerfWidth, 0);
+    tab.results.totalKerfLoss   = totalKerfLoss;
+    tab.results.totalWaste      = tab.results.totalStockUsed - tab.results.totalCutLength - totalKerfLoss;
+    tab.results.wastePercentage = ((tab.results.totalWaste / tab.results.totalStockUsed) * 100).toFixed(2);
+}
+
+async function performOptimisation(clearOverrides) {
     const btn = document.getElementById('optimiseBtn');
     btn.disabled    = true;
     btn.textContent = 'Optimising…';
@@ -1012,8 +1334,14 @@ async function runOptimisation() {
         return;
     }
 
+    if (clearOverrides) {
+        project.tabs.forEach(tab => {
+            if (tab.results) tab.results.bins.forEach(b => { delete b.manualOverride; });
+        });
+    }
+
     project.tabs.forEach(tab => {
-        try { calculateOptimization(tab.id); }
+        try { runFFDRespectingLocks(tab.id); }
         catch (e) { showToast(`Error: ${tab.memberName} — ${e.message}`, 'error'); allValid = false; }
     });
 
@@ -1055,23 +1383,38 @@ function advancedOptimizeAll(silent = false) {
     const calculatedTabs = project.tabs.filter(t => t.results);
     if (calculatedTabs.length === 0) return;
 
-    const kerfWidth        = project.jobDetails.kerfWidth;
-    let totalSavings       = 0;
-    let upgradeCount       = 0;
-    let consolidationCount = 0;
-    const maxUpgrades      = 10;
+    const kerfWidth = project.jobDetails.kerfWidth;
+    let totalSavings  = 0;
+    let groupsChanged = 0;
 
     calculatedTabs.forEach(tab => {
-        if (upgradeCount >= maxUpgrades) return;
-        const savings = advancedOptimizeTab(tab, kerfWidth, maxUpgrades - upgradeCount);
-        totalSavings  += savings.materialSaved;
-        upgradeCount  += savings.upgradesPerformed;
-    });
+        const stockSorted      = [...new Set(tab.stockLengths)].sort((a, b) => a - b);
+        const originalMaterial = calculateTotalMaterial(tab.results.bins);
 
-    calculatedTabs.forEach(tab => {
-        const consolidation    = consolidateBins(tab, kerfWidth);
-        totalSavings          += consolidation.materialSaved;
-        consolidationCount    += consolidation.consolidationsPerformed;
+        const groups  = [...new Set(tab.results.bins.map(b => b.group || ''))];
+        let newBins   = [];
+        groups.forEach(group => {
+            // Locked (manually overridden) bins are excluded from re-optimisation entirely —
+            // they're passed through untouched and their pieces aren't offered up for reuse.
+            const groupBins = tab.results.bins.filter(b => (b.group || '') === group);
+            const locked    = groupBins.filter(b => b.manualOverride);
+            const free       = groupBins.filter(b => !b.manualOverride);
+            const { bins: optimized, changes } = optimizeGroupBins(free, stockSorted, kerfWidth);
+            if (changes > 0) groupsChanged++;
+            newBins = newBins.concat(optimized, locked);
+        });
+        tab.results.bins = newBins;
+
+        const newMaterial = calculateTotalMaterial(tab.results.bins);
+        totalSavings += (originalMaterial - newMaterial);
+
+        tab.results.totalStockUsed = newMaterial;
+        tab.results.stockCount     = tab.results.bins.length;
+        const totalCutLength = tab.results.bins.reduce((sum, bin) =>
+            sum + bin.cuts.reduce((s, cut) => s + (typeof cut === 'object' ? cut.length : cut), 0), 0);
+        const totalKerfLoss  = tab.results.bins.reduce((sum, bin) => sum + (bin.cuts.length - 1) * kerfWidth, 0);
+        tab.results.totalWaste      = newMaterial - totalCutLength - totalKerfLoss;
+        tab.results.wastePercentage = ((tab.results.totalWaste / newMaterial) * 100).toFixed(2);
     });
 
     if (!silent) {
@@ -1080,151 +1423,11 @@ function advancedOptimizeAll(silent = false) {
         saveProject();
 
         if (totalSavings > 0) {
-            let message = `Advanced optimisation saved ${totalSavings}mm of material!`;
-            if (upgradeCount > 0)       message += `\n${upgradeCount} stick upgrade${upgradeCount > 1 ? 's' : ''}`;
-            if (consolidationCount > 0) message += `\n${consolidationCount} stick consolidation${consolidationCount > 1 ? 's' : ''}`;
-            showToast(message, 'success');
+            showToast(`Advanced optimisation saved ${totalSavings}mm of material across ${groupsChanged} group${groupsChanged !== 1 ? 's' : ''}.`, 'success');
         } else {
             showToast('Already optimal — no further savings possible.', 'info');
         }
     }
-}
-
-function advancedOptimizeTab(tab, kerfWidth, maxUpgradesRemaining) {
-    let materialSaved     = 0;
-    let upgradesPerformed = 0;
-
-    const sortedStock  = [...tab.stockLengths].sort((a, b) => a - b);
-    let workingBins    = JSON.parse(JSON.stringify(tab.results.bins));
-
-    const binsWithOffcuts = workingBins
-        .map((bin, index) => ({ bin, index }))
-        .filter(item => item.bin.remaining >= 500)
-        .sort((a, b) => b.bin.remaining - a.bin.remaining);
-
-    for (let item of binsWithOffcuts) {
-        if (upgradesPerformed >= maxUpgradesRemaining) break;
-
-        const bin                = item.bin;
-        const currentStockLength = bin.stockLength;
-        const currentStockIndex  = sortedStock.indexOf(currentStockLength);
-        if (currentStockIndex === -1) continue;
-
-        const maxStockToTry = Math.min(currentStockIndex + 4, sortedStock.length);
-        let bestUpgrade = null;
-        let bestSavings = 0;
-
-        for (let stockIndex = currentStockIndex + 1; stockIndex < maxStockToTry; stockIndex++) {
-            const newStockLength = sortedStock[stockIndex];
-            const usedLength     = bin.cuts.reduce((sum, cut) => sum + (typeof cut === 'object' ? cut.length : cut), 0) + (bin.cuts.length - 1) * kerfWidth;
-            const availableSpace = newStockLength - usedLength;
-            const cutsToMove     = findCutsToMove(workingBins, item.index, availableSpace, kerfWidth, bin.group);
-
-            if (cutsToMove.length > 0) {
-                const binsToEliminate = new Set();
-                cutsToMove.forEach(cutInfo => {
-                    const sourceBin     = workingBins[cutInfo.binIndex];
-                    const remainingCuts = sourceBin.cuts.filter(c =>
-                        !cutsToMove.some(cm => cm.binIndex === cutInfo.binIndex && cm.cut === c)
-                    );
-                    if (remainingCuts.length === 0) binsToEliminate.add(cutInfo.binIndex);
-                });
-
-                let materialFreed = 0;
-                binsToEliminate.forEach(binIndex => { materialFreed += workingBins[binIndex].stockLength; });
-
-                const upgradeCost = newStockLength - currentStockLength;
-                const netSavings  = materialFreed - upgradeCost;
-
-                if (netSavings > bestSavings && netSavings > 0) {
-                    bestSavings = netSavings;
-                    bestUpgrade = { newStockLength, cutsToMove, binsToEliminate };
-                }
-            }
-        }
-
-        if (bestUpgrade) {
-            bin.stockLength = bestUpgrade.newStockLength;
-            bestUpgrade.cutsToMove.forEach(cutInfo => { bin.cuts.push(cutInfo.cut); });
-
-            const newUsedLength = bin.cuts.reduce((sum, cut) => sum + (typeof cut === 'object' ? cut.length : cut), 0) + (bin.cuts.length - 1) * kerfWidth;
-            bin.remaining = bestUpgrade.newStockLength - newUsedLength;
-
-            bestUpgrade.cutsToMove.forEach(cutInfo => {
-                const sourceBin = workingBins[cutInfo.binIndex];
-                const cutIndex  = sourceBin.cuts.indexOf(cutInfo.cut);
-                if (cutIndex > -1) sourceBin.cuts.splice(cutIndex, 1);
-            });
-
-            workingBins = workingBins.filter(b => b.cuts.length > 0);
-            workingBins.forEach(b => {
-                if (b.cuts.length > 0) {
-                    const usedLength = b.cuts.reduce((sum, cut) => sum + (typeof cut === 'object' ? cut.length : cut), 0) + (b.cuts.length - 1) * kerfWidth;
-                    b.remaining = b.stockLength - usedLength;
-                }
-            });
-
-            materialSaved    += bestSavings;
-            upgradesPerformed++;
-
-            const newBinsWithOffcuts = workingBins
-                .map((b, index) => ({ bin: b, index }))
-                .filter(i => i.bin.remaining >= 500)
-                .sort((a, b) => b.bin.remaining - a.bin.remaining);
-            binsWithOffcuts.length = 0;
-            binsWithOffcuts.push(...newBinsWithOffcuts);
-        }
-    }
-
-    if (materialSaved > 0) {
-        tab.results.bins          = workingBins;
-        const newMaterial         = calculateTotalMaterial(tab.results.bins);
-        tab.results.totalStockUsed = newMaterial;
-        tab.results.stockCount    = tab.results.bins.length;
-
-        const totalCutLength = tab.results.bins.reduce((sum, bin) =>
-            sum + bin.cuts.reduce((s, cut) => s + (typeof cut === 'object' ? cut.length : cut), 0), 0);
-        const totalKerfLoss  = tab.results.bins.reduce((sum, bin) =>
-            sum + (bin.cuts.length - 1) * kerfWidth, 0);
-        tab.results.totalWaste      = newMaterial - totalCutLength - totalKerfLoss;
-        tab.results.wastePercentage = ((tab.results.totalWaste / newMaterial) * 100).toFixed(2);
-    }
-
-    return { materialSaved, upgradesPerformed };
-}
-
-function findCutsToMove(workingBins, excludeBinIndex, availableSpace, kerfWidth, group) {
-    const cutsToMove   = [];
-    let spaceRemaining = availableSpace;
-
-    const sortedBinIndices = workingBins
-        .map((bin, index) => ({ bin, index }))
-        .filter(item => item.index !== excludeBinIndex && (item.bin.group || '') === (group || ''))
-        .sort((a, b) => a.bin.stockLength - b.bin.stockLength);
-
-    for (let item of sortedBinIndices) {
-        const bin      = item.bin;
-        const binIndex = item.index;
-
-        const totalCutsLength = bin.cuts.reduce((sum, cut) => sum + (typeof cut === 'object' ? cut.length : cut), 0);
-        const kerfsNeeded     = (bin.cuts.length + cutsToMove.length) * kerfWidth;
-        const spaceNeeded     = totalCutsLength + kerfsNeeded;
-
-        if (spaceNeeded <= spaceRemaining) {
-            bin.cuts.forEach(cut => cutsToMove.push({ cut, binIndex }));
-            spaceRemaining -= spaceNeeded;
-        } else {
-            for (let cut of bin.cuts) {
-                const cutLen         = typeof cut === 'object' ? cut.length : cut;
-                const cutSpaceNeeded = cutLen + (cutsToMove.length > 0 ? kerfWidth : 0);
-                if (cutSpaceNeeded <= spaceRemaining) {
-                    cutsToMove.push({ cut, binIndex });
-                    spaceRemaining -= cutSpaceNeeded;
-                }
-            }
-        }
-    }
-    return cutsToMove;
 }
 
 function calculateTotalMaterial(bins) {
@@ -1232,244 +1435,229 @@ function calculateTotalMaterial(bins) {
 }
 
 // =============================================================================
-// BIN CONSOLIDATION
+// UNIFIED GROUP CONSOLIDATION
+//
+// Replaces the old advancedOptimizeTab (global cross-group offcut-absorption) and
+// consolidateBins (three sequential, order-dependent heuristics: a hardcoded 3x3600->2x5400
+// pattern, a "double the stock length" pair rule that never checked whether a smaller stock
+// would fit, and a general search with a stale-index bug that silently skipped valid merges).
+// Those defects were confirmed against real production data (project 41): identical input
+// groups landing on different results depending on unrelated groups sharing the same
+// optimisation pass, a stick picked twice its needed size, and valid merges skipped outright.
+//
+// This runs per (tab, group) in isolation — no shared cross-group queue — and scores every
+// candidate lexicographically by (total_material, stick_count, distinct_stock_lengths_not_
+// already_used_elsewhere_in_the_group). Material is minimised first as a hard constraint;
+// stick count is the tie-break BEFORE distinct-length reuse is ever considered, so folding
+// leftovers onto a stock length already in use (fewer distinct lengths, easier picking/
+// packing/shipping) can only win when it doesn't cost extra sticks. Validated against every
+// real cutlist in the database before being ported here.
 // =============================================================================
 
-function consolidateBins(tab, kerfWidth) {
-    let materialSaved          = 0;
-    let consolidationsPerformed = 0;
+function combinationsOfIndices(n, k) {
+    const result = [];
+    const combo  = [];
+    (function backtrack(start) {
+        if (combo.length === k) { result.push(combo.slice()); return; }
+        for (let i = start; i < n; i++) {
+            combo.push(i);
+            backtrack(i + 1);
+            combo.pop();
+        }
+    })(0);
+    return result;
+}
 
-    const bins         = tab.results.bins;
-    const stockLengths = [...tab.stockLengths].sort((a, b) => a - b);
+function combinationsWithReplacement(values, k) {
+    const result = [];
+    const combo  = [];
+    (function backtrack(start) {
+        if (combo.length === k) { result.push(combo.slice()); return; }
+        for (let i = start; i < values.length; i++) {
+            combo.push(values[i]);
+            backtrack(i);
+            combo.pop();
+        }
+    })(0);
+    return result;
+}
 
-    const pairConsolidationMap = new Map();
-    stockLengths.forEach(length => {
-        const doubleLength = length * 2;
-        if (stockLengths.includes(doubleLength)) pairConsolidationMap.set(length, doubleLength);
+function tupleLess(a, b) {
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] < b[i]) return true;
+        if (a[i] > b[i]) return false;
+    }
+    return false;
+}
+
+function tryPlaceCuts(cuts, targetLengths, kerfWidth) {
+    const targetBins = targetLengths.map(l => ({ stockLength: l, cuts: [], remaining: l }));
+    const sortedCuts = [...cuts].sort((a, b) => {
+        const aLen = typeof a === 'object' ? a.length : a;
+        const bLen = typeof b === 'object' ? b.length : b;
+        return bLen - aLen;
     });
-
-    const multiConsolidationPatterns = [
-        { from: { length: 3600, count: 3 }, to: [5400, 5400], save: 0 }
-    ];
-
-    const uniqueGroups  = [...new Set(bins.map(b => b.group || ''))];
-    const binsByLength  = {};
-    bins.forEach((bin, index) => {
-        const k = `${bin.group || ''}||${bin.stockLength}`;
-        if (!binsByLength[k]) binsByLength[k] = [];
-        binsByLength[k].push({ bin, index });
-    });
-
-    multiConsolidationPatterns.forEach(pattern => {
-        const { from, to, save } = pattern;
-        if (!to.every(targetLength => stockLengths.includes(targetLength))) return;
-        uniqueGroups.forEach(group => {
-            const binsOfThisLength = binsByLength[`${group}||${from.length}`];
-            if (!binsOfThisLength || binsOfThisLength.length < from.count) return;
-
-            while (binsOfThisLength.length >= from.count) {
-                const binGroup        = binsOfThisLength.slice(0, from.count);
-                const allCuts         = binGroup.flatMap(item => item.bin.cuts);
-                const totalUsedLength = allCuts.reduce((sum, cut) => {
-                    const cutLength = typeof cut === 'object' ? cut.length : cut;
-                    return sum + cutLength;
-                }, 0);
-                const totalKerfLoss = to.reduce((sum, targetLength, idx) => {
-                    const cutsPerBin = Math.ceil(allCuts.length / to.length);
-                    return sum + ((idx < to.length - 1 ? cutsPerBin : allCuts.length - (cutsPerBin * (to.length - 1))) - 1) * kerfWidth;
-                }, 0);
-                const totalNeeded    = totalUsedLength + totalKerfLoss;
-                const totalAvailable = to.reduce((sum, len) => sum + len, 0);
-
-                if (totalNeeded <= totalAvailable) {
-                    const targetBins = to.map(length => ({ stockLength: length, cuts: [], remaining: length }));
-                    const sortedCuts = [...allCuts].sort((a, b) => {
-                        const aLen = typeof a === 'object' ? a.length : a;
-                        const bLen = typeof b === 'object' ? b.length : b;
-                        return bLen - aLen;
-                    });
-
-                    let allFit = true;
-                    for (let cut of sortedCuts) {
-                        const cutLength = typeof cut === 'object' ? cut.length : cut;
-                        let placed = false;
-                        for (let targetBin of targetBins) {
-                            const spaceNeeded = cutLength + (targetBin.cuts.length > 0 ? kerfWidth : 0);
-                            if (targetBin.remaining >= spaceNeeded) {
-                                targetBin.cuts.push(cut);
-                                targetBin.remaining -= spaceNeeded;
-                                placed = true;
-                                break;
-                            }
-                        }
-                        if (!placed) { allFit = false; break; }
-                    }
-
-                    if (allFit) {
-                        binGroup[0].bin.stockLength = targetBins[0].stockLength;
-                        binGroup[0].bin.cuts        = targetBins[0].cuts;
-                        binGroup[0].bin.remaining   = targetBins[0].remaining;
-                        if (targetBins.length > 1 && binGroup.length > 1) {
-                            binGroup[1].bin.stockLength = targetBins[1].stockLength;
-                            binGroup[1].bin.cuts        = targetBins[1].cuts;
-                            binGroup[1].bin.remaining   = targetBins[1].remaining;
-                        }
-                        for (let i = targetBins.length; i < binGroup.length; i++) {
-                            binGroup[i].bin.cuts = [];
-                        }
-                        materialSaved          += save;
-                        consolidationsPerformed++;
-                        binsOfThisLength.splice(0, from.count);
-                    } else { break; }
-                } else { break; }
+    for (const cut of sortedCuts) {
+        const cutLength = typeof cut === 'object' ? cut.length : cut;
+        let placed = false;
+        for (const tb of targetBins) {
+            const spaceNeeded = cutLength + (tb.cuts.length > 0 ? kerfWidth : 0);
+            if (tb.remaining >= spaceNeeded) {
+                tb.cuts.push(cut);
+                tb.remaining -= spaceNeeded;
+                placed = true;
+                break;
             }
-        });
+        }
+        if (!placed) return null;
+    }
+    return targetBins;
+}
+
+function repackPoolBestFit(cuts, stockSorted, kerfWidth, newBinChoice, descending) {
+    const ordered = [...cuts].sort((a, b) => {
+        const aLen = typeof a === 'object' ? a.length : a;
+        const bLen = typeof b === 'object' ? b.length : b;
+        return descending ? bLen - aLen : aLen - bLen;
     });
-
-    pairConsolidationMap.forEach((targetLength, sourceLength) => {
-        uniqueGroups.forEach(group => {
-            const binsOfThisLength = binsByLength[`${group}||${sourceLength}`];
-            if (!binsOfThisLength || binsOfThisLength.length < 2) return;
-
-            for (let i = 0; i < binsOfThisLength.length - 1; i++) {
-                for (let j = i + 1; j < binsOfThisLength.length; j++) {
-                    const bin1          = binsOfThisLength[i].bin;
-                    const bin2          = binsOfThisLength[j].bin;
-                    const combinedCuts  = [...bin1.cuts, ...bin2.cuts];
-                    const combinedUsedLength = combinedCuts.reduce((sum, cut) => {
-                        return sum + (typeof cut === 'object' ? cut.length : cut);
-                    }, 0);
-                    const combinedKerfLoss = (combinedCuts.length - 1) * kerfWidth;
-                    const totalNeeded      = combinedUsedLength + combinedKerfLoss;
-
-                    if (totalNeeded <= targetLength) {
-                        const savings       = 2 * sourceLength - targetLength;
-                        const newWaste      = targetLength - totalNeeded;
-                        const oldTotalWaste = bin1.remaining + bin2.remaining;
-
-                        if (savings > 0 || (newWaste >= 500 && newWaste < oldTotalWaste)) {
-                            bin1.stockLength = targetLength;
-                            bin1.cuts        = combinedCuts;
-                            bin1.remaining   = newWaste;
-                            bin2.cuts        = [];
-                            materialSaved          += savings;
-                            consolidationsPerformed++;
-                            binsOfThisLength.splice(j, 1);
-                            j--;
-                        }
-                    }
+    const bins = [];
+    for (const cut of ordered) {
+        const cutLength = typeof cut === 'object' ? cut.length : cut;
+        let bestBin = null, bestSpaceNeeded = 0, bestLeftover = null;
+        for (const b of bins) {
+            const spaceNeeded = cutLength + (b.cuts.length > 0 ? kerfWidth : 0);
+            if (b.remaining >= spaceNeeded) {
+                const leftover = b.remaining - spaceNeeded;
+                if (bestLeftover === null || leftover < bestLeftover) {
+                    bestLeftover = leftover; bestBin = b; bestSpaceNeeded = spaceNeeded;
                 }
             }
-        });
-    });
+        }
+        if (bestBin) {
+            bestBin.cuts.push(cut);
+            bestBin.remaining -= bestSpaceNeeded;
+        } else {
+            const suitable = newBinChoice === 'largest' && stockSorted.length && stockSorted[stockSorted.length - 1] >= cutLength
+                ? stockSorted[stockSorted.length - 1]
+                : stockSorted.find(s => s >= cutLength);
+            if (suitable === undefined) return null;
+            bins.push({ stockLength: suitable, cuts: [cut], remaining: suitable - cutLength });
+        }
+    }
+    return bins;
+}
 
-    tab.results.bins = bins.filter(b => b.cuts.length > 0);
+function scoreBins(bins, outsideLengths) {
+    const material = bins.reduce((s, b) => s + b.stockLength, 0);
+    let newLengths  = 0;
+    new Set(bins.map(b => b.stockLength)).forEach(l => { if (!outsideLengths.has(l)) newLengths++; });
+    return [material, bins.length, newLengths];
+}
 
-    const binsByLengthFinal = {};
-    tab.results.bins.forEach((bin, index) => {
-        const k = `${bin.group || ''}||${bin.stockLength}`;
-        if (!binsByLengthFinal[k]) binsByLengthFinal[k] = [];
-        binsByLengthFinal[k].push({ bin, index });
-    });
+// One best-improvement pass: recombine small clusters of existing bins onto better stock.
+// `wasteThreshold` is deliberately tiny — not "can this bin absorb a big offcut" but "does it
+// have enough slack for a kerf gap to matter at all". Two bins with only ~450mm remaining each
+// can still legitimately combine onto one bigger stick; excluding them at a high threshold
+// (the old code's `remaining >= 500`) silently hides real merges. Performance is instead
+// bounded by capping subset size when the candidate pool is large.
+function subsetSearchPass(bins, stockSorted, kerfWidth, wasteThreshold, maxSubset, maxTargets) {
+    const candidateIdx = [];
+    bins.forEach((b, i) => { if (b.remaining >= wasteThreshold) candidateIdx.push(i); });
+    const n = candidateIdx.length;
+    if (n < 2) return { bins, changed: false };
 
-    Object.entries(binsByLengthFinal).forEach(([key, binsGroup]) => {
-        if (binsGroup.length < 2) return;
-        const sourceLength = parseInt(key.split('||')[1]);
+    const effectiveMaxSubset = n <= 15 ? maxSubset : 2;
+    let best = null;
 
-        for (let groupSize = 2; groupSize <= Math.min(binsGroup.length, 5); groupSize++) {
-            for (let startIdx = 0; startIdx <= binsGroup.length - groupSize; startIdx++) {
-                const binGroup        = binsGroup.slice(startIdx, startIdx + groupSize);
-                const allCuts         = binGroup.flatMap(item => item.bin.cuts);
-                const totalUsedLength = allCuts.reduce((sum, cut) => {
-                    return sum + (typeof cut === 'object' ? cut.length : cut);
-                }, 0);
-                const oldMaterial     = groupSize * sourceLength;
-                const possibleTargets = [];
+    for (let k = 2; k <= Math.min(n, effectiveMaxSubset); k++) {
+        for (const posCombo of combinationsOfIndices(n, k)) {
+            const subsetBinIdx = posCombo.map(p => candidateIdx[p]);
+            const subsetSet    = new Set(subsetBinIdx);
+            const subset       = subsetBinIdx.map(i => bins[i]);
+            const outsideLengths = new Set();
+            bins.forEach((b, i) => { if (!subsetSet.has(i)) outsideLengths.add(b.stockLength); });
 
-                stockLengths.forEach(targetLength => {
-                    if (targetLength >= sourceLength) {
-                        const kerfLoss    = (allCuts.length - 1) * kerfWidth;
-                        const totalNeeded = totalUsedLength + kerfLoss;
-                        if (totalNeeded <= targetLength) {
-                            possibleTargets.push({ stockSizes: [targetLength], totalMaterial: targetLength, savings: oldMaterial - targetLength });
-                        }
-                    }
-                });
+            const currentTuple = scoreBins(subset, outsideLengths);
+            const allCuts = subset.flatMap(b => b.cuts);
 
-                stockLengths.forEach(target1 => {
-                    if (target1 <= sourceLength) {
-                        stockLengths.forEach(target2 => {
-                            if (target2 <= sourceLength) {
-                                const totalTarget = target1 + target2;
-                                if (totalTarget < oldMaterial) {
-                                    possibleTargets.push({ stockSizes: [target1, target2], totalMaterial: totalTarget, savings: oldMaterial - totalTarget });
-                                }
-                            }
-                        });
-                    }
-                });
-
-                possibleTargets.sort((a, b) => b.savings - a.savings);
-
-                for (let target of possibleTargets) {
-                    if (target.savings <= 0) break;
-
-                    const targetBins = target.stockSizes.map(length => ({ stockLength: length, cuts: [], remaining: length }));
-                    const sortedCuts = [...allCuts].sort((a, b) => {
-                        const aLen = typeof a === 'object' ? a.length : a;
-                        const bLen = typeof b === 'object' ? b.length : b;
-                        return bLen - aLen;
-                    });
-
-                    let allFit = true;
-                    for (let cut of sortedCuts) {
-                        const cutLength = typeof cut === 'object' ? cut.length : cut;
-                        let placed = false;
-                        for (let targetBin of targetBins) {
-                            const spaceNeeded = cutLength + (targetBin.cuts.length > 0 ? kerfWidth : 0);
-                            if (targetBin.remaining >= spaceNeeded) {
-                                targetBin.cuts.push(cut);
-                                targetBin.remaining -= spaceNeeded;
-                                placed = true;
-                                break;
-                            }
-                        }
-                        if (!placed) { allFit = false; break; }
-                    }
-
-                    if (allFit) {
-                        for (let i = 0; i < targetBins.length && i < binGroup.length; i++) {
-                            binGroup[i].bin.stockLength = targetBins[i].stockLength;
-                            binGroup[i].bin.cuts        = targetBins[i].cuts;
-                            binGroup[i].bin.remaining   = targetBins[i].remaining;
-                        }
-                        for (let i = targetBins.length; i < binGroup.length; i++) {
-                            binGroup[i].bin.cuts = [];
-                        }
-                        materialSaved          += target.savings;
-                        consolidationsPerformed++;
-                        binsGroup.splice(startIdx, groupSize);
-                        break;
+            for (let t = 1; t <= Math.min(maxTargets, k); t++) {
+                for (const targetCombo of combinationsWithReplacement(stockSorted, t)) {
+                    const totalTarget = targetCombo.reduce((s, v) => s + v, 0);
+                    if (totalTarget > currentTuple[0]) continue;
+                    const placed = tryPlaceCuts(allCuts, targetCombo, kerfWidth);
+                    if (!placed) continue;
+                    let newLengths = 0;
+                    new Set(targetCombo).forEach(l => { if (!outsideLengths.has(l)) newLengths++; });
+                    const candTuple = [totalTarget, t, newLengths];
+                    if (tupleLess(candTuple, currentTuple) && (!best || tupleLess(candTuple, best.score))) {
+                        best = { score: candTuple, subsetBinIdx, newBins: placed };
                     }
                 }
             }
         }
-    });
-
-    tab.results.bins = tab.results.bins.filter(b => b.cuts.length > 0);
-
-    if (consolidationsPerformed > 0) {
-        const newMaterial          = calculateTotalMaterial(tab.results.bins);
-        tab.results.totalStockUsed = newMaterial;
-        tab.results.stockCount     = tab.results.bins.length;
-        const totalCutLength = tab.results.bins.reduce((sum, bin) =>
-            sum + bin.cuts.reduce((s, cut) => s + (typeof cut === 'object' ? cut.length : cut), 0), 0);
-        const totalKerfLoss  = tab.results.bins.reduce((sum, bin) => sum + (bin.cuts.length - 1) * kerfWidth, 0);
-        tab.results.totalWaste      = newMaterial - totalCutLength - totalKerfLoss;
-        tab.results.wastePercentage = ((tab.results.totalWaste / newMaterial) * 100).toFixed(2);
     }
 
-    return { materialSaved, consolidationsPerformed };
+    if (!best) return { bins, changed: false };
+
+    const subsetSet = new Set(best.subsetBinIdx);
+    const groupVal  = bins[best.subsetBinIdx[0]].group;
+    const kept      = bins.filter((b, i) => !subsetSet.has(i));
+    const newBins   = best.newBins.map(nb => ({ stockLength: nb.stockLength, cuts: nb.cuts, remaining: nb.remaining, group: groupVal }));
+    return { bins: kept.concat(newBins), changed: true };
+}
+
+// Escape hatch for the subset search: pool every bin's cuts in the group (no waste-threshold
+// filter — unlike the subset search this pass is near-linear, not combinatorial, so there's no
+// cost reason to exclude already-decent bins) and re-derive a fresh packing from scratch with a
+// few Best-Fit-Decreasing strategies, keeping whichever scores best. Not bounded to recombining
+// existing bin groupings, so it can reach packings the subset search's local moves can't step
+// through one merge at a time.
+function poolRepackPass(bins, stockSorted, kerfWidth) {
+    if (bins.length < 2) return { bins, changed: false };
+
+    const groupVal      = bins[0].group;
+    const currentTuple  = scoreBins(bins, new Set());
+    const poolCuts      = bins.flatMap(b => b.cuts);
+
+    let best = null;
+    for (const newBinChoice of ['smallest', 'largest']) {
+        for (const descending of [true, false]) {
+            const repacked = repackPoolBestFit(poolCuts, stockSorted, kerfWidth, newBinChoice, descending);
+            if (!repacked) continue;
+            const candTuple = scoreBins(repacked, new Set());
+            if (tupleLess(candTuple, currentTuple) && (!best || tupleLess(candTuple, best.score))) {
+                best = { score: candTuple, repacked };
+            }
+        }
+    }
+
+    if (!best) return { bins, changed: false };
+
+    const newBins = best.repacked.map(nb => ({ stockLength: nb.stockLength, cuts: nb.cuts, remaining: nb.remaining, group: groupVal }));
+    return { bins: newBins, changed: true };
+}
+
+// Alternates the two passes to a fixed point: subset search first (precise, provably
+// non-regressing, bounded to local moves), then pool repack (can escape local optima the
+// subset search can't reach in one step, and may open up new subset-mergeable shapes for the
+// next round).
+function optimizeGroupBins(bins, stockLengths, kerfWidth, wasteThreshold = 50, maxSubset = 5, maxTargets = 3) {
+    let current = bins.map(b => ({ ...b }));
+    const stockSorted = [...new Set(stockLengths)].sort((a, b) => a - b);
+    let changes = 0;
+
+    while (true) {
+        const pass1 = subsetSearchPass(current, stockSorted, kerfWidth, wasteThreshold, maxSubset, maxTargets);
+        current = pass1.bins;
+        const pass2 = poolRepackPass(current, stockSorted, kerfWidth);
+        current = pass2.bins;
+
+        if (pass1.changed || pass2.changed) changes++;
+        if (!pass1.changed && !pass2.changed) break;
+        if (changes > 200) { console.error('optimizeGroupBins: non-convergence guard hit'); break; }
+    }
+
+    return { bins: current, changes };
 }
 
 // =============================================================================
@@ -1567,12 +1755,17 @@ function openConvertModal() {
 
     const products = window.CUTLIST_PRODUCTS || [];
     const rowsHTML = calculatedTabs.map(({ tab, idx }) => {
-        const timberType = getTimberType(tab.memberName);
-        const guess = timberType !== 'OTHER'
-            ? products.find(p => p.name.toUpperCase().includes(timberType))
-            : null;
+        // Prefer the member's confirmed Product link over the weak timber-type guess.
+        let preselectedId = tab.productId || null;
+        if (!preselectedId) {
+            const timberType = getTimberType(tab.memberName);
+            const guess = timberType !== 'OTHER'
+                ? products.find(p => p.name.toUpperCase().includes(timberType))
+                : null;
+            preselectedId = guess ? guess.id : null;
+        }
         const options = products.map(p =>
-            `<option value="${p.id}" ${guess && guess.id === p.id ? 'selected' : ''}>${p.name} (${p.product_type__name})</option>`
+            `<option value="${p.id}" ${preselectedId === p.id ? 'selected' : ''}>${p.name} (${p.product_type__name})</option>`
         ).join('');
         return `
             <div class="form-group">
@@ -1666,7 +1859,8 @@ function exportProjectJSON() {
         jobDetails: { ...project.jobDetails },
         tabs: project.tabs.map(tab => ({
             memberName: tab.memberName, cuts: tab.cuts,
-            stockLengths: tab.stockLengths, cutTolerance: tab.cutTolerance,
+            stockLengths: tab.stockLengths, productId: tab.productId,
+            cutTolerance: tab.cutTolerance,
             overlengthSplitStock: tab.overlengthSplitStock, results: tab.results
         }))
     };
@@ -1708,6 +1902,7 @@ function restoreProject(projectData) {
             memberName: tabData.memberName,
             cuts: tabData.cuts,
             stockLengths: tabData.stockLengths,
+            productId: tabData.productId !== undefined ? tabData.productId : null,
             cutTolerance: tabData.cutTolerance !== undefined ? tabData.cutTolerance : 50,
             overlengthSplitStock: tabData.overlengthSplitStock || 6000,
             results: tabData.results || null

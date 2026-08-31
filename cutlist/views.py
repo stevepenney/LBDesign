@@ -1,4 +1,5 @@
 import json
+import re
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -9,16 +10,21 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from accounts.models import Organisation
-from products.models import Product
+from products.models import Product, TimberTypeDefaultStockLengths
 from projects.models import Project
 from projects.views import _assert_project_access, _get_projects_for_user
-from .models import CutlistProject
+from .models import CutlistProject, MemberProductMapping
 
 
 def _assert_cutlist_access(user, cutlist):
     if cutlist.project.organisation != user.organisation:
         if not (user.is_lb_admin or user.is_lb_detailing):
             raise PermissionDenied
+
+
+def _normalize_member_name(name):
+    """Whitespace/case-normalized lookup key — mirrors normalizeMemberName() in cutlist.js."""
+    return re.sub(r'\s+', '', name or '').upper()
 
 
 @login_required
@@ -75,12 +81,48 @@ def project_edit(request, pk):
     products = list(
         Product.objects.filter(is_active=True)
         .select_related('product_type')
-        .values('id', 'name', 'product_type__name')
+        .values('id', 'name', 'product_type__name', 'stock_lengths')
     )
+    member_mappings = {
+        m.normalized_name: {'product_id': m.product_id, 'product_name': m.product.name}
+        for m in MemberProductMapping.objects.select_related('product')
+    }
+    timber_type_defaults = {
+        t.timber_type: t.stock_lengths_list()
+        for t in TimberTypeDefaultStockLengths.objects.all()
+    }
     return render(request, 'cutlist/project_edit.html', {
         'project': cutlist,
         'products': products,
+        'member_mappings': member_mappings,
+        'timber_type_defaults': timber_type_defaults,
     })
+
+
+@login_required
+@require_POST
+def member_mapping_save(request):
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+
+    raw_name = (data.get('raw_name') or '').strip()
+    if not raw_name:
+        return JsonResponse({'ok': False, 'error': 'raw_name required'}, status=400)
+    normalized_name = _normalize_member_name(raw_name)
+
+    product_id = data.get('product_id')
+    if not product_id:
+        MemberProductMapping.objects.filter(normalized_name=normalized_name).delete()
+        return JsonResponse({'ok': True})
+
+    product = get_object_or_404(Product, pk=product_id, is_active=True)
+    MemberProductMapping.objects.update_or_create(
+        normalized_name=normalized_name,
+        defaults={'raw_name': raw_name[:100], 'product': product},
+    )
+    return JsonResponse({'ok': True})
 
 
 @login_required

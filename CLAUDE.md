@@ -126,9 +126,17 @@ and is shown in a "Project Details" card at the top of the page (same inline-edi
 `wizard` object tracks `reachedStep`. DOM always rendered from state, never read back.
 Key functions:
 - `parseCSVIntoTabs(csvText)` — parses CSV, populates `project.tabs[]`, max 5 member types
-- `calculateOptimization(tabId)` — First Fit Decreasing algorithm
-- `advancedOptimizeAll(silent)` — post-process: offcut reuse + bin consolidation; `silent=true` suppresses toasts/saves when called from wizard
-- `runOptimisation()` — async wizard action: validates → FFD → advanced → renders tabs → saves → advances to Step 4
+- `calculateOptimization(tabId)` — First Fit Decreasing algorithm, per (tab, group)
+- `optimizeGroupBins(bins, stockLengths, kerfWidth)` — unified post-FFD consolidation pass, run
+  independently per (tab, group). See "Consolidation algorithm" below.
+- `advancedOptimizeAll(silent)` — orchestrates `optimizeGroupBins` per group across all tabs;
+  `silent=true` suppresses toasts/saves when called from the wizard
+- `runOptimisation()` — the guarded entry point: if any bin is `manualOverride`d, opens the
+  guardrail modal instead of running immediately; otherwise calls `performOptimisation(false)`
+- `performOptimisation(clearOverrides)` — the actual FFD → advanced-optimise → render → save
+  flow (was previously inlined in `runOptimisation`)
+- `runFFDRespectingLocks(tabId)` — wraps `calculateOptimization` to exclude locked bins' pieces
+  from FFD input, then merges the locked bins back in unchanged
 - `saveProject()` — POSTs full state to `/cutlist/<pk>/save/` (does not rename the cutlist)
 - `restoreProject(data)` — restores from saved state (page load or JSON import)
 - `resetFromStep(n)` — clears downstream DOM + locks steps when re-processing
@@ -136,6 +144,47 @@ Key functions:
 `CutlistProject.name` is inline-editable in the page header (like `Job.label` on the estimate
 page) via `cutlist:project_update_field` — POST `field=name&value=...`, blank falls back to
 `'Untitled Cutlist'`. It is no longer auto-derived from a description field.
+
+### Member ↔ Product mapping
+A cutlist tab's `memberName` is freeform text (typed or CSV-imported) — historically with no
+link to the `products.Product` catalog at all (only 9 of 26 real distinct member names in the
+database exactly matched a `Product.name`; formatting varies even for the same product, e.g.
+"LIB 240.88s" vs "LIB240.88s"). `cutlist.MemberProductMapping` (global, not per-project) now
+remembers a confirmed raw-text → `Product` link, keyed on a whitespace/case-normalized form
+(`normalizeMemberName()` in cutlist.js / `_normalize_member_name()` in cutlist/views.py — keep
+these two in sync). `parseCSVIntoTabs` and every other tab-construction site set `tab.productId`
+via `lookupMemberProductId(memberName)`; a Product dropdown in the Step 3 review UI
+(`.member-product`, next to Member Size) lets the user set/change/clear it, firing
+`saveMemberMapping()` immediately (`POST cutlist:member_mapping_save`) so the choice is
+remembered for future imports — this is a fire-and-forget side-channel to the global table,
+separate from `tab.productId` itself which follows the same lazy-save timing as every other tab
+field (only persisted to `CutlistProject.state` on the normal save flow). Mapping is optional by
+design — wholesale merchant customers use this tool directly and may not want to touch the
+product catalog; an unmapped tab keeps today's generic `getDefaultStockLengths()` behaviour.
+`openConvertModal()` prefers `tab.productId` over its old weak timber-type-substring guess when
+pre-selecting a product.
+
+### Default stock lengths (admin-editable)
+`getDefaultStockLengths(memberName, productId)` (static/js/cutlist.js) resolves in three tiers,
+each admin-editable in Django admin (Products section) — no hardcoded table anymore:
+1. **`Product.stock_lengths`** — comma-separated mm list on the linked product, if `productId`
+   resolves to one and it has a non-blank value. Precise per-size control (e.g. two different
+   LVL13 sizes can have different stock lists), addressing that the old flat per-timber-type
+   table couldn't.
+2. **`TimberTypeDefaultStockLengths`** (new model, `products` app) — one row per `getTimberType()`
+   category (LIB/LVL8/LVL11/LVL13/GL/OTHER), used when there's no product link or it has no
+   stock lengths set. This is the fallback for the common case of an unmapped member (mapping is
+   optional, see above).
+3. A small hardcoded `FALLBACK_STOCK_LENGTHS` constant in cutlist.js — only reached if the DB
+   tables are somehow empty (fresh install before migrations run); normal operation never hits it.
+
+Both DB tables were seeded (migration `products/0010_seed_default_stock_lengths.py`) from what
+`getDefaultStockLengths()` used to hardcode, as the admin-editable starting point. `project_edit`
+passes `products` (now including each one's `stock_lengths`) and a new `timber_type_defaults`
+dict to the template via the same `json_script` pattern as everything else on this page.
+Selecting a product for a tab does **not** retroactively rewrite `tab.stockLengths` — defaults
+only apply at tab-creation time, so a merchant's manual customisation is never silently clobbered
+by later linking a product.
 
 ### Wizard (5 steps — vertical accordion)
 1. **Cutlist Settings** — `preparedBy`, `kerfWidth` only (project/client info lives in the
@@ -154,6 +203,41 @@ Print view (`cutlist:project_print`) sources client/site/reference/lb_ref from
 ### CSS
 `cutlist.css` uses `base.css` variables (no separate palette). Timber bin colours are
 functional and must not change: LIB=yellow, LVL8=green, LVL11=cyan, LVL13=teal, GL=pink.
+
+### Consolidation algorithm
+`optimizeGroupBins()` (static/js/cutlist.js) replaced three separate, order-dependent
+heuristics (a hardcoded pattern rule, a flawed "double the stock length" rule, and a
+stale-index bug in a general search loop) that used to run in sequence in `consolidateBins`/
+`advancedOptimizeTab`. It runs independently per `(tab, group)` — no shared cross-group queue —
+alternating two passes to a fixed point:
+1. **Subset search** — recombines small clusters of existing bins onto better stock (bounded
+   combinatorial search, subset size capped when the candidate pool is large).
+2. **Pool repack** — re-derives a fresh Best-Fit-Decreasing packing for the whole group from
+   scratch when the subset search can't reach it in one step.
+
+Scores every candidate by `(total_material, stick_count, distinct_stock_lengths_not_already_
+used_elsewhere_in_the_group)`, lexicographic, strict-improvement only. Material is minimised
+first as a hard constraint; stick count is the tie-break *before* distinct-length reuse, so
+folding leftovers onto an already-used stock length only wins when it doesn't cost extra
+sticks. Validated against every real `CutlistProject` in the database before being ported from
+a Python prototype (a from-scratch rewrite would be substantial work to re-validate — port
+logic changes into both, or re-run the full-database comparison, rather than patching JS alone).
+
+### Manual override (Step 4)
+Team can lock a stick's exact contents after optimising, protecting it from a later
+re-optimise: click a stick's label to change its stock length (`openStickEditor`/
+`saveStickEdit`), or drag a cut segment onto another stick (`handleCutDragStart`/
+`handleStickDrop`) — either sets `bin.manualOverride = true` on the affected bin(s) and
+auto-saves immediately (unlike Feature 3's cut editor, which leaves saving to the user).
+`runOptimisation()` checks `hasManualOverrides()` first and, if any exist, shows
+`overrideGuardModal` offering "keep overrides, re-optimise the rest" (locked bins are excluded
+from `optimizeGroupBins` per group and their pieces excluded from FFD via
+`runFFDRespectingLocks`) or "clear overrides & re-optimise everything". Feature 3's cut editor
+(`saveCutEdit`) gets a lighter version of the same guard: editing a raw cut invalidates the
+whole tab's layout, so it just confirms before clearing all overrides in that tab. A
+`manualOverride` bin renders with an amber border + "Manually adjusted" badge + "Reset to
+optimised" link (`clearBinOverride`) — styling lives in `cutlist.css`, must not touch
+`.cut-segment`/`.cut-segment-split` `background` (reserved for the timber-type colours above).
 
 ### Removed
 - Lock sticks feature (was Feature 2) — removed; no longer relevant to workflow
