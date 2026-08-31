@@ -16,7 +16,7 @@ class ProductTypeAdmin(admin.ModelAdmin):
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     list_display = [
-        'name', 'product_type',
+        'name', 'product_type', 'stock_lengths',
         'use_as_joist_rafter', 'use_as_boundary_joist',
         'use_as_stair_void_trimmer', 'use_as_beam',
         'is_active', 'sort_order',

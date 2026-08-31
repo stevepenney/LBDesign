@@ -334,20 +334,20 @@
   </div>
 </div>
 
-<!-- ── Manual-override guardrail modal ───────────────────── -->
-<div id="overrideGuardModal" class="modal-overlay" style="display:none;"
-     onclick="if(event.target===this)closeOverrideGuardModal()">
+<!-- ── Lock guardrail modal ──────────────────────────────── -->
+<div id="lockGuardModal" class="modal-overlay" style="display:none;"
+     onclick="if(event.target===this)closeLockGuardModal()">
   <div class="modal-box">
-    <h3>Manually Adjusted Sticks</h3>
-    <p id="overrideGuardHint" class="modal-hint"></p>
+    <h3>Locked Sticks</h3>
+    <p id="lockGuardHint" class="modal-hint"></p>
     <div class="modal-actions">
-      <button class="btn btn-primary" onclick="closeOverrideGuardModal(); performOptimisation(false);">
-        Keep overrides, re-optimise the rest
+      <button class="btn btn-primary" onclick="closeLockGuardModal(); performOptimisation(false);">
+        Keep locked, re-optimise the rest
       </button>
-      <button class="btn btn-secondary" onclick="closeOverrideGuardModal(); performOptimisation(true);">
-        Clear overrides &amp; re-optimise everything
+      <button class="btn btn-secondary" onclick="closeLockGuardModal(); performOptimisation(true);">
+        Unlock all &amp; re-optimise everything
       </button>
-      <button class="btn btn-secondary" onclick="closeOverrideGuardModal()">Cancel</button>
+      <button class="btn btn-secondary" onclick="closeLockGuardModal()">Cancel</button>
     </div>
   </div>
 </div>

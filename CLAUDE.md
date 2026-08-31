@@ -223,21 +223,47 @@ sticks. Validated against every real `CutlistProject` in the database before bei
 a Python prototype (a from-scratch rewrite would be substantial work to re-validate — port
 logic changes into both, or re-run the full-database comparison, rather than patching JS alone).
 
-### Manual override (Step 4)
-Team can lock a stick's exact contents after optimising, protecting it from a later
-re-optimise: click a stick's label to change its stock length (`openStickEditor`/
-`saveStickEdit`), or drag a cut segment onto another stick (`handleCutDragStart`/
-`handleStickDrop`) — either sets `bin.manualOverride = true` on the affected bin(s) and
+### Stick locking (Step 4)
+`bin.locked` is a general-purpose, user-toggleable flag — **not** tied to whether a stick has
+ever been edited. Every stick shows a padlock toggle (`toggleBinLock`, 🔓/🔒) just above it,
+always visible (subtle/greyscale when unlocked, amber/opaque when locked), so a team member can
+pre-emptively lock a perfectly ordinary optimiser-produced stick just to protect it, not only
+ones they've changed. Editing a stick — changing its stock length (`openStickEditor`/
+`saveStickEdit`), or it becoming a drag source/target (`handleCutDragStart`/`handleStickDrop`/
+`handleGhostDrop`) — still auto-locks it (same trigger as before), and any lock change
 auto-saves immediately (unlike Feature 3's cut editor, which leaves saving to the user).
-`runOptimisation()` checks `hasManualOverrides()` first and, if any exist, shows
-`overrideGuardModal` offering "keep overrides, re-optimise the rest" (locked bins are excluded
-from `optimizeGroupBins` per group and their pieces excluded from FFD via
-`runFFDRespectingLocks`) or "clear overrides & re-optimise everything". Feature 3's cut editor
+Unlocking is **just the flag** — it does not revert a stick's contents; those only change on an
+actual re-optimise (deliberate: unlocking previews nothing, re-optimising is the only thing
+that recomputes anything). `runOptimisation()` checks `hasLockedSticks()` first and, if any
+exist, shows `lockGuardModal` offering "keep locked, re-optimise the rest" (locked bins are
+excluded from `optimizeGroupBins` per group and their pieces excluded from FFD via
+`runFFDRespectingLocks`) or "unlock all & re-optimise everything". Feature 3's cut editor
 (`saveCutEdit`) gets a lighter version of the same guard: editing a raw cut invalidates the
-whole tab's layout, so it just confirms before clearing all overrides in that tab. A
-`manualOverride` bin renders with an amber border + "Manually adjusted" badge + "Reset to
-optimised" link (`clearBinOverride`) — styling lives in `cutlist.css`, must not touch
-`.cut-segment`/`.cut-segment-split` `background` (reserved for the timber-type colours above).
+whole tab's layout, so it just confirms before unlocking everything in that tab. A locked bin
+also renders with an amber stick border (`.stick-diagram.stick-locked`) reinforcing the padlock
+— styling lives in `cutlist.css`, must not touch `.cut-segment`/`.cut-segment-split`
+`background` (reserved for the timber-type colours above). There's deliberately no separate
+"this was manually edited" indicator distinct from the lock — locked/unlocked is the only state
+that matters to this workflow.
+
+Sticks are **not** re-sorted on every render — `displayResults` renders `tab.results.bins` in
+whatever order they're already in; the (group, then size) sort happens once, in
+`advancedOptimizeAll`, right when a full re-optimise finishes. This is deliberate: editing a
+stick (drag/drop, stick-length edit, lock toggle) only mutates a bin in place, so it keeps its
+position instead of jumping elsewhere in the row on every re-render.
+
+A full-size, dashed **ghost stick** (`generateGhostStickHTML`) sits at the end of every group as
+a permanent drop target — not a real bin, nothing is added to `tab.results.bins` until a cut is
+actually dropped on it. `handleGhostDrop` then materialises a real stick at
+`GHOST_STICK_LENGTH` (6000mm) and receives the cut in one motion (rejects and creates nothing if
+the piece is longer than that). Shares its cut-move logic with `handleStickDrop` via
+`moveCutIntoBin`.
+
+`binIdCounter` (module-level, starts at 0 each page load) must be advanced past every bin id
+already present in a restored project — `restoreProject` does this — otherwise a freshly
+created bin (ghost-stick drop, or any future bin-creating action) can collide with an existing
+saved bin's id from a prior session, since the counter has no other way to learn which ids are
+already taken.
 
 ### Removed
 - Lock sticks feature (was Feature 2) — removed; no longer relevant to workflow

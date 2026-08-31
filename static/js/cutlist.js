@@ -880,9 +880,10 @@ function displayResults(tabId) {
 
     let stickCounter = 1;
     groupOrder.forEach(groupKey => {
-        const groupBins = bins
-            .filter(b => (b.group || '') === groupKey)
-            .sort((a, b) => b.stockLength - a.stockLength || a.remaining - b.remaining);
+        // Not re-sorted here — position is established once by advancedOptimizeAll after a
+        // full re-optimise, and preserved through manual overrides (drag/drop, stick-length
+        // edit) so an edited stick doesn't jump to a different spot on every render.
+        const groupBins = bins.filter(b => (b.group || '') === groupKey);
 
         const label = groupKey ? `Group: ${groupKey}`
                     : hasNamedGroups ? 'Ungrouped'
@@ -901,6 +902,10 @@ function displayResults(tabId) {
         }
 
         groupBins.forEach(bin => { html += generateCuttingDiagram(bin, stickCounter++, kerfWidth, tabId); });
+        if (tabId) {
+            const timberType = (groupBins[0] || bins[0] || {}).timberType || null;
+            html += generateGhostStickHTML(tabId, groupKey, timberType);
+        }
         html += label ? '</div></div>' : '</div>';
     });
 
@@ -932,9 +937,9 @@ function generateCuttingDiagram(bin, stickNumber, kerfWidth, tabId) {
     const diagramWidth  = 60;
     const kerfHeightPx  = 4;
 
-    const timberClass  = timberType ? `timber-${timberType.toLowerCase()}` : 'timber-other';
-    const editable      = !!tabId; // false in print view (tabId is null there)
-    const overrideClass = bin.manualOverride ? ' stick-manual-override' : '';
+    const timberClass = timberType ? `timber-${timberType.toLowerCase()}` : 'timber-other';
+    const editable     = !!tabId; // false in print view (tabId is null there)
+    const lockedClass  = bin.locked ? ' stick-locked' : '';
 
     const stickLabelClass = editable ? ' stick-label-clickable' : '';
     const stickLabelClick = editable ? ` onclick="openStickEditor('${tabId}', ${bin.id})"` : '';
@@ -943,16 +948,33 @@ function generateCuttingDiagram(bin, stickNumber, kerfWidth, tabId) {
         : '';
 
     let html = `
-        <div class="stick-diagram ${timberClass}${overrideClass}" data-bin-id="${bin.id}">
+        <div class="stick-diagram ${timberClass}${lockedClass}" data-bin-id="${bin.id}">
             <div class="stick-label${stickLabelClass}" title="${editable ? 'Click to change stock length' : ''}"${stickLabelClick}>Stick ${stickNumber}<br>${stockLength}mm</div>`;
 
-    if (bin.manualOverride) {
-        html += editable
-            ? `<span class="override-badge">Manually adjusted</span><span class="override-reset-link" onclick="clearBinOverride('${tabId}', ${bin.id})">Reset to optimised</span>`
-            : `<span class="override-badge">Manually adjusted</span>`;
+    // Every stick gets a lock toggle in the live editor — locking is a general-purpose choice,
+    // not just something that follows automatically from editing. In print view, only show it
+    // (non-interactive) when actually locked, since that's the one state worth recording.
+    if (editable) {
+        html += `
+            <button type="button" class="stick-lock-toggle${bin.locked ? ' locked' : ''}"
+                    title="${bin.locked ? 'Locked — click to unlock' : 'Not locked — click to lock'}"
+                    onclick="toggleBinLock('${tabId}', ${bin.id})">${bin.locked ? '&#128274;' : '&#128275;'}</button>`;
+    } else if (bin.locked) {
+        html += `<span class="stick-lock-toggle locked" title="Locked">&#128274;</span>`;
     }
 
     html += `<div class="stick" style="height:${diagramHeight}px;width:${diagramWidth}px;"${dropHandlers}>`;
+
+    if (cuts.length === 0) {
+        // An empty stick (e.g. just added via "+ Add empty stick") — render the whole thing
+        // as one waste segment rather than running the ratio math below, which assumes at
+        // least one cut (cuts.length - 1 goes negative otherwise).
+        html += `
+            <div class="waste-segment" style="height:${diagramHeight}px;" title="Empty: ${remaining}mm — drag a cut here">
+                <span class="waste-label">${remaining}</span>
+            </div></div></div>`;
+        return html;
+    }
 
     const totalNonKerfHeight = diagramHeight - ((cuts.length - 1) * kerfHeightPx);
     const usableLength       = stockLength - ((cuts.length - 1) * kerfWidth) - remaining;
@@ -1005,6 +1027,29 @@ function generateCuttingDiagram(bin, stickNumber, kerfWidth, tabId) {
     return html;
 }
 
+// A full-size, ghosted placeholder stick at the end of each group — not a real bin, just a
+// drop target. Dragging a cut onto it (handleGhostDrop) materialises a real 6000mm stick and
+// receives the cut in one motion; nothing is added to tab.results.bins until that happens.
+function generateGhostStickHTML(tabId, group, timberType) {
+    const diagramHeight = 400;
+    const diagramWidth  = 60;
+    const timberClass   = timberType ? `timber-${timberType.toLowerCase()}` : 'timber-other';
+
+    return `
+        <div class="stick-diagram stick-ghost ${timberClass}">
+            <div class="stick-label">Empty<br>${GHOST_STICK_LENGTH}mm</div>
+            <span class="stick-lock-toggle" style="visibility:hidden;">&#128275;</span>
+            <div class="stick" style="height:${diagramHeight}px;width:${diagramWidth}px;"
+                 data-group="${group}"
+                 ondragover="handleGhostDragOver(event)" ondragleave="handleGhostDragLeave(event)"
+                 ondrop="handleGhostDrop(event, '${tabId}', this.dataset.group)">
+                <div class="waste-segment" style="height:${diagramHeight}px;">
+                    <span class="waste-label">Drag a cut here</span>
+                </div>
+            </div>
+        </div>`;
+}
+
 // =============================================================================
 // EDIT CUT SEGMENTS (Feature 3)
 // =============================================================================
@@ -1049,12 +1094,12 @@ function saveCutEdit() {
     if (isNaN(newQuantity) || newQuantity < 1)  { showToast('Please enter a valid quantity', 'error'); return; }
 
     // Editing the raw cut invalidates this tab's whole layout — unlike a plain re-optimise
-    // there's no reliable way to tell which overridden sticks are unaffected, so this clears
-    // all of them for the tab rather than trying to preserve some.
-    const overriddenCount = tab.results ? tab.results.bins.filter(b => b.manualOverride).length : 0;
-    if (overriddenCount > 0 && !confirm(
-        `This tab has ${overriddenCount} manually-adjusted stick${overriddenCount !== 1 ? 's' : ''}. ` +
-        `Editing this cut will clear ${overriddenCount !== 1 ? 'them' : 'it'} and re-optimise this tab from scratch. Continue?`
+    // there's no reliable way to tell which locked sticks are unaffected, so this unlocks all
+    // of them for the tab rather than trying to preserve some.
+    const lockedCount = tab.results ? tab.results.bins.filter(b => b.locked).length : 0;
+    if (lockedCount > 0 && !confirm(
+        `This tab has ${lockedCount} locked stick${lockedCount !== 1 ? 's' : ''}. ` +
+        `Editing this cut will unlock ${lockedCount !== 1 ? 'them' : 'it'} and re-optimise this tab from scratch. Continue?`
     )) {
         return;
     }
@@ -1084,7 +1129,7 @@ function openStickEditor(tabId, binId) {
 
     const kerfWidth  = project.jobDetails.kerfWidth;
     const usedLength = bin.cuts.reduce((sum, cut) => sum + (typeof cut === 'object' ? cut.length : cut), 0)
-        + (bin.cuts.length - 1) * kerfWidth;
+        + Math.max(0, bin.cuts.length - 1) * kerfWidth;
 
     const select = document.getElementById('stickEditorLength');
     select.innerHTML = [...new Set(tab.stockLengths)]
@@ -1122,30 +1167,33 @@ function saveStickEdit() {
 
     const kerfWidth  = project.jobDetails.kerfWidth;
     const usedLength = bin.cuts.reduce((sum, cut) => sum + (typeof cut === 'object' ? cut.length : cut), 0)
-        + (bin.cuts.length - 1) * kerfWidth;
+        + Math.max(0, bin.cuts.length - 1) * kerfWidth;
 
-    bin.stockLength    = newLength;
-    bin.remaining       = newLength - usedLength;
-    bin.manualOverride  = true;
+    bin.stockLength = newLength;
+    bin.remaining   = newLength - usedLength;
+    bin.locked      = true;
 
     const tabId = _stickEditTabId;
     closeStickEditor();
-    refreshOverriddenTab(tabId);
+    refreshAfterLockChange(tabId);
 }
 
-function clearBinOverride(tabId, binId) {
+// Toggles a stick's lock independently of whether it's ever been edited — a user can lock a
+// perfectly normal optimiser-produced stick just to protect it, or unlock a manually-edited one
+// without touching its current contents (those only change on an actual re-optimise).
+function toggleBinLock(tabId, binId) {
     const tab = getTab(tabId);
     if (!tab || !tab.results) return;
     const bin = tab.results.bins.find(b => b.id === binId);
     if (!bin) return;
-    delete bin.manualOverride;
-    refreshOverriddenTab(tabId);
+    bin.locked = !bin.locked;
+    refreshAfterLockChange(tabId);
 }
 
-// Re-renders one tab's diagrams + Step 5 summary and auto-saves — used after any manual
-// override edit (stick length change, drag/drop) so the lock can't be lost before the user
-// remembers to hit Save, unlike Feature 3's cut editor which leaves saving to the user.
-function refreshOverriddenTab(tabId) {
+// Re-renders one tab's diagrams + Step 5 summary and auto-saves — used after any lock/edit
+// action (stick length change, drag/drop, lock toggle) so the change can't be lost before the
+// user remembers to hit Save, unlike Feature 3's cut editor which leaves saving to the user.
+function refreshAfterLockChange(tabId) {
     displayResults(tabId);
     updateSummary();
     const totalSticks = project.tabs.reduce((s, t) => t.results ? s + t.results.stockCount : s, 0);
@@ -1193,6 +1241,33 @@ function handleStickDragLeave(event) {
     event.currentTarget.classList.remove('drag-over-valid', 'drag-over-invalid');
 }
 
+// Moves the dragged cut from its source bin into targetBin (already present in
+// tab.results.bins — the caller creates it first for a ghost-stick drop) and locks both
+// bins. Shared by handleStickDrop and handleGhostDrop.
+function moveCutIntoBin(tab, source, targetBin) {
+    const sourceBin = tab.results.bins.find(b => b.id === source.binId);
+    const cut        = sourceBin.cuts[source.cutIndex];
+    const cutLength  = typeof cut === 'object' ? cut.length : cut;
+    const kerfWidth  = project.jobDetails.kerfWidth;
+
+    sourceBin.cuts.splice(source.cutIndex, 1);
+    targetBin.cuts.push(cut);
+    targetBin.remaining -= (cutLength + (targetBin.cuts.length > 1 ? kerfWidth : 0));
+    targetBin.locked = true;
+
+    if (sourceBin.cuts.length === 0) {
+        tab.results.bins = tab.results.bins.filter(b => b.id !== sourceBin.id);
+    } else {
+        const usedLength = sourceBin.cuts.reduce((sum, c) => sum + (typeof c === 'object' ? c.length : c), 0)
+            + Math.max(0, sourceBin.cuts.length - 1) * kerfWidth;
+        sourceBin.remaining = sourceBin.stockLength - usedLength;
+        sourceBin.locked    = true;
+    }
+
+    tab.results.stockCount     = tab.results.bins.length;
+    tab.results.totalStockUsed = calculateTotalMaterial(tab.results.bins);
+}
+
 function handleStickDrop(event, tabId, targetBinId) {
     event.preventDefault();
     event.currentTarget.classList.remove('drag-over-valid', 'drag-over-invalid');
@@ -1210,67 +1285,105 @@ function handleStickDrop(event, tabId, targetBinId) {
         return;
     }
 
+    moveCutIntoBin(tab, source, targetBin);
+    refreshAfterLockChange(tabId);
+}
+
+// Default length for a new stick materialised by dragging a cut onto the ghost tile.
+const GHOST_STICK_LENGTH = 6000;
+
+function handleGhostDragOver(event) {
+    if (!_dragSource) return;
+    event.preventDefault();
+    const tab       = getTab(_dragSource.tabId);
+    const sourceBin = tab && tab.results ? tab.results.bins.find(b => b.id === _dragSource.binId) : null;
+    const cut       = sourceBin ? sourceBin.cuts[_dragSource.cutIndex] : null;
+    const cutLength = cut ? (typeof cut === 'object' ? cut.length : cut) : Infinity;
+    const valid     = cutLength <= GHOST_STICK_LENGTH;
+    event.currentTarget.classList.toggle('drag-over-valid', valid);
+    event.currentTarget.classList.toggle('drag-over-invalid', !valid);
+    event.dataTransfer.dropEffect = valid ? 'move' : 'none';
+}
+
+function handleGhostDragLeave(event) {
+    event.currentTarget.classList.remove('drag-over-valid', 'drag-over-invalid');
+}
+
+// Dragging a cut onto the ghost tile materialises a real stick at GHOST_STICK_LENGTH and
+// receives it in one motion, rather than requiring a separate "add empty stick" click first.
+function handleGhostDrop(event, tabId, group) {
+    event.preventDefault();
+    event.currentTarget.classList.remove('drag-over-valid', 'drag-over-invalid');
+
+    const source = _dragSource;
+    _dragSource = null;
+    if (!source || source.tabId !== tabId) return;
+
+    const tab = getTab(tabId);
+    if (!tab || !tab.results) return;
+
     const sourceBin = tab.results.bins.find(b => b.id === source.binId);
-    const cut        = sourceBin.cuts[source.cutIndex];
-    const cutLength  = typeof cut === 'object' ? cut.length : cut;
-    const kerfWidth  = project.jobDetails.kerfWidth;
+    const cut       = sourceBin ? sourceBin.cuts[source.cutIndex] : null;
+    if (!cut) return;
+    const cutLength = typeof cut === 'object' ? cut.length : cut;
 
-    sourceBin.cuts.splice(source.cutIndex, 1);
-    targetBin.cuts.push(cut);
-    targetBin.remaining -= (cutLength + (targetBin.cuts.length > 1 ? kerfWidth : 0));
-    targetBin.manualOverride = true;
-
-    if (sourceBin.cuts.length === 0) {
-        tab.results.bins = tab.results.bins.filter(b => b.id !== sourceBin.id);
-    } else {
-        const usedLength = sourceBin.cuts.reduce((sum, c) => sum + (typeof c === 'object' ? c.length : c), 0)
-            + (sourceBin.cuts.length - 1) * kerfWidth;
-        sourceBin.remaining      = sourceBin.stockLength - usedLength;
-        sourceBin.manualOverride = true;
+    if (cutLength > GHOST_STICK_LENGTH) {
+        showToast(`That piece is longer than the default ${GHOST_STICK_LENGTH}mm stick`, 'error');
+        return;
     }
 
-    tab.results.stockCount     = tab.results.bins.length;
-    tab.results.totalStockUsed = calculateTotalMaterial(tab.results.bins);
+    const timberType = (tab.results.bins.find(b => (b.group || '') === group) || tab.results.bins[0] || {}).timberType || null;
+    const newBin = {
+        id: binIdCounter++,
+        stockLength: GHOST_STICK_LENGTH,
+        cuts: [],
+        remaining: GHOST_STICK_LENGTH,
+        group,
+        timberType,
+        locked: true,
+    };
+    tab.results.bins.push(newBin);
 
-    refreshOverriddenTab(tabId);
+    moveCutIntoBin(tab, source, newBin);
+    refreshAfterLockChange(tabId);
 }
 
 // =============================================================================
 // RUN OPTIMISATION (background — replaces "Calculate All" button)
 // =============================================================================
 
-function hasManualOverrides() {
-    return project.tabs.some(t => t.results && t.results.bins.some(b => b.manualOverride));
+function hasLockedSticks() {
+    return project.tabs.some(t => t.results && t.results.bins.some(b => b.locked));
 }
 
-function openOverrideGuardModal() {
+function openLockGuardModal() {
     const count = project.tabs.reduce((s, t) =>
-        s + (t.results ? t.results.bins.filter(b => b.manualOverride).length : 0), 0);
-    document.getElementById('overrideGuardHint').textContent =
-        `${count} stick${count !== 1 ? 's have' : ' has'} been manually adjusted. ` +
-        `Re-optimising can either clear ${count !== 1 ? 'those adjustments' : 'that adjustment'} and start fresh, ` +
+        s + (t.results ? t.results.bins.filter(b => b.locked).length : 0), 0);
+    document.getElementById('lockGuardHint').textContent =
+        `${count} stick${count !== 1 ? 's are' : ' is'} locked. ` +
+        `Re-optimising can either unlock ${count !== 1 ? 'them' : 'it'} and start fresh, ` +
         `or leave ${count !== 1 ? 'them' : 'it'} exactly as set and re-optimise everything else around ${count !== 1 ? 'them' : 'it'}.`;
-    document.getElementById('overrideGuardModal').style.display = 'flex';
+    document.getElementById('lockGuardModal').style.display = 'flex';
 }
 
-function closeOverrideGuardModal() {
-    document.getElementById('overrideGuardModal').style.display = 'none';
+function closeLockGuardModal() {
+    document.getElementById('lockGuardModal').style.display = 'none';
 }
 
 async function runOptimisation() {
-    if (hasManualOverrides()) {
-        openOverrideGuardModal();
+    if (hasLockedSticks()) {
+        openLockGuardModal();
         return;
     }
     await performOptimisation(false);
 }
 
-// Runs FFD for a tab while respecting any locked (manualOverride) bins: their pieces are
-// temporarily subtracted from the raw cut quantities so FFD doesn't regenerate duplicates,
-// then the locked bins are merged back into the freshly-computed results unchanged.
+// Runs FFD for a tab while respecting any locked bins: their pieces are temporarily
+// subtracted from the raw cut quantities so FFD doesn't regenerate duplicates, then the
+// locked bins are merged back into the freshly-computed results unchanged.
 function runFFDRespectingLocks(tabId) {
     const tab = getTab(tabId);
-    const lockedBins = (tab.results && tab.results.bins) ? tab.results.bins.filter(b => b.manualOverride) : [];
+    const lockedBins = (tab.results && tab.results.bins) ? tab.results.bins.filter(b => b.locked) : [];
 
     if (lockedBins.length === 0) {
         calculateOptimization(tabId);
@@ -1305,13 +1418,13 @@ function runFFDRespectingLocks(tabId) {
     const lockedCutLength = lockedBins.reduce((sum, bin) =>
         sum + bin.cuts.reduce((s, c) => s + (typeof c === 'object' ? (c.displayLength ?? c.length) : c), 0), 0);
     tab.results.totalCutLength = (tab.results.totalCutLength || 0) + lockedCutLength;
-    const totalKerfLoss = tab.results.bins.reduce((sum, bin) => sum + (bin.cuts.length - 1) * kerfWidth, 0);
+    const totalKerfLoss = tab.results.bins.reduce((sum, bin) => sum + Math.max(0, bin.cuts.length - 1) * kerfWidth, 0);
     tab.results.totalKerfLoss   = totalKerfLoss;
     tab.results.totalWaste      = tab.results.totalStockUsed - tab.results.totalCutLength - totalKerfLoss;
     tab.results.wastePercentage = ((tab.results.totalWaste / tab.results.totalStockUsed) * 100).toFixed(2);
 }
 
-async function performOptimisation(clearOverrides) {
+async function performOptimisation(unlockAll) {
     const btn = document.getElementById('optimiseBtn');
     btn.disabled    = true;
     btn.textContent = 'Optimising…';
@@ -1334,9 +1447,9 @@ async function performOptimisation(clearOverrides) {
         return;
     }
 
-    if (clearOverrides) {
+    if (unlockAll) {
         project.tabs.forEach(tab => {
-            if (tab.results) tab.results.bins.forEach(b => { delete b.manualOverride; });
+            if (tab.results) tab.results.bins.forEach(b => { delete b.locked; });
         });
     }
 
@@ -1394,14 +1507,23 @@ function advancedOptimizeAll(silent = false) {
         const groups  = [...new Set(tab.results.bins.map(b => b.group || ''))];
         let newBins   = [];
         groups.forEach(group => {
-            // Locked (manually overridden) bins are excluded from re-optimisation entirely —
-            // they're passed through untouched and their pieces aren't offered up for reuse.
+            // Locked bins are excluded from re-optimisation entirely — they're passed through
+            // untouched and their pieces aren't offered up for reuse.
             const groupBins = tab.results.bins.filter(b => (b.group || '') === group);
-            const locked    = groupBins.filter(b => b.manualOverride);
-            const free       = groupBins.filter(b => !b.manualOverride);
+            const locked    = groupBins.filter(b => b.locked);
+            const free      = groupBins.filter(b => !b.locked);
             const { bins: optimized, changes } = optimizeGroupBins(free, stockSorted, kerfWidth);
             if (changes > 0) groupsChanged++;
             newBins = newBins.concat(optimized, locked);
+        });
+
+        // Sorted once here (not on every render — see displayResults) so a manual override
+        // afterwards (drag/drop, stick-length edit) doesn't reshuffle sticks that weren't
+        // touched; only a full re-optimise like this one re-establishes position.
+        newBins.sort((a, b) => {
+            const groupA = a.group || '', groupB = b.group || '';
+            if (groupA !== groupB) return groupA.localeCompare(groupB);
+            return b.stockLength - a.stockLength || a.remaining - b.remaining;
         });
         tab.results.bins = newBins;
 
@@ -1412,7 +1534,7 @@ function advancedOptimizeAll(silent = false) {
         tab.results.stockCount     = tab.results.bins.length;
         const totalCutLength = tab.results.bins.reduce((sum, bin) =>
             sum + bin.cuts.reduce((s, cut) => s + (typeof cut === 'object' ? cut.length : cut), 0), 0);
-        const totalKerfLoss  = tab.results.bins.reduce((sum, bin) => sum + (bin.cuts.length - 1) * kerfWidth, 0);
+        const totalKerfLoss  = tab.results.bins.reduce((sum, bin) => sum + Math.max(0, bin.cuts.length - 1) * kerfWidth, 0);
         tab.results.totalWaste      = newMaterial - totalCutLength - totalKerfLoss;
         tab.results.wastePercentage = ((tab.results.totalWaste / newMaterial) * 100).toFixed(2);
     });
@@ -1599,10 +1721,11 @@ function subsetSearchPass(bins, stockSorted, kerfWidth, wasteThreshold, maxSubse
 
     if (!best) return { bins, changed: false };
 
-    const subsetSet = new Set(best.subsetBinIdx);
-    const groupVal  = bins[best.subsetBinIdx[0]].group;
-    const kept      = bins.filter((b, i) => !subsetSet.has(i));
-    const newBins   = best.newBins.map(nb => ({ stockLength: nb.stockLength, cuts: nb.cuts, remaining: nb.remaining, group: groupVal }));
+    const subsetSet  = new Set(best.subsetBinIdx);
+    const groupVal   = bins[best.subsetBinIdx[0]].group;
+    const timberType = bins[best.subsetBinIdx[0]].timberType;
+    const kept       = bins.filter((b, i) => !subsetSet.has(i));
+    const newBins    = best.newBins.map(nb => ({ stockLength: nb.stockLength, cuts: nb.cuts, remaining: nb.remaining, group: groupVal, timberType }));
     return { bins: kept.concat(newBins), changed: true };
 }
 
@@ -1616,6 +1739,7 @@ function poolRepackPass(bins, stockSorted, kerfWidth) {
     if (bins.length < 2) return { bins, changed: false };
 
     const groupVal      = bins[0].group;
+    const timberType    = bins[0].timberType;
     const currentTuple  = scoreBins(bins, new Set());
     const poolCuts      = bins.flatMap(b => b.cuts);
 
@@ -1633,7 +1757,7 @@ function poolRepackPass(bins, stockSorted, kerfWidth) {
 
     if (!best) return { bins, changed: false };
 
-    const newBins = best.repacked.map(nb => ({ stockLength: nb.stockLength, cuts: nb.cuts, remaining: nb.remaining, group: groupVal }));
+    const newBins = best.repacked.map(nb => ({ stockLength: nb.stockLength, cuts: nb.cuts, remaining: nb.remaining, group: groupVal, timberType }));
     return { bins: newBins, changed: true };
 }
 
@@ -1912,7 +2036,12 @@ function restoreProject(projectData) {
         if (tab.results && tab.results.bins) {
             tab.results.bins.forEach(bin => {
                 if (bin.id === undefined)     bin.id     = binIdCounter++;
-
+                // binIdCounter is a fresh per-page-load counter starting at 0, but restored
+                // bins keep whatever id they were assigned in the session that saved them —
+                // without this, a newly created bin (add-empty-stick, a later re-optimise)
+                // can collide with an existing bin's id, since binIdCounter never otherwise
+                // learns that ids up to this bin's are already taken.
+                if (typeof bin.id === 'number' && bin.id >= binIdCounter) binIdCounter = bin.id + 1;
             });
         }
     });
