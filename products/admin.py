@@ -1,4 +1,8 @@
+from django import forms
 from django.contrib import admin
+from django.urls import path
+
+from .admin_import import import_products_csv, import_pricebook_entries_csv
 from .models import Product, ProductType, PriceBook, PriceBookEntry, TimberTypeDefaultStockLengths
 
 
@@ -55,6 +59,12 @@ class ProductAdmin(admin.ModelAdmin):
     )
     ordering = ['product_type__sort_order', 'sort_order', 'name']
 
+    def get_urls(self):
+        return [
+            path('import-csv/', self.admin_site.admin_view(import_products_csv),
+                 name='products_product_import_csv'),
+        ] + super().get_urls()
+
 
 @admin.register(TimberTypeDefaultStockLengths)
 class TimberTypeDefaultStockLengthsAdmin(admin.ModelAdmin):
@@ -70,13 +80,27 @@ class PriceBookEntryInline(admin.TabularInline):
     autocomplete_fields = ['product']
 
 
+class PriceBookAdminForm(forms.ModelForm):
+    pricing_csv = forms.FileField(
+        required=False,
+        help_text='Optional. Columns: product_name, price_per_lm. Uploading here fully '
+                   "replaces this price book's entries with what's in the file — any existing "
+                   "entry for a product not present in this upload is removed.",
+    )
+
+    class Meta:
+        model = PriceBook
+        fields = ['name', 'is_default', 'notes', 'updated_by']
+
+
 @admin.register(PriceBook)
 class PriceBookAdmin(admin.ModelAdmin):
+    form = PriceBookAdminForm
     list_display = ['name', 'is_default', 'entry_count', 'organisations_count', 'updated_at', 'updated_by']
     list_filter = ['is_default']
     search_fields = ['name']
     inlines = [PriceBookEntryInline]
-    fields = ['name', 'is_default', 'notes', 'updated_by']
+    fields = ['name', 'is_default', 'notes', 'updated_by', 'pricing_csv']
     readonly_fields = ['updated_by']
 
     def entry_count(self, obj):
@@ -90,3 +114,7 @@ class PriceBookAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         obj.updated_by = request.user
         super().save_model(request, obj, form, change)
+
+        uploaded_file = form.cleaned_data.get('pricing_csv')
+        if uploaded_file:
+            import_pricebook_entries_csv(request, obj, uploaded_file)

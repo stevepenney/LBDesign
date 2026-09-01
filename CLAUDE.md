@@ -91,6 +91,19 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
 - `RoofPitch` and `SystemSettings` are in the **Core** admin section.
 - `PriceBook` is in the **Products** admin section.
 - `Section` is in the **Jobs** admin section.
+- **CSV bulk import** (`products/admin_import.py`, no new dependency — stdlib `csv`):
+  - Products: an "Import CSV" button on `/admin/products/product/` (added via
+    `templates/admin/products/product/change_list_object_tools.html`, the Django-6-native
+    override point for the object-tools row — resolved automatically per app/model by
+    `InclusionAdminNode`, no need to override the whole `change_list.html`). Upserts by exact
+    `name` match; expected columns documented on the upload page itself
+    (`templates/admin/products/product_import_csv.html`).
+  - PriceBook pricing: a `pricing_csv` field (declared on `PriceBookAdminForm`, not a model
+    field) sits right on the PriceBook add/change form — create a blank book and upload in one
+    step, or re-upload later on an existing book's change form to refresh it. A re-upload is a
+    **full replace**: any existing entry for a product not present in the new file is removed,
+    not left stale — this was a deliberate choice (a periodic price update is "here's the
+    complete new list," not a patch).
 
 ### Migrations
 - Write migrations manually when the change is conceptual (rename, data migration, multi-step).
