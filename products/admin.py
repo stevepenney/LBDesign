@@ -28,6 +28,7 @@ class ProductAdmin(admin.ModelAdmin):
     ]
     search_fields = ['name']
     list_editable = [
+        'stock_lengths',
         'use_as_joist_rafter', 'use_as_boundary_joist',
         'use_as_stair_void_trimmer', 'use_as_beam',
         'is_active', 'sort_order',
@@ -58,6 +59,7 @@ class ProductAdmin(admin.ModelAdmin):
 @admin.register(TimberTypeDefaultStockLengths)
 class TimberTypeDefaultStockLengthsAdmin(admin.ModelAdmin):
     list_display = ['timber_type', 'stock_lengths']
+    list_editable = ['stock_lengths']
     ordering = ['timber_type']
 
 

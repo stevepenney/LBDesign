@@ -777,6 +777,12 @@ function calculateOptimization(tabId) {
                         expandedCuts.push({
                             length: splitPiece.length, isSplitPiece: true,
                             isFullStick: splitPiece.isFullStick, displayLength: cutLength,
+                            // The true physical length of this segment, for display — distinct
+                            // from `length`, which is padded with kerf/tolerance for fit
+                            // calculations on the non-full-stick (remainder) segment.
+                            segmentLength: splitPiece.isFullStick
+                                ? splitPiece.length
+                                : splitPiece.length - kerfWidth - cutTolerance,
                             mark: cut.mark || '', group: groupKey, cutIndex: cutIdx, originalLength: 0
                         });
                     });
@@ -859,10 +865,14 @@ function displayResults(tabId) {
             <div class="collapsible-body">`;
 
     if (overlengthSplits && overlengthSplits.length > 0) {
+        // `s.length` on the remainder piece is padded with kerf/tolerance for fit calculations
+        // (matches cutInfo.length in the diagrams) — subtract that back out for the true
+        // physical segment length, same fix as the stick-diagram labels above.
+        const cutTolerance = tab.cutTolerance || 0;
         html += '<div class="overlength-info"><h4>Overlength Cuts Split</h4>';
         overlengthSplits.forEach(split => {
             const splitDesc = split.splits.map(s =>
-                s.isFullStick ? `${s.length}mm (full stick)` : `${Math.round(s.length)}mm`
+                s.isFullStick ? `${s.length}mm (full stick)` : `${Math.round(s.length - kerfWidth - cutTolerance)}mm`
             ).join(' + ');
             html += `<p>${split.originalLength}mm → ${splitDesc}</p>`;
         });
@@ -983,6 +993,8 @@ function generateCuttingDiagram(bin, stickNumber, kerfWidth, tabId) {
         const cutLength     = typeof cutInfo === 'object' ? cutInfo.length      : cutInfo;
         const isSplitPiece  = typeof cutInfo === 'object' ? cutInfo.isSplitPiece : false;
         const displayLength = typeof cutInfo === 'object' ? cutInfo.displayLength : cutInfo;
+        const segmentLength = typeof cutInfo === 'object' && cutInfo.segmentLength !== undefined
+            ? cutInfo.segmentLength : cutLength; // falls back to the padded value for saved data from before this field existed
         const mark          = typeof cutInfo === 'object' ? cutInfo.mark          : '';
         const cutIndex      = typeof cutInfo === 'object' ? cutInfo.cutIndex      : undefined;
 
@@ -997,13 +1009,19 @@ function generateCuttingDiagram(bin, stickNumber, kerfWidth, tabId) {
             : '';
 
         let displayLabel;
-        if (isSplitPiece && cutLength === stockLength) {
-            displayLabel = mark ? `${mark} (full)` : `${displayLength} (full)`;
+        if (isSplitPiece) {
+            // e.g. "FB1: 6000 of 7561" for the full-stick segment, "FB1: 1561 of 7561" for the
+            // remainder — the segment's own length is what matters on the stick it's actually
+            // sitting on, not the original (pre-split) length alone.
+            const segText = `${Math.round(segmentLength)} of ${Math.round(displayLength)}`;
+            displayLabel = mark ? `${mark}: ${segText}` : segText;
         } else {
             displayLabel = mark ? `${mark}: ${Math.round(displayLength)}` : Math.round(displayLength);
         }
 
-        const titleText = `${isSplitPiece ? 'Split piece: ' : ''}${Math.round(cutLength)}mm${mark ? ' [' + mark + ']' : ''}${cutIndex !== undefined ? '\nClick to edit' : ''}${editable ? '\nDrag to move to another stick' : ''}`;
+        const titleText = isSplitPiece
+            ? `Split piece: ${Math.round(segmentLength)}mm of ${Math.round(displayLength)}mm total${mark ? ' [' + mark + ']' : ''}${cutIndex !== undefined ? '\nClick to edit' : ''}${editable ? '\nDrag to move to another stick' : ''}`
+            : `${Math.round(cutLength)}mm${mark ? ' [' + mark + ']' : ''}${cutIndex !== undefined ? '\nClick to edit' : ''}${editable ? '\nDrag to move to another stick' : ''}`;
 
         html += `
             <div class="${cutClass}${clickableClass}${draggableClass}" style="height:${cutHeight}px;" title="${titleText}"${onclickAttr}${dragAttr}>
