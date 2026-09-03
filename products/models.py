@@ -34,6 +34,7 @@ class Product(models.Model):
     use_as_boundary_joist     = models.BooleanField(default=False, verbose_name='Boundary Joist')
     use_as_stair_void_trimmer = models.BooleanField(default=False, verbose_name='Stair Void Trimmer')
     use_as_beam               = models.BooleanField(default=False, verbose_name='Beam')
+    use_as_cladding           = models.BooleanField(default=False, verbose_name='Cladding')
 
     stock_lengths = models.CharField(
         max_length=200,
@@ -42,6 +43,13 @@ class Product(models.Model):
                    '(e.g. "7200, 6000, 5400, 4800, 3600"). Used as the Cutlist Optimizer\'s '
                    'default stock list when a cutlist member is linked to this product. Leave '
                    'blank to fall back to the generic default for this product\'s timber type.',
+    )
+
+    cover_mm = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text='Cladding cover width in mm once lapped/jointed — the estimator divides area '
+                   'by this to get lineal metres. Only relevant for products used as Cladding.',
     )
 
     class Meta:
@@ -54,6 +62,10 @@ class Product(models.Model):
         if not self.stock_lengths:
             return []
         return [int(v) for v in self.stock_lengths.split(',') if v.strip()]
+
+    @property
+    def cover_m(self):
+        return self.cover_mm / 1000 if self.cover_mm else None
 
 
 class TimberTypeDefaultStockLengths(models.Model):

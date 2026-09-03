@@ -59,6 +59,8 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
 - `SystemSettings` is a singleton; always use `SystemSettings.get()`, never `.objects.first()`.
 - `Job.label` defaults to `'Untitled Estimate'` (mirrors `CutlistProject.name` defaulting to
   `'Untitled Cutlist'`) — new estimates are never blank-labelled. Inline-editable on `job_detail.html`.
+- A `Job` is locked to one category — **framing** (`midfloor`/`roof`/`other` sections) or
+  **cladding** (`cladding` sections) — never both; see "Cladding Estimator" below.
 - All "quick create" entry points (`projects:project_create`, `jobs:estimate_quick`/`job_create`,
   `cutlist:project_new_quick`/`project_new`) create records directly with `status=PRELIMINARY` and
   no blocking form — every field is inline-editable afterwards. The old `DRAFT` status +
@@ -122,6 +124,41 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
 - Hard-refresh (Ctrl+Shift+R) after CSS changes to bust browser cache.
 
 ---
+
+## Cladding Estimator
+
+A second estimation module alongside framing (midfloor/roof), sharing the same `Job`/`Section`
+machinery rather than a new app. Converts m² to lineal metres by dividing by a product's fixed
+**cover** width, instead of a user-chosen joist/rafter **spacing** — mathematically the same
+division (`jobs/calculations.py`'s `_area_lm()` helper is shared by both), but cover is a fixed
+property of the product (`Product.cover_mm`, `Product.use_as_cladding`) rather than a per-area
+design choice, so it can't reuse `FloorRoofArea.joist_spacing`.
+
+- `Section.SystemType.CLADDING` is a fourth system type. A `Job` locks to one category on its
+  first section — `jobs.views._job_allows_framing()` / `_job_allows_cladding()` check the job's
+  existing sections and block mixing (no new `Job` field; the category is derived, not stored).
+  `SectionForm.system_type` choices exclude `CLADDING` — cladding sections are created/edited
+  through a wholly separate flow: views `cladding_section_create`/`cladding_section_edit`,
+  form `CladdingSectionForm` (just `label` — system_type is fixed programmatically, not
+  user-chosen), template `templates/jobs/cladding_section_form.html`.
+- `jobs.CladdingArea` mirrors `FloorRoofArea` (`section` FK, `area_label`, `area_m2`,
+  `cladding_product` FK limited to `use_as_cladding=True`) but has no spacing-equivalent field —
+  cover comes from the linked product. Multiple areas per section, same as framing.
+- Wastage % and estimate uncertainty % are unchanged — both are already section/job-level, so
+  they apply to cladding for free via the shared `_area_lm()` helper.
+- Hardware allowance has **no dedicated field for cladding** — it stays the existing
+  `Job.hardware_allowance_pct` (job-level, applies to the whole job's materials subtotal).
+  `cladding_section_create` seeds it to `0` the first time a job's `hardware_allowance_pct` is
+  still `None` (i.e. only once, on that job's first cladding section) so cladding jobs default
+  to no hardware allowance instead of inheriting the framing-oriented global default — it's
+  still the same inline-editable "Advanced Settings" field on `job_detail.html`, so a merchant
+  can set it above zero later (e.g. flashings) with no schema change needed.
+- `job_detail.html`'s "Add Section" toolbar and empty-state show "+ Add Section" and/or
+  "+ Add Cladding Section" based on `can_add_framing`/`can_add_cladding` context flags (both
+  true only when the job has no sections yet).
+- Products: a `Cladding` `ProductType` (seeded via `products/migrations/0012_seed_
+  cladding_producttype.py`, same `get_or_create` pattern as the original product-type seed).
+  CSV bulk import (`products/admin_import.py`) supports `use_as_cladding` and `cover_mm` columns.
 
 ## Cutlist Optimizer
 
@@ -258,6 +295,24 @@ also renders with an amber stick border (`.stick-diagram.stick-locked`) reinforc
 `background` (reserved for the timber-type colours above). There's deliberately no separate
 "this was manually edited" indicator distinct from the lock — locked/unlocked is the only state
 that matters to this workflow.
+
+The stick-length editor (`openStickEditor`) isn't limited to the tab's configured
+`stockLengths` — its dropdown always has a "Custom length…" option that reveals a plain number
+input (`onStickEditorLengthChange`), for the occasional one-off stock length a merchant would
+normally avoid (e.g. extra freight cost) but is willing to use for a specific stick.
+
+**Overlength split → single custom stick**: the "Overlength Cuts Split" summary panel
+(`displayResults`) lets the user route one specific split occurrence onto a single whole custom
+stick instead of the standard split, via `unsplitOverlengthCut`. Matching is by `splitGroupId`
+— a `` `${cutIndex}-${i}` `` id stamped on both the `overlengthSplits` entry and its resulting
+piece(s) at FFD time (`calculateOptimization`), unique per **physical instance** rather than
+per raw cut row, since a `quantity > 1` row produces several otherwise-indistinguishable
+splits. `unsplitOverlengthCut` refuses to act if `splitGroupId` is missing (results saved
+before this field existed, e.g. from a JSON import/export predating it) rather than risk
+matching on `undefined` and sweeping up pieces from unrelated splits — confirmed by hand this
+is a real failure mode, not theoretical: it deleted 65 of 66 bins in one tab during testing
+before the guard was added. The resulting single-stick bin is `locked` like any other manual
+construct.
 
 Sticks are **not** re-sorted on every render — `displayResults` renders `tab.results.bins` in
 whatever order they're already in; the (group, then size) sort happens once, in

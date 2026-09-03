@@ -705,6 +705,31 @@
 .overlength-info h4 { color: #7a5800; font-size: 0.82rem; margin-bottom: .35rem; }
 .overlength-info p { font-family: 'Courier New', monospace; font-size: 0.8rem; margin: .2rem 0; }
 
+.unsplit-control {
+  font-family: 'Source Sans 3', sans-serif;
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  margin-left: .6rem;
+  color: #7a5800;
+}
+
+.unsplit-length-input {
+  width: 5.5rem;
+  padding: .15rem .35rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.78rem;
+}
+
+.unsplit-control .btn-small {
+  color: var(--brown-dark);
+  font-size: 0.72rem;
+  padding: .15rem .5rem;
+}
+
+.unsplit-control .btn-small:hover { background: #fef0d0; }
+
 /* ── Cutting diagrams ─────────────────────────────────────── */
 .cutting-diagrams { padding: .85rem; }
 

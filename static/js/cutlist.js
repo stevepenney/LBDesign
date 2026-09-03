@@ -771,8 +771,13 @@ function calculateOptimization(tabId) {
                 totalOriginalCutLength += cutLength;
 
                 if (cutLength > maxStockLength) {
+                    // Unique per physical instance (not just per raw cut row) — a quantity > 1
+                    // row produces several indistinguishable-looking splits, and this is what
+                    // lets "route onto a custom stick" (unsplitOverlengthCut) find exactly the
+                    // pieces belonging to ONE occurrence rather than any matching cutIndex.
+                    const splitGroupId = `${cutIdx}-${i}`;
                     const splits = splitOverlengthCut(cutLength, overlengthSplitStock, kerfWidth, cutTolerance);
-                    overlengthSplits.push({ originalLength: cutLength, splits, group: groupKey });
+                    overlengthSplits.push({ originalLength: cutLength, splits, group: groupKey, cutIndex: cutIdx, splitGroupId });
                     splits.forEach(splitPiece => {
                         expandedCuts.push({
                             length: splitPiece.length, isSplitPiece: true,
@@ -783,7 +788,8 @@ function calculateOptimization(tabId) {
                             segmentLength: splitPiece.isFullStick
                                 ? splitPiece.length
                                 : splitPiece.length - kerfWidth - cutTolerance,
-                            mark: cut.mark || '', group: groupKey, cutIndex: cutIdx, originalLength: 0
+                            mark: cut.mark || '', group: groupKey, cutIndex: cutIdx, originalLength: 0,
+                            splitGroupId,
                         });
                     });
                 } else {
@@ -870,11 +876,25 @@ function displayResults(tabId) {
         // physical segment length, same fix as the stick-diagram labels above.
         const cutTolerance = tab.cutTolerance || 0;
         html += '<div class="overlength-info"><h4>Overlength Cuts Split</h4>';
-        overlengthSplits.forEach(split => {
+        overlengthSplits.forEach((split, splitIdx) => {
             const splitDesc = split.splits.map(s =>
                 s.isFullStick ? `${s.length}mm (full stick)` : `${Math.round(s.length - kerfWidth - cutTolerance)}mm`
             ).join(' + ');
-            html += `<p>${split.originalLength}mm → ${splitDesc}</p>`;
+            html += `<p>${split.originalLength}mm → ${splitDesc}`;
+            if (tabId) {
+                const inputId = `unsplit-length-${tabId}-${splitIdx}`;
+                html += `
+                    <span class="unsplit-control">
+                        or
+                        <input type="number" id="${inputId}" min="${split.originalLength + cutTolerance}" step="1"
+                               placeholder="custom mm" class="unsplit-length-input">
+                        <button type="button" class="btn-small"
+                                onclick="unsplitOverlengthCut('${tabId}', ${splitIdx}, parseInt(document.getElementById('${inputId}').value, 10))">
+                            Use single stick
+                        </button>
+                    </span>`;
+            }
+            html += `</p>`;
         });
         html += '</div>';
     }
@@ -1149,22 +1169,28 @@ function openStickEditor(tabId, binId) {
     const usedLength = bin.cuts.reduce((sum, cut) => sum + (typeof cut === 'object' ? cut.length : cut), 0)
         + Math.max(0, bin.cuts.length - 1) * kerfWidth;
 
-    const select = document.getElementById('stickEditorLength');
-    select.innerHTML = [...new Set(tab.stockLengths)]
-        .filter(l => l >= usedLength)
-        .sort((a, b) => a - b)
-        .map(l => `<option value="${l}" ${l === bin.stockLength ? 'selected' : ''}>${l}mm</option>`)
-        .join('');
+    const standardLengths = [...new Set(tab.stockLengths)].filter(l => l >= usedLength).sort((a, b) => a - b);
+    const isCustomCurrent = !standardLengths.includes(bin.stockLength);
 
-    if (!select.options.length) {
-        showToast("No stock length in this member's list is long enough for these pieces", 'error');
-        return;
-    }
+    const select = document.getElementById('stickEditorLength');
+    select.innerHTML = standardLengths
+        .map(l => `<option value="${l}" ${!isCustomCurrent && l === bin.stockLength ? 'selected' : ''}>${l}mm</option>`)
+        .join('') + `<option value="__custom__" ${isCustomCurrent ? 'selected' : ''}>Custom length…</option>`;
+
+    const customInput = document.getElementById('stickEditorCustomLength');
+    customInput.value = isCustomCurrent ? bin.stockLength : '';
+    customInput.min = usedLength;
+    document.getElementById('stickEditorCustomGroup').style.display = isCustomCurrent ? '' : 'none';
 
     document.getElementById('stickEditorHint').textContent =
-        `${bin.cuts.length} piece${bin.cuts.length !== 1 ? 's' : ''} using ${usedLength}mm. Choose any stock length that fits — this locks the stick so a later re-optimise won't change it.`;
+        `${bin.cuts.length} piece${bin.cuts.length !== 1 ? 's' : ''} using ${usedLength}mm. Choose any stock length that fits, or pick "Custom length…" for an occasional non-standard stick (e.g. one you'd normally avoid for freight cost) — this locks the stick so a later re-optimise won't change it.`;
 
     document.getElementById('stickEditorModal').style.display = 'flex';
+}
+
+function onStickEditorLengthChange() {
+    const isCustom = document.getElementById('stickEditorLength').value === '__custom__';
+    document.getElementById('stickEditorCustomGroup').style.display = isCustom ? '' : 'none';
 }
 
 function closeStickEditor() {
@@ -1180,12 +1206,20 @@ function saveStickEdit() {
     const bin = tab.results.bins.find(b => b.id === _stickEditBinId);
     if (!bin) return;
 
-    const newLength = parseInt(document.getElementById('stickEditorLength').value, 10);
-    if (isNaN(newLength)) { closeStickEditor(); return; }
+    const selectValue = document.getElementById('stickEditorLength').value;
+    const newLength = selectValue === '__custom__'
+        ? parseInt(document.getElementById('stickEditorCustomLength').value, 10)
+        : parseInt(selectValue, 10);
+    if (isNaN(newLength) || newLength < 1) { showToast('Please enter a valid length', 'error'); return; }
 
     const kerfWidth  = project.jobDetails.kerfWidth;
     const usedLength = bin.cuts.reduce((sum, cut) => sum + (typeof cut === 'object' ? cut.length : cut), 0)
         + Math.max(0, bin.cuts.length - 1) * kerfWidth;
+
+    if (newLength < usedLength) {
+        showToast(`That's too short — these pieces need at least ${usedLength}mm`, 'error');
+        return;
+    }
 
     bin.stockLength = newLength;
     bin.remaining   = newLength - usedLength;
@@ -1193,6 +1227,86 @@ function saveStickEdit() {
 
     const tabId = _stickEditTabId;
     closeStickEditor();
+    refreshAfterLockChange(tabId);
+}
+
+// Routes one overlength-split occurrence onto a single custom-length stick instead of the
+// standard split, for the occasional case where a longer (often costlier-to-freight) stock
+// length is worth using to avoid the extra piece/waste — e.g. a one-off 9600mm stick instead
+// of the usual 6000mm-split-plus-remainder. Finds every piece tagged with this occurrence's
+// splitGroupId (unique per physical instance, not just per raw cut row, since a quantity > 1
+// row produces several indistinguishable-looking splits), removes them from wherever FFD/
+// consolidation happened to place them, and replaces them with one whole, unsplit, locked bin.
+function unsplitOverlengthCut(tabId, splitIdx, customLength) {
+    const tab = getTab(tabId);
+    if (!tab || !tab.results) return;
+    const split = tab.results.overlengthSplits[splitIdx];
+    if (!split) return;
+
+    // Older saved results (from before splitGroupId existed) would all share the same
+    // `undefined` id — matching on that would sweep up pieces from every other overlength
+    // split in the tab, not just this occurrence. Refuse rather than risk merging/losing the
+    // wrong pieces; a fresh re-optimise regenerates real ids for everything.
+    if (!split.splitGroupId) {
+        showToast('This result was computed before this feature existed — re-optimise this tab once, then try again', 'error');
+        return;
+    }
+
+    const kerfWidth    = project.jobDetails.kerfWidth;
+    const cutTolerance = tab.cutTolerance || 0;
+    const neededLength = split.originalLength + cutTolerance;
+
+    if (isNaN(customLength) || customLength < neededLength) {
+        showToast(`Needs at least ${neededLength}mm to fit this piece`, 'error');
+        return;
+    }
+
+    // Pull every piece belonging to this occurrence out of whichever bins currently hold them.
+    const foundPieces = [];
+    tab.results.bins.forEach(bin => {
+        for (let i = bin.cuts.length - 1; i >= 0; i--) {
+            const cut = bin.cuts[i];
+            if (typeof cut === 'object' && cut.splitGroupId === split.splitGroupId) {
+                foundPieces.push(cut);
+                bin.cuts.splice(i, 1);
+            }
+        }
+    });
+    if (foundPieces.length === 0) {
+        showToast("Couldn't find this cut's pieces — it may already have been changed", 'error');
+        return;
+    }
+
+    // Drop any bin left empty, recompute remaining for any bin left with cuts.
+    tab.results.bins = tab.results.bins.filter(bin => {
+        if (bin.cuts.length === 0) return false;
+        const usedLength = bin.cuts.reduce((sum, c) => sum + (typeof c === 'object' ? c.length : c), 0)
+            + Math.max(0, bin.cuts.length - 1) * kerfWidth;
+        bin.remaining = bin.stockLength - usedLength;
+        return true;
+    });
+
+    const rawCut = tab.cuts[split.cutIndex];
+    const wholeCut = {
+        length: neededLength, isSplitPiece: false, isFullStick: false,
+        displayLength: split.originalLength, segmentLength: split.originalLength,
+        mark: (rawCut && rawCut.mark) || '', group: split.group, cutIndex: split.cutIndex, originalLength: 0,
+    };
+    const timberType = (tab.results.bins.find(b => (b.group || '') === split.group) || tab.results.bins[0] || {}).timberType || null;
+    tab.results.bins.push({
+        id: binIdCounter++,
+        stockLength: customLength,
+        cuts: [wholeCut],
+        remaining: customLength - neededLength,
+        group: split.group,
+        timberType,
+        locked: true,
+    });
+
+    tab.results.overlengthSplits.splice(splitIdx, 1);
+    tab.results.stockCount     = tab.results.bins.length;
+    tab.results.totalStockUsed = calculateTotalMaterial(tab.results.bins);
+
     refreshAfterLockChange(tabId);
 }
 

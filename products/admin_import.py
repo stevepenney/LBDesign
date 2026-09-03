@@ -69,6 +69,12 @@ def import_products_csv(request):
             except ValueError:
                 sort_order = 0
 
+            cover_raw = (row.get('cover_mm') or '').strip()
+            try:
+                cover_mm = int(cover_raw) if cover_raw else None
+            except ValueError:
+                cover_mm = None
+
             defaults = {
                 'product_type': product_type,
                 'is_active': _parse_bool(row.get('is_active')),
@@ -77,7 +83,9 @@ def import_products_csv(request):
                 'use_as_boundary_joist': _parse_bool(row.get('use_as_boundary_joist')),
                 'use_as_stair_void_trimmer': _parse_bool(row.get('use_as_stair_void_trimmer')),
                 'use_as_beam': _parse_bool(row.get('use_as_beam')),
+                'use_as_cladding': _parse_bool(row.get('use_as_cladding')),
                 'stock_lengths': (row.get('stock_lengths') or '').strip(),
+                'cover_mm': cover_mm,
             }
             _, was_created = Product.objects.update_or_create(name=name, defaults=defaults)
             if was_created:

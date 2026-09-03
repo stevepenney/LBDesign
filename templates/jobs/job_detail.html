@@ -516,7 +516,14 @@
     Sections
     {% help_trigger "sections-overview" %}
   </div>
-  <a href="{% url 'jobs:section_create' job.pk %}" class="btn btn-primary" style="margin-left:1rem;">+ Add Section</a>
+  <div style="display:flex;gap:.6rem;margin-left:1rem;">
+    {% if can_add_framing %}
+      <a href="{% url 'jobs:section_create' job.pk %}" class="btn btn-primary">+ Add Section</a>
+    {% endif %}
+    {% if can_add_cladding %}
+      <a href="{% url 'jobs:cladding_section_create' job.pk %}" class="btn btn-primary">+ Add Cladding Section</a>
+    {% endif %}
+  </div>
 </div>
 
 {% if sections %}
@@ -526,11 +533,32 @@
       <span class="subjob-card__title">{{ sj.label }}</span>
       <span class="subjob-card__type">{{ sj.get_system_type_display }}</span>
       <div class="subjob-card__actions">
-        <a href="{% url 'jobs:section_edit' job.pk sj.pk %}">Edit</a>
+        {% if sj.is_cladding %}
+          <a href="{% url 'jobs:cladding_section_edit' job.pk sj.pk %}">Edit</a>
+        {% else %}
+          <a href="{% url 'jobs:section_edit' job.pk sj.pk %}">Edit</a>
+        {% endif %}
         <a href="{% url 'jobs:section_delete' job.pk sj.pk %}" class="del-link">Delete</a>
       </div>
     </div>
     <div class="subjob-card__body">
+      {% if sj.is_cladding %}
+        {% if sj.cladding_areas.all %}
+        <table class="areas-table">
+          <thead><tr><th>Area</th><th>Area (m²)</th><th>Cladding</th><th>Cover</th></tr></thead>
+          <tbody>
+            {% for area in sj.cladding_areas.all %}
+            <tr>
+              <td>{{ area.area_label|default:"—" }}</td>
+              <td>{{ area.area_m2 }}</td>
+              <td>{{ area.cladding_product|default:"—" }}</td>
+              <td>{% if area.cladding_product.cover_mm %}{{ area.cladding_product.cover_mm }} mm{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      {% else %}
       {% if sj.areas.all %}
       <table class="areas-table">
         <thead><tr><th>Area</th><th>Area (m²)</th><th>Joist / Rafter</th><th>Spacing</th></tr></thead>
@@ -545,6 +573,7 @@
           {% endfor %}
         </tbody>
       </table>
+      {% endif %}
       {% endif %}
 
       <div class="flag-list">
@@ -623,7 +652,14 @@
 {% else %}
   <div class="empty-state">
     <p>No sections yet. Add a section to start the estimate.</p>
-    <a href="{% url 'jobs:section_create' job.pk %}" class="btn btn-primary">+ Add Section</a>
+    <div style="display:flex;gap:.6rem;justify-content:center;">
+      {% if can_add_framing %}
+        <a href="{% url 'jobs:section_create' job.pk %}" class="btn btn-primary">+ Add Section</a>
+      {% endif %}
+      {% if can_add_cladding %}
+        <a href="{% url 'jobs:cladding_section_create' job.pk %}" class="btn btn-primary">+ Add Cladding Section</a>
+      {% endif %}
+    </div>
   </div>
 {% endif %}
 {% endblock %}

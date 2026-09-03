@@ -105,6 +105,7 @@ class Section(models.Model):
         MIDFLOOR = 'midfloor', 'Midfloor'
         ROOF = 'roof', 'Roof'
         OTHER = 'other', 'Other'
+        CLADDING = 'cladding', 'Cladding'
 
     job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='sections')
     label = models.CharField(max_length=200, help_text="e.g. 'Unit 1 Midfloor'")
@@ -177,6 +178,10 @@ class Section(models.Model):
     def is_other(self):
         return self.system_type == self.SystemType.OTHER
 
+    @property
+    def is_cladding(self):
+        return self.system_type == self.SystemType.CLADDING
+
 
 class FloorRoofArea(models.Model):
     """
@@ -218,6 +223,32 @@ class FloorRoofArea(models.Model):
 
     def lineal_metres(self, pitch_factor=1.0):
         return float(self.area_m2) / self.spacing_m * pitch_factor
+
+
+class CladdingArea(models.Model):
+    """
+    One or more areas within a cladding section, each covered by a single product.
+    Lineal metres are derived from area_m2 and the product's cover_mm — there is no
+    user-entered spacing/cover, unlike FloorRoofArea's joist_spacing.
+    """
+    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='cladding_areas')
+    area_label = models.CharField(max_length=200, blank=True)
+    area_m2 = models.DecimalField(max_digits=10, decimal_places=2)
+    cladding_product = models.ForeignKey(
+        'products.Product',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cladding_areas',
+        limit_choices_to={'use_as_cladding': True},
+    )
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self):
+        label = self.area_label or f'Area {self.pk}'
+        return f'{self.section.label} / {label}'
 
 
 class AdditionalBeam(models.Model):

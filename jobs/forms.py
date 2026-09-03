@@ -2,7 +2,7 @@ from django import forms
 from django.forms import inlineformset_factory
 
 from products.models import Product
-from .models import Section, FloorRoofArea, AdditionalBeam
+from .models import Section, FloorRoofArea, CladdingArea, AdditionalBeam
 
 
 class SectionForm(forms.ModelForm):
@@ -37,6 +37,11 @@ class SectionForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Cladding is created/edited through its own dedicated flow (see CladdingSectionForm) —
+        # a job is locked to one category or the other, so it's never offered here.
+        self.fields['system_type'].choices = [
+            c for c in Section.SystemType.choices if c[0] != Section.SystemType.CLADDING
+        ]
         self.fields['boundary_joist_product'].queryset = (
             Product.objects.filter(use_as_boundary_joist=True, is_active=True)
         )
@@ -152,5 +157,57 @@ AdditionalBeamFormSet = inlineformset_factory(
     form=AdditionalBeamForm,
     extra=1,
     min_num=0,
+    can_delete=True,
+)
+
+
+class CladdingSectionForm(forms.ModelForm):
+    """
+    Cladding sections have their own creation/edit flow (see jobs/views.py
+    cladding_section_create/edit) — system_type is fixed to CLADDING there, not user-chosen.
+    """
+
+    class Meta:
+        model = Section
+        fields = ['label']
+        widgets = {
+            'label': forms.TextInput(attrs={'placeholder': "e.g. Unit 1 Cladding"}),
+        }
+        labels = {
+            'label': 'Sub-Job Label',
+        }
+
+
+class CladdingAreaForm(forms.ModelForm):
+
+    class Meta:
+        model = CladdingArea
+        fields = ['area_label', 'area_m2', 'cladding_product']
+        widgets = {
+            'area_label': forms.TextInput(attrs={'placeholder': 'e.g. North Elevation (optional)'}),
+            'area_m2': forms.NumberInput(attrs={'step': '0.1', 'placeholder': '0.0'}),
+        }
+        labels = {
+            'area_label': 'Area label (optional)',
+            'area_m2': 'Area (m²)',
+            'cladding_product': 'Cladding',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['cladding_product'].queryset = (
+            Product.objects.filter(use_as_cladding=True, is_active=True)
+        )
+        self.fields['cladding_product'].empty_label = '— select —'
+        self.fields['cladding_product'].required = False
+
+
+CladdingAreaFormSet = inlineformset_factory(
+    Section,
+    CladdingArea,
+    form=CladdingAreaForm,
+    extra=0,
+    min_num=1,
+    validate_min=True,
     can_delete=True,
 )

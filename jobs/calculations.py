@@ -30,6 +30,17 @@ def _d(value):
     return Decimal(str(value))
 
 
+def _area_lm(area_m2, dimension_mm, wastage_factor, pitch_factor=Decimal('1')):
+    """
+    Shared area → lineal-metres conversion: area / (dimension in m) * pitch * wastage.
+    Used for both joist/rafter spacing (FloorRoofArea) and cladding cover (CladdingArea) —
+    same formula, different source for the mm dimension (a per-area design choice for
+    spacing, vs a fixed product property for cladding cover).
+    """
+    dimension_m = _d(dimension_mm) / Decimal('1000')
+    return (_d(area_m2) / dimension_m * pitch_factor * wastage_factor).quantize(_CENT)
+
+
 # ── Core calculation ──────────────────────────────────────────────────────────
 
 def _calc_subjob(sub_job):
@@ -62,7 +73,7 @@ def _calc_subjob(sub_job):
         if not area.joist_product:
             has_unpriced = True
             continue
-        lm = (_d(area.area_m2) / _d(area.spacing_m) * pitch_factor * wastage_factor).quantize(_CENT)
+        lm = _area_lm(area.area_m2, area.joist_spacing, wastage_factor, pitch_factor)
         price = get_product_price(area.joist_product, organisation)
         line_total = (lm * price).quantize(_CENT) if price else None
         if line_total:
@@ -72,6 +83,26 @@ def _calc_subjob(sub_job):
         schedule.append({
             'label': area.area_label or 'Joists / Rafters',
             'description': str(area.joist_product),
+            'lineal_metres': str(lm),
+            'unit_price': str(price) if price else None,
+            'line_total': str(line_total) if line_total else None,
+        })
+
+    # ── Cladding areas ──────────────────────────────────────────────────
+    for area in sub_job.cladding_areas.select_related('cladding_product').all():
+        if not area.cladding_product or not area.cladding_product.cover_mm:
+            has_unpriced = True
+            continue
+        lm = _area_lm(area.area_m2, area.cladding_product.cover_mm, wastage_factor)
+        price = get_product_price(area.cladding_product, organisation)
+        line_total = (lm * price).quantize(_CENT) if price else None
+        if line_total:
+            subtotal += line_total
+        else:
+            has_unpriced = True
+        schedule.append({
+            'label': area.area_label or 'Cladding',
+            'description': str(area.cladding_product),
             'lineal_metres': str(lm),
             'unit_price': str(price) if price else None,
             'line_total': str(line_total) if line_total else None,
@@ -241,6 +272,7 @@ def run_job_estimate(job):
     """
     for sub_job in job.sections.prefetch_related(
         'areas__joist_product',
+        'cladding_areas__cladding_product',
         'additional_beams__product',
         'cutlist_import_lines__product',
         'boundary_joist_product',

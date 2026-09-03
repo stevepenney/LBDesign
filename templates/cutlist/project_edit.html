@@ -325,7 +325,11 @@
     <p id="stickEditorHint" class="modal-hint"></p>
     <div class="form-group">
       <label for="stickEditorLength">Stock Length</label>
-      <select id="stickEditorLength"></select>
+      <select id="stickEditorLength" onchange="onStickEditorLengthChange()"></select>
+    </div>
+    <div class="form-group" id="stickEditorCustomGroup" style="display:none;">
+      <label for="stickEditorCustomLength">Custom Length (mm)</label>
+      <input type="number" id="stickEditorCustomLength" min="1" step="1">
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" onclick="saveStickEdit()">Apply</button>

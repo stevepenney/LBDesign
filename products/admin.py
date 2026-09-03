@@ -20,21 +20,21 @@ class ProductTypeAdmin(admin.ModelAdmin):
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     list_display = [
-        'name', 'product_type', 'stock_lengths',
+        'name', 'product_type', 'stock_lengths', 'cover_mm',
         'use_as_joist_rafter', 'use_as_boundary_joist',
-        'use_as_stair_void_trimmer', 'use_as_beam',
+        'use_as_stair_void_trimmer', 'use_as_beam', 'use_as_cladding',
         'is_active', 'sort_order',
     ]
     list_filter = [
         'product_type', 'is_active',
         'use_as_joist_rafter', 'use_as_boundary_joist',
-        'use_as_stair_void_trimmer', 'use_as_beam',
+        'use_as_stair_void_trimmer', 'use_as_beam', 'use_as_cladding',
     ]
     search_fields = ['name']
     list_editable = [
-        'stock_lengths',
+        'stock_lengths', 'cover_mm',
         'use_as_joist_rafter', 'use_as_boundary_joist',
-        'use_as_stair_void_trimmer', 'use_as_beam',
+        'use_as_stair_void_trimmer', 'use_as_beam', 'use_as_cladding',
         'is_active', 'sort_order',
     ]
     fieldsets = (
@@ -48,7 +48,14 @@ class ProductAdmin(admin.ModelAdmin):
                 'use_as_boundary_joist',
                 'use_as_stair_void_trimmer',
                 'use_as_beam',
+                'use_as_cladding',
             ),
+        }),
+        ('Cladding', {
+            'description': 'Cover width once lapped/jointed, used to convert m² to lineal '
+                            'metres in the Cladding estimator. Only relevant for products used '
+                            'as Cladding.',
+            'fields': ('cover_mm',),
         }),
         ('Cutlist Optimizer', {
             'description': 'Stock lengths offered as defaults when a cutlist member is linked '

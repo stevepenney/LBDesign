@@ -19,4 +19,8 @@ urlpatterns = [
     path('<int:job_pk>/sections/new/',              views.section_create, name='section_create'),
     path('<int:job_pk>/sections/<int:pk>/edit/',    views.section_edit,   name='section_edit'),
     path('<int:job_pk>/sections/<int:pk>/delete/',  views.section_delete, name='section_delete'),
+
+    # Cladding sections (separate flow — see CLAUDE.md Cladding Estimator)
+    path('<int:job_pk>/sections/cladding/new/',             views.cladding_section_create, name='cladding_section_create'),
+    path('<int:job_pk>/sections/cladding/<int:pk>/edit/',   views.cladding_section_edit,   name='cladding_section_edit'),
 ]

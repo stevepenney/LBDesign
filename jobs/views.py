@@ -17,8 +17,11 @@ from products.pricing import get_product_price
 from projects.models import Project
 from projects.views import _assert_project_access
 from .calculations import run_job_estimate, run_subjob_calculation
-from .forms import SectionForm, FloorRoofAreaFormSet, FloorRoofAreaOptionalFormSet, AdditionalBeamFormSet
-from .models import Job, Section, FloorRoofArea, AdditionalBeam, CutlistImportLine
+from .forms import (
+    SectionForm, FloorRoofAreaFormSet, FloorRoofAreaOptionalFormSet, AdditionalBeamFormSet,
+    CladdingSectionForm, CladdingAreaFormSet,
+)
+from .models import Job, Section, FloorRoofArea, CladdingArea, AdditionalBeam, CutlistImportLine
 
 
 def _priced_cutlist_lines(section):
@@ -63,6 +66,15 @@ def _area_formset_cls(system_type):
     if system_type == Section.SystemType.OTHER:
         return FloorRoofAreaOptionalFormSet
     return FloorRoofAreaFormSet
+
+
+def _job_allows_framing(job):
+    """A job locks to one category on its first section — framing and cladding never mix."""
+    return not job.sections.filter(system_type=Section.SystemType.CLADDING).exists()
+
+
+def _job_allows_cladding(job):
+    return not job.sections.exclude(system_type=Section.SystemType.CLADDING).exists()
 
 
 @login_required
@@ -235,7 +247,9 @@ def job_detail(request, pk):
     if not _assert_job_access(request.user, job):
         messages.error(request, 'You do not have access to that estimate.')
         return redirect('projects:project_list')
-    sections = list(job.sections.prefetch_related('areas', 'additional_beams', 'cutlist_import_lines').all())
+    sections = list(job.sections.prefetch_related(
+        'areas', 'cladding_areas', 'additional_beams', 'cutlist_import_lines',
+    ).all())
     if job.source_cutlist_id:
         for sj in sections:
             if sj.cutlist_import_lines.all():
@@ -269,6 +283,8 @@ def job_detail(request, pk):
         'effective_uncertainty_pct':  effective_uncertainty_pct,
         'estimate_low':  f'{estimate_low:,}',
         'estimate_high': f'{estimate_high:,}',
+        'can_add_framing':  _job_allows_framing(job),
+        'can_add_cladding': _job_allows_cladding(job),
     })
 
 
@@ -292,6 +308,11 @@ def section_create(request, job_pk):
     if not _assert_job_access(request.user, job):
         messages.error(request, 'You do not have access to that estimate.')
         return redirect('projects:project_list')
+    if not _job_allows_framing(job):
+        messages.error(request, "This estimate already contains a Cladding section — cladding "
+                                 "and framing can't be mixed in one estimate. Start a new "
+                                 "estimate for framing.")
+        return redirect('jobs:job_detail', pk=job.pk)
 
     if request.method == 'POST':
         form    = SectionForm(request.POST)
@@ -331,6 +352,8 @@ def section_edit(request, job_pk, pk):
     if not _assert_job_access(request.user, job):
         messages.error(request, 'You do not have access to that estimate.')
         return redirect('projects:project_list')
+    if section.is_cladding:
+        return redirect('jobs:cladding_section_edit', job_pk=job.pk, pk=section.pk)
 
     if request.method == 'POST':
         form    = SectionForm(request.POST, instance=section)
@@ -362,6 +385,78 @@ def section_edit(request, job_pk, pk):
 
 
 @login_required
+def cladding_section_create(request, job_pk):
+    job = get_object_or_404(Job, pk=job_pk)
+    if not _assert_job_access(request.user, job):
+        messages.error(request, 'You do not have access to that estimate.')
+        return redirect('projects:project_list')
+    if not _job_allows_cladding(job):
+        messages.error(request, "This estimate already contains framing sections — cladding "
+                                 "and framing can't be mixed in one estimate. Start a new "
+                                 "estimate for cladding.")
+        return redirect('jobs:job_detail', pk=job.pk)
+
+    if request.method == 'POST':
+        form    = CladdingSectionForm(request.POST)
+        area_fs = CladdingAreaFormSet(request.POST, prefix='areas')
+
+        if form.is_valid() and area_fs.is_valid():
+            section = form.save(commit=False)
+            section.job = job
+            section.system_type = Section.SystemType.CLADDING
+            section.save()
+            area_fs.instance = section
+            area_fs.save()
+            if job.hardware_allowance_pct is None:
+                job.hardware_allowance_pct = Decimal('0')
+                job.save(update_fields=['hardware_allowance_pct', 'updated_at'])
+            run_subjob_calculation(section)
+            messages.success(request, f'"{section.label}" added.')
+            return redirect('jobs:job_detail', pk=job.pk)
+    else:
+        form    = CladdingSectionForm()
+        area_fs = CladdingAreaFormSet(prefix='areas')
+
+    return render(request, 'jobs/cladding_section_form.html', {
+        'job': job,
+        'form': form,
+        'area_formset': area_fs,
+        'action': 'Add Cladding Section',
+    })
+
+
+@login_required
+def cladding_section_edit(request, job_pk, pk):
+    job = get_object_or_404(Job, pk=job_pk)
+    section = get_object_or_404(Section, pk=pk, job=job, system_type=Section.SystemType.CLADDING)
+    if not _assert_job_access(request.user, job):
+        messages.error(request, 'You do not have access to that estimate.')
+        return redirect('projects:project_list')
+
+    if request.method == 'POST':
+        form    = CladdingSectionForm(request.POST, instance=section)
+        area_fs = CladdingAreaFormSet(request.POST, instance=section, prefix='areas')
+
+        if form.is_valid() and area_fs.is_valid():
+            form.save()
+            area_fs.save()
+            run_subjob_calculation(section)
+            messages.success(request, f'"{section.label}" updated.')
+            return redirect('jobs:job_detail', pk=job.pk)
+    else:
+        form    = CladdingSectionForm(instance=section)
+        area_fs = CladdingAreaFormSet(instance=section, prefix='areas')
+
+    return render(request, 'jobs/cladding_section_form.html', {
+        'job': job,
+        'section': section,
+        'form': form,
+        'area_formset': area_fs,
+        'action': 'Edit Cladding Section',
+    })
+
+
+@login_required
 def job_duplicate(request, pk):
     job = get_object_or_404(Job, pk=pk)
     if not _assert_job_access(request.user, job):
@@ -378,7 +473,7 @@ def job_duplicate(request, pk):
         hardware_allowance_pct = job.hardware_allowance_pct,
     )
 
-    for section in job.sections.prefetch_related('areas', 'additional_beams').all():
+    for section in job.sections.prefetch_related('areas', 'cladding_areas', 'additional_beams').all():
         new_section = Section.objects.create(
             job=new_job,
             label=section.label,
@@ -401,6 +496,13 @@ def job_duplicate(request, pk):
                 joist_product=area.joist_product,
                 joist_spacing=area.joist_spacing,
             )
+        for area in section.cladding_areas.all():
+            CladdingArea.objects.create(
+                section=new_section,
+                area_label=area.area_label,
+                area_m2=area.area_m2,
+                cladding_product=area.cladding_product,
+            )
         for beam in section.additional_beams.all():
             AdditionalBeam.objects.create(
                 section=new_section,
@@ -409,6 +511,10 @@ def job_duplicate(request, pk):
                 length_m=beam.length_m,
                 quantity=beam.quantity,
             )
+
+    run_job_estimate(new_job)
+    messages.success(request, 'Estimate duplicated.')
+    return redirect('jobs:job_detail', pk=new_job.pk)
 
 
 @login_required
@@ -423,9 +529,6 @@ def job_delete(request, pk):
     job.delete()
     messages.success(request, 'Estimate deleted.')
     return redirect('projects:project_detail', pk=project_pk)
-
-    messages.success(request, 'Estimate duplicated.')
-    return redirect('jobs:job_detail', pk=new_job.pk)
 
 
 @login_required
