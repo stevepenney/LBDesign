@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Prefetch
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -248,7 +249,8 @@ def job_detail(request, pk):
         messages.error(request, 'You do not have access to that estimate.')
         return redirect('projects:project_list')
     sections = list(job.sections.prefetch_related(
-        'areas', 'additional_beams', 'cutlist_import_lines',
+        Prefetch('areas', queryset=FloorRoofArea.objects.select_related('joist_product', 'roof_pitch')),
+        'additional_beams', 'cutlist_import_lines',
     ).all())
     cladding_areas = list(job.cladding_areas.select_related('cladding_product').all())
     if job.source_cutlist_id:
@@ -452,7 +454,6 @@ def job_duplicate(request, pk):
             include_stair_void_trimmers=section.include_stair_void_trimmers,
             stair_void_trimmer_description=section.stair_void_trimmer_description,
             stair_void_trimmer_product=section.stair_void_trimmer_product,
-            roof_pitch=section.roof_pitch,
         )
         for area in section.areas.all():
             FloorRoofArea.objects.create(
@@ -462,6 +463,7 @@ def job_duplicate(request, pk):
                 product_description=area.product_description,
                 joist_product=area.joist_product,
                 joist_spacing=area.joist_spacing,
+                roof_pitch=area.roof_pitch,
             )
         for beam in section.additional_beams.all():
             AdditionalBeam.objects.create(

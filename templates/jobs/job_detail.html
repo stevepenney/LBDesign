@@ -554,7 +554,7 @@
     <div class="subjob-card__body">
       {% if sj.areas.all %}
       <table class="areas-table">
-        <thead><tr><th>Area</th><th>Area (m²)</th><th>Joist / Rafter</th><th>Spacing</th></tr></thead>
+        <thead><tr><th>Area</th><th>Area (m²)</th><th>Joist / Rafter</th><th>Spacing</th>{% if sj.is_roof %}<th>Pitch</th>{% endif %}</tr></thead>
         <tbody>
           {% for area in sj.areas.all %}
           <tr>
@@ -562,6 +562,7 @@
             <td>{{ area.area_m2 }}</td>
             <td>{{ area.joist_product|default:"—" }}</td>
             <td>{{ area.joist_spacing }} mm</td>
+            {% if sj.is_roof %}<td>{{ area.roof_pitch|default:"—" }}</td>{% endif %}
           </tr>
           {% endfor %}
         </tbody>
@@ -576,9 +577,6 @@
           {% if sj.include_stair_void_trimmers %}
             <span class="flag-pill">Stair void trimmers{% if sj.stair_void_trimmer_product %} ({{ sj.stair_void_trimmer_product }}){% endif %}</span>
           {% endif %}
-        {% endif %}
-        {% if sj.is_roof and sj.roof_pitch %}
-          <span class="flag-pill">Pitch: {{ sj.roof_pitch }}</span>
         {% endif %}
       </div>
 

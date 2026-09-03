@@ -153,15 +153,6 @@ class Section(models.Model):
         limit_choices_to={'use_as_stair_void_trimmer': True},
     )
 
-    # Roof pitch (roof only)
-    roof_pitch = models.ForeignKey(
-        'core.RoofPitch',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='sections',
-    )
-
     # Calculated result (stored after engine runs)
     calculated_subtotal = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
@@ -218,6 +209,15 @@ class FloorRoofArea(models.Model):
     # Stored in millimetres, e.g. 400, 450, 600.
     joist_spacing = models.PositiveIntegerField(
         help_text='Joist / rafter spacing in mm, e.g. 400, 450, 600.',
+    )
+    # Roof pitch (roof sections only) — per-area, not per-section, so one roof section
+    # (e.g. "Unit 1 Roof") can span multiple pitches (main roof vs porch, hips, etc.).
+    roof_pitch = models.ForeignKey(
+        'core.RoofPitch',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='areas',
     )
 
     class Meta:

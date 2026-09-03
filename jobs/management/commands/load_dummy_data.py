@@ -242,7 +242,6 @@ class Command(BaseCommand):
 
                     inc_bj = sys_type == 'midfloor' and rng.random() > 0.3
                     inc_sv = sys_type == 'midfloor' and rng.random() > 0.6
-                    pitch  = _pick(roof_pitches) if sys_type == 'roof' else None
 
                     section = Section.objects.create(
                         job=job,
@@ -253,10 +252,11 @@ class Command(BaseCommand):
                         boundary_joist_product=_pick(boundary_products) if inc_bj and boundary_products else None,
                         include_stair_void_trimmers=inc_sv,
                         stair_void_trimmer_product=_pick(trimmer_products) if inc_sv and trimmer_products else None,
-                        roof_pitch=pitch,
                     )
 
                     # ── Areas ─────────────────────────────────────────────
+                    # Pitch is per-area (not per-section) so a roof section can span
+                    # multiple pitches, e.g. main roof vs porch.
                     area_set = rng.choice(AREA_LABELS)
                     for area_label, base_m2 in area_set:
                         area_m2 = round(base_m2 * rng.uniform(0.8, 1.2), 1)
@@ -266,6 +266,7 @@ class Command(BaseCommand):
                             area_m2=area_m2,
                             joist_product=_pick(joist_products),
                             joist_spacing=rng.choice([400, 450, 600]),
+                            roof_pitch=_pick(roof_pitches) if sys_type == 'roof' else None,
                         )
 
                     # ── Additional beams (optional) ────────────────────────

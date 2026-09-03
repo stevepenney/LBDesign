@@ -15,8 +15,6 @@ class SectionForm(forms.ModelForm):
             'include_boundary_joists', 'boundary_perimeter_lm', 'boundary_joist_product',
             # Midfloor — stair void trimmers
             'include_stair_void_trimmers', 'stair_void_trimmer_product',
-            # Roof
-            'roof_pitch',
         ]
         widgets = {
             'label': forms.TextInput(attrs={'placeholder': "e.g. Unit 1 Midfloor"}),
@@ -32,7 +30,6 @@ class SectionForm(forms.ModelForm):
             'boundary_joist_product': 'Member',
             'include_stair_void_trimmers': 'Include stair void trimmers',
             'stair_void_trimmer_product': 'Member',
-            'roof_pitch': 'Roof pitch',
         }
 
     def __init__(self, *args, **kwargs):
@@ -45,7 +42,6 @@ class SectionForm(forms.ModelForm):
             Product.objects.filter(use_as_stair_void_trimmer=True, is_active=True)
         )
         self.fields['stair_void_trimmer_product'].empty_label = '— select member —'
-        self.fields['roof_pitch'].empty_label = '— select pitch —'
 
     def clean(self):
         cleaned = super().clean()
@@ -55,7 +51,6 @@ class SectionForm(forms.ModelForm):
             if cleaned.get('include_boundary_joists'):
                 if not cleaned.get('boundary_perimeter_lm'):
                     self.add_error('boundary_perimeter_lm', 'Enter the perimeter when boundary joists are included.')
-            cleaned['roof_pitch'] = None
 
         if system_type == Section.SystemType.ROOF:
             cleaned['include_boundary_joists'] = False
@@ -70,7 +65,6 @@ class SectionForm(forms.ModelForm):
             cleaned['boundary_joist_product'] = None
             cleaned['include_stair_void_trimmers'] = False
             cleaned['stair_void_trimmer_product'] = None
-            cleaned['roof_pitch'] = None
 
         return cleaned
 
@@ -79,7 +73,7 @@ class FloorRoofAreaForm(forms.ModelForm):
 
     class Meta:
         model = FloorRoofArea
-        fields = ['area_label', 'area_m2', 'joist_product', 'joist_spacing']
+        fields = ['area_label', 'area_m2', 'joist_product', 'joist_spacing', 'roof_pitch']
         widgets = {
             'area_label': forms.TextInput(attrs={'placeholder': 'e.g. Main Floor (optional)'}),
             'area_m2': forms.NumberInput(attrs={'step': '0.1', 'placeholder': '0.0'}),
@@ -90,6 +84,7 @@ class FloorRoofAreaForm(forms.ModelForm):
             'area_m2': 'Area (m²)',
             'joist_product': 'Joist / Rafter',
             'joist_spacing': 'Spacing (mm)',
+            'roof_pitch': 'Pitch',
         }
 
     def __init__(self, *args, **kwargs):
@@ -99,6 +94,8 @@ class FloorRoofAreaForm(forms.ModelForm):
         )
         self.fields['joist_product'].empty_label = '— select —'
         self.fields['joist_product'].required = False
+        self.fields['roof_pitch'].empty_label = '— select pitch —'
+        self.fields['roof_pitch'].required = False
 
 
 class AdditionalBeamForm(forms.ModelForm):

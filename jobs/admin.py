@@ -5,7 +5,7 @@ from .models import Job, Section, FloorRoofArea, CladdingArea, AdditionalBeam, C
 class FloorRoofAreaInline(admin.TabularInline):
     model = FloorRoofArea
     extra = 1
-    fields = ['area_label', 'area_m2', 'joist_product', 'joist_spacing']
+    fields = ['area_label', 'area_m2', 'joist_product', 'joist_spacing', 'roof_pitch']
 
 
 class CladdingAreaInline(admin.TabularInline):
@@ -41,7 +41,7 @@ class SectionInline(admin.StackedInline):
         'label', 'system_type',
         'include_boundary_joists', 'boundary_perimeter_lm', 'boundary_joist_product',
         'include_stair_void_trimmers', 'stair_void_trimmer_product',
-        'roof_pitch', 'calculated_subtotal',
+        'calculated_subtotal',
     ]
     readonly_fields = ['calculated_subtotal']
 

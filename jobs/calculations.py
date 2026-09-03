@@ -69,15 +69,14 @@ def _calc_subjob(sub_job):
     effective_wastage = sub_job.job.wastage_pct if sub_job.job.wastage_pct is not None else freight_settings.wastage_pct
     wastage_factor = Decimal('1') + _d(effective_wastage) / Decimal('100')
 
-    pitch_factor = Decimal('1')
-    if sub_job.is_roof and sub_job.roof_pitch:
-        pitch_factor = _d(sub_job.roof_pitch.pitch_factor)
-
     # ── Areas (joists / rafters) ──────────────────────────────────────────
-    for area in sub_job.areas.select_related('joist_product').all():
+    for area in sub_job.areas.select_related('joist_product', 'roof_pitch').all():
         if not area.joist_product:
             has_unpriced = True
             continue
+        pitch_factor = Decimal('1')
+        if sub_job.is_roof and area.roof_pitch:
+            pitch_factor = _d(area.roof_pitch.pitch_factor)
         lm = _area_lm(area.area_m2, area.joist_spacing, wastage_factor, pitch_factor)
         price = get_product_price(area.joist_product, organisation)
         line_total = (lm * price).quantize(_CENT) if price else None
@@ -322,11 +321,11 @@ def run_job_estimate(job):
     else:
         for sub_job in job.sections.prefetch_related(
             'areas__joist_product',
+            'areas__roof_pitch',
             'additional_beams__product',
             'cutlist_import_lines__product',
             'boundary_joist_product',
             'stair_void_trimmer_product',
-            'roof_pitch',
         ).all():
             subtotal, schedule, has_unpriced = _calc_subjob(sub_job)
             stored_subtotal = None if (has_unpriced and subtotal == 0) else subtotal

@@ -79,17 +79,17 @@
     margin-bottom: 1rem;
   }
 
-  /* Formset grid — areas: label | m² | product | spacing | × */
+  /* Formset grid — areas: label | m² | product | spacing | pitch | × */
   .area-row {
     display: grid;
-    grid-template-columns: 1fr 90px 1.6fr 110px 36px;
+    grid-template-columns: 1fr 90px 1.5fr 100px 140px 36px;
     gap: .6rem;
     align-items: end;
     margin-bottom: .6rem;
   }
   .area-header {
     display: grid;
-    grid-template-columns: 1fr 90px 1.6fr 110px 36px;
+    grid-template-columns: 1fr 90px 1.5fr 100px 140px 36px;
     gap: .6rem;
     margin-bottom: .35rem;
   }
@@ -212,6 +212,7 @@
       <span class="col-label">Area (m²) <span class="required-star">*</span></span>
       <span class="col-label">Joist / Rafter <span class="required-star">*</span></span>
       <span class="col-label">Spacing <span class="required-star">*</span></span>
+      <span class="col-label">Pitch <span style="font-weight:400;text-transform:none;">(roof only)</span></span>
       <span></span>
     </div>
 
@@ -223,6 +224,7 @@
           {% render_field af.area_m2 class="form-control" %}
           {% render_field af.joist_product class="form-control" %}
           {% render_field af.joist_spacing class="form-control" %}
+          {% render_field af.roof_pitch class="form-control" %}
           <button type="button" class="btn-remove" title="Remove"
                   onclick="removeRow(this, '{{ af.DELETE.html_name }}')">&#215;</button>
           <div style="display:none">{{ af.DELETE }}</div>
@@ -243,6 +245,7 @@
         {% render_field area_formset.empty_form.area_m2 class="form-control" %}
         {% render_field area_formset.empty_form.joist_product class="form-control" %}
         {% render_field area_formset.empty_form.joist_spacing class="form-control" %}
+        {% render_field area_formset.empty_form.roof_pitch class="form-control" %}
         <button type="button" class="btn-remove" title="Remove"
                 onclick="removeRow(this, null)">&#215;</button>
       </div>
@@ -304,25 +307,6 @@
     </div>
   </div>
 
-</div>
-
-<!-- ── Roof-only sections ─────────────────────────────────── -->
-<div id="roof-sections">
-  <div class="form-card">
-    <div class="form-card__header">Roof Pitch</div>
-    <div class="form-card__body">
-      <div class="form-group" style="max-width:260px;">
-        <label for="{{ form.roof_pitch.id_for_label }}">Pitch</label>
-        {% render_field form.roof_pitch class="form-control" %}
-        {% if form.roof_pitch.errors %}
-          <div class="form-error">{{ form.roof_pitch.errors|join:", " }}</div>
-        {% endif %}
-        <p style="font-size:.8rem;color:#999;margin-top:.4rem;">
-          Pitch values are managed by LumberBank Admin.
-        </p>
-      </div>
-    </div>
-  </div>
 </div>
 
 <!-- ── Additional Beams ───────────────────────────────────── -->
@@ -395,14 +379,12 @@
   // ── System type show/hide ─────────────────────────────────
   const systemTypeEl      = document.getElementById('id_system_type');
   const midfloorSections  = document.getElementById('midfloor-sections');
-  const roofSections      = document.getElementById('roof-sections');
   const areasRequiredHint = document.getElementById('areas-required-hint');
   const areasOptionalHint = document.getElementById('areas-optional-hint');
 
   function applySystemType() {
     const val = systemTypeEl.value;
     midfloorSections.style.display  = (val === 'midfloor') ? '' : 'none';
-    roofSections.style.display      = (val === 'roof')     ? '' : 'none';
     const isOther = (val === 'other');
     areasRequiredHint.style.display = isOther ? 'none' : '';
     areasOptionalHint.style.display = isOther ? ''     : 'none';

@@ -55,6 +55,12 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
   `spacing_m` property divides by 1000.
 - `RoofPitch.pitch_degrees` stores degrees. `pitch_factor` is a computed property:
   `1 / cos(radians(pitch_degrees))`. Do not add a stored pitch_factor field.
+- `FloorRoofArea.roof_pitch` is **per-area, not per-section** — a roof `Section` (e.g.
+  "Unit 1 Roof") can span multiple pitches (main roof vs porch, hips, etc.) because each
+  area picks its own pitch, same as each area already picks its own `joist_spacing`. Only
+  meaningful when the parent `Section.is_roof`; harmless-but-unused if set on a midfloor/other
+  area. `_calc_subjob` in `jobs/calculations.py` computes `pitch_factor` per area, guarded by
+  `sub_job.is_roof`.
 - `PriceBook.is_default` — only one default allowed; `save()` enforces it.
 - `SystemSettings` is a singleton; always use `SystemSettings.get()`, never `.objects.first()`.
 - `Job.label` defaults to `'Untitled Estimate'` (mirrors `CutlistProject.name` defaulting to
@@ -138,11 +144,13 @@ instead of a user-chosen joist/rafter **spacing** — mathematically the same di
 of the product (`Product.cover_mm`, `Product.use_as_cladding`) rather than a per-area design
 choice, so it can't reuse `FloorRoofArea.joist_spacing`.
 
-**No `Section` layer.** Framing genuinely needs `Section` — `roof_pitch` and the boundary-joist/
-stair-void fields are per-physical-system values, so one job can hold e.g. two roof planes at
-different pitches as two Sections. Cladding has no equivalent per-instance setting: a cladding
-estimate is just a flat list of elevations (North Elevation, Internal Stairway, ...), each with
-its own m² and product — data-equivalent to a framing `FloorRoofArea`, not a `Section`. So
+**No `Section` layer.** Framing genuinely needs `Section` — the boundary-joist/stair-void fields
+are per-physical-system values, so one job can hold e.g. two distinct midfloor systems (Unit 1,
+Unit 2) with different boundary joist products as two Sections. (Roof pitch doesn't force this:
+it's per-`FloorRoofArea`, so one roof Section already spans multiple pitches on its own — see
+"Models" above.) Cladding has no equivalent per-instance setting at all: a cladding estimate is
+just a flat list of elevations (North Elevation, Internal Stairway, ...), each with its own m²
+and product — data-equivalent to a framing `FloorRoofArea`, not a `Section`. So
 `jobs.CladdingArea` FKs straight to `Job` (`related_name='cladding_areas'`), and `Job` grows its
 own `calculated_subtotal`/`member_schedule` fields (same shape as `Section`'s) to hold the
 result. A `Job` doing cladding is naturally single-"section" already — an estimate like "Oak
