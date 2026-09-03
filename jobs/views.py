@@ -143,7 +143,7 @@ def job_update_field(request, pk):
                 return JsonResponse({'ok': False, 'error': 'Invalid percentage'}, status=400)
         job.save(update_fields=[field, 'updated_at'])
         if field in {'hardware_allowance_pct', 'wastage_pct'}:
-            run_job_estimate(job)
+            run_job_estimate(job, user=request.user)
         return JsonResponse({'ok': True, 'reload': True})
 
     setattr(job, field, value)
@@ -237,7 +237,7 @@ def cutlist_convert_to_estimate(request, cutlist_pk):
         )
         for product, length_m, tab_index, member_name in lines
     ])
-    run_job_estimate(job)
+    run_job_estimate(job, user=request.user)
 
     return JsonResponse({'ok': True, 'redirect': reverse('jobs:job_detail', args=[job.pk])})
 
@@ -301,7 +301,7 @@ def job_recalculate(request, pk):
         messages.error(request, 'You do not have access to that estimate.')
         return redirect('projects:project_list')
     if request.method == 'POST':
-        run_job_estimate(job)
+        run_job_estimate(job, user=request.user)
         messages.success(request, 'Estimate recalculated.')
     return redirect('jobs:job_detail', pk=job.pk)
 
@@ -332,7 +332,7 @@ def section_create(request, job_pk):
             area_fs.save()
             beam_fs.instance = section
             beam_fs.save()
-            run_subjob_calculation(section)
+            run_subjob_calculation(section, user=request.user)
             messages.success(request, f'"{section.label}" added.')
             return redirect('jobs:job_detail', pk=job.pk)
     else:
@@ -367,7 +367,7 @@ def section_edit(request, job_pk, pk):
             form.save()
             area_fs.save()
             beam_fs.save()
-            run_subjob_calculation(section)
+            run_subjob_calculation(section, user=request.user)
             messages.success(request, f'"{section.label}" updated.')
             return redirect('jobs:job_detail', pk=job.pk)
     else:
@@ -412,7 +412,7 @@ def cladding_areas_edit(request, job_pk):
             if is_new and job.hardware_allowance_pct is None:
                 job.hardware_allowance_pct = Decimal('0')
                 job.save(update_fields=['hardware_allowance_pct', 'updated_at'])
-            run_cladding_calculation(job)
+            run_cladding_calculation(job, user=request.user)
             messages.success(request, 'Cladding areas updated.')
             return redirect('jobs:job_detail', pk=job.pk)
     else:
@@ -482,7 +482,7 @@ def job_duplicate(request, pk):
             cladding_product=area.cladding_product,
         )
 
-    run_job_estimate(new_job)
+    run_job_estimate(new_job, user=request.user)
     messages.success(request, 'Estimate duplicated.')
     return redirect('jobs:job_detail', pk=new_job.pk)
 

@@ -4,7 +4,7 @@ from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
 from .help_registry import REGISTERED_TOPICS
-from .models import Feedback, HelpTopic, RoofPitch, SystemSettings
+from .models import Feedback, HelpTopic, RoofPitch, SystemSettings, UsageEvent
 
 
 @admin.register(SystemSettings)
@@ -76,6 +76,21 @@ class HelpTopicAdmin(admin.ModelAdmin):
             '<div style="border:1px solid #ddd;border-radius:4px;padding:1rem;max-width:700px;">{}</div>',
             mark_safe(obj.body),
         )
+
+
+@admin.register(UsageEvent)
+class UsageEventAdmin(admin.ModelAdmin):
+    list_display = ['created_at', 'user', 'organisation', 'event_type']
+    list_filter = ['event_type', 'organisation']
+    search_fields = ['user__username', 'user__first_name', 'user__last_name', 'organisation__name']
+    readonly_fields = ['user', 'organisation', 'event_type', 'created_at']
+    ordering = ['-created_at']
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Feedback)

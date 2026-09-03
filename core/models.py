@@ -123,6 +123,47 @@ class HelpTopic(models.Model):
         return f'{self.title} ({self.slug})'
 
 
+class UsageEvent(models.Model):
+    """
+    Lightweight usage tracking — one row per meaningful action, not a full audit
+    log. Deliberately coarse: logins and calculation runs (estimate or cutlist),
+    not every field edit or page view. Answers "who's using the system and how
+    often" (and who isn't) without becoming a massive table of every click.
+    """
+    class EventType(models.TextChoices):
+        LOGIN = 'login', 'Login'
+        ESTIMATE_CALCULATED = 'estimate_calculated', 'Estimate Calculated'
+        CUTLIST_SAVED = 'cutlist_saved', 'Cutlist Saved'
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='usage_events',
+    )
+    organisation = models.ForeignKey(
+        'accounts.Organisation',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='usage_events',
+    )
+    event_type = models.CharField(max_length=30, choices=EventType.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['event_type', 'created_at']),
+            models.Index(fields=['organisation', 'created_at']),
+        ]
+        verbose_name = 'Usage Event'
+        verbose_name_plural = 'Usage Events'
+
+    def __str__(self):
+        return f'{self.user} — {self.get_event_type_display()} @ {self.created_at:%Y-%m-%d %H:%M}'
+
+
 class Feedback(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

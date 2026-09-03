@@ -122,6 +122,26 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
 - Run `manage.py check` after every migration.
 - After any model change always run `makemigrations` and check the generated file before applying.
 
+### Usage tracking
+- `core.UsageEvent` (`user`, `organisation`, `event_type`, `created_at`) — deliberately lightweight:
+  one row per meaningful action, not a full audit log of every click/save. Answers "who's using
+  the system and how often" (and who isn't) for follow-up/promotion, without a massive table.
+- Three event types: `login` (via a `user_logged_in` signal receiver in `core/signals.py`,
+  wired up in `core/apps.py`'s `ready()`), `estimate_calculated`, `cutlist_saved`.
+- `core.usage.log_usage_event(user, event_type)` is the only way rows get written — it no-ops
+  silently if `user` is `None`/unauthenticated, so it's safe to call from anywhere.
+- `run_subjob_calculation`/`run_cladding_calculation`/`run_job_estimate` (`jobs/calculations.py`)
+  all take an optional `user=None` kwarg that logs `estimate_calculated` when provided. Real
+  views pass `user=request.user`; `load_dummy_data` deliberately doesn't pass one, so seed data
+  never pollutes real usage stats. `run_job_estimate` logs at most once per call even though it
+  may recalculate many sections underneath (or delegates to `run_cladding_calculation`, which
+  logs its own — no double-counting).
+- `cutlist:project_save` (`cutlist/views.py`) logs `cutlist_saved` directly — named for what's
+  actually observable server-side (a state save), not `cutlist_optimised`, since optimisation
+  itself runs client-side in JS and only reaches the server as a save.
+- Admin-only for now (`core.UsageEventAdmin`, list/filter/search, read-only) — no reporting
+  dashboard yet; add one if/when a concrete question needs it.
+
 ---
 
 ## CSS / Frontend

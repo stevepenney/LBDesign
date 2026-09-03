@@ -3,26 +3,32 @@ Estimation calculation engine.
 
 Entry points
 ------------
-run_subjob_calculation(sub_job)
+run_subjob_calculation(sub_job, user=None)
     Calculate one framing sub-job (Section) and persist results.  Call this
     immediately after saving a sub-job and its area / beam formsets.
 
-run_cladding_calculation(job)
+run_cladding_calculation(job, user=None)
     Calculate a cladding job's areas and persist results directly onto the Job
     (cladding has no Section layer — see Job.is_cladding).  Call this
     immediately after saving a job's cladding area formset.
 
-run_job_estimate(job)
+run_job_estimate(job, user=None)
     Recalculate a whole job — every framing sub-job, or the cladding areas —
     then refresh freight.  Returns the job total as a Decimal.
 
 calc_freight(subtotal, freight_settings)
     Pure function — returns (freight_charge, surcharge).
+
+All three entry points take an optional `user` — pass `request.user` from a view
+to record a UsageEvent (see core.usage.log_usage_event). Leave it out for
+non-request-driven callers (e.g. load_dummy_data) so seed/bulk work never
+pollutes real usage stats.
 """
 
 from decimal import Decimal
 
-from core.models import SystemSettings
+from core.models import SystemSettings, UsageEvent
+from core.usage import log_usage_event
 from products.pricing import get_product_price
 from .models import Job, Section
 
@@ -264,7 +270,7 @@ def _update_job_freight(job):
 
 # ── Public entry points ───────────────────────────────────────────────────────
 
-def run_subjob_calculation(sub_job):
+def run_subjob_calculation(sub_job, user=None):
     """
     Calculate and persist results for one framing sub-job (Section), then refresh
     job freight. Call this after saving a sub-job and its area / beam formsets.
@@ -287,9 +293,10 @@ def run_subjob_calculation(sub_job):
         },
     )
     _update_job_freight(sub_job.job)
+    log_usage_event(user, UsageEvent.EventType.ESTIMATE_CALCULATED)
 
 
-def run_cladding_calculation(job):
+def run_cladding_calculation(job, user=None):
     """
     Calculate and persist results for a cladding job's areas directly onto the
     Job, then refresh freight. Call this after saving the job's cladding area
@@ -308,16 +315,21 @@ def run_cladding_calculation(job):
     )
     job.calculated_subtotal = stored_subtotal
     _update_job_freight(job)
+    log_usage_event(user, UsageEvent.EventType.ESTIMATE_CALCULATED)
 
 
-def run_job_estimate(job):
+def run_job_estimate(job, user=None):
     """
     Recalculate a whole job — every framing sub-job, or (for a cladding job) its
     areas directly — refresh freight, and return the job total. Useful for bulk
     recalculation (e.g. after a price book update).
+
+    Logs at most one ESTIMATE_CALCULATED event for the whole call, regardless of
+    how many sections get recalculated underneath — run_cladding_calculation
+    already logs its own when delegated to below, so this doesn't log twice.
     """
     if job.is_cladding:
-        run_cladding_calculation(job)
+        run_cladding_calculation(job, user=user)
     else:
         for sub_job in job.sections.prefetch_related(
             'areas__joist_product',
@@ -337,5 +349,6 @@ def run_job_estimate(job):
                 },
             )
         _update_job_freight(job)
+        log_usage_event(user, UsageEvent.EventType.ESTIMATE_CALCULATED)
     job.refresh_from_db()
     return job.total

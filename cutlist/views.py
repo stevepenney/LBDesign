@@ -10,6 +10,8 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from accounts.models import Organisation
+from core.models import UsageEvent
+from core.usage import log_usage_event
 from products.models import Product, TimberTypeDefaultStockLengths
 from projects.models import Project
 from projects.views import _assert_project_access, _get_projects_for_user
@@ -138,6 +140,7 @@ def project_save(request, pk):
 
     cutlist.state = data
     cutlist.save(update_fields=['state', 'updated_at'])
+    log_usage_event(request.user, UsageEvent.EventType.CUTLIST_SAVED)
 
     return JsonResponse({'ok': True, 'name': cutlist.name})
 
