@@ -38,7 +38,7 @@ venv/Scripts/python manage.py shell
 | `core` | SystemSettings (singleton), RoofPitch (lookup), HelpTopic |
 | `products` | Product, PriceBook, PriceBookEntry; `pricing.py` price resolver |
 | `projects` | Project (org FK, status workflow, lb_job_number), ProjectDocument |
-| `jobs` | Job (an estimate, belongs to a Project), Section, FloorRoofArea, AdditionalBeam; `calculations.py` engine |
+| `jobs` | Job (an estimate, belongs to a Project), Section, FloorRoofArea, AdditionalBeam, CladdingArea; `calculations.py` engine |
 | `cutlist` | Cutlist Optimizer — `CutlistProject` model (Project FK, state JSONField) + JS wizard |
 
 Templates live in `templates/` (project-level, not per-app).
@@ -59,8 +59,9 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
 - `SystemSettings` is a singleton; always use `SystemSettings.get()`, never `.objects.first()`.
 - `Job.label` defaults to `'Untitled Estimate'` (mirrors `CutlistProject.name` defaulting to
   `'Untitled Cutlist'`) — new estimates are never blank-labelled. Inline-editable on `job_detail.html`.
-- A `Job` is locked to one category — **framing** (`midfloor`/`roof`/`other` sections) or
-  **cladding** (`cladding` sections) — never both; see "Cladding Estimator" below.
+- A `Job` is locked to one category — **framing** (`Section`s, `midfloor`/`roof`/`other`) or
+  **cladding** (`CladdingArea`s attached directly to the `Job`, no `Section`) — never both;
+  see "Cladding Estimator" below.
 - All "quick create" entry points (`projects:project_create`, `jobs:estimate_quick`/`job_create`,
   `cutlist:project_new_quick`/`project_new`) create records directly with `status=PRELIMINARY` and
   no blocking form — every field is inline-editable afterwards. The old `DRAFT` status +
@@ -72,9 +73,12 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
 - Org with `price_book = null` uses the default book for all products.
 
 ### Calculations
-- Always call `run_subjob_calculation(section)` after saving a Section and its formsets.
-- `run_job_estimate(job)` recalculates all sections + freight for the whole job.
-- `member_schedule` JSON shape: `{'items': [...], 'has_unpriced': bool}`
+- Always call `run_subjob_calculation(section)` after saving a framing Section and its formsets.
+- Always call `run_cladding_calculation(job)` after saving a cladding job's `CladdingAreaFormSet`.
+- `run_job_estimate(job)` recalculates the whole job (sections, or — for a cladding job —
+  the job's own cladding areas) + freight, dispatching on `job.is_cladding`.
+- `member_schedule` JSON shape: `{'items': [...], 'has_unpriced': bool}` — lives on `Section`
+  for framing, directly on `Job` for cladding (same for `calculated_subtotal`).
 
 ### Forms & Formsets
 - `SectionForm`, `FloorRoofAreaFormSet`, `AdditionalBeamFormSet` are in `jobs/forms.py`.
@@ -127,35 +131,49 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
 
 ## Cladding Estimator
 
-A second estimation module alongside framing (midfloor/roof), sharing the same `Job`/`Section`
-machinery rather than a new app. Converts m² to lineal metres by dividing by a product's fixed
-**cover** width, instead of a user-chosen joist/rafter **spacing** — mathematically the same
-division (`jobs/calculations.py`'s `_area_lm()` helper is shared by both), but cover is a fixed
-property of the product (`Product.cover_mm`, `Product.use_as_cladding`) rather than a per-area
-design choice, so it can't reuse `FloorRoofArea.joist_spacing`.
+A second estimation module alongside framing (midfloor/roof), sharing the `jobs` app rather
+than a new one. Converts m² to lineal metres by dividing by a product's fixed **cover** width,
+instead of a user-chosen joist/rafter **spacing** — mathematically the same division
+(`jobs/calculations.py`'s `_area_lm()` helper is shared by both), but cover is a fixed property
+of the product (`Product.cover_mm`, `Product.use_as_cladding`) rather than a per-area design
+choice, so it can't reuse `FloorRoofArea.joist_spacing`.
 
-- `Section.SystemType.CLADDING` is a fourth system type. A `Job` locks to one category on its
-  first section — `jobs.views._job_allows_framing()` / `_job_allows_cladding()` check the job's
-  existing sections and block mixing (no new `Job` field; the category is derived, not stored).
-  `SectionForm.system_type` choices exclude `CLADDING` — cladding sections are created/edited
-  through a wholly separate flow: views `cladding_section_create`/`cladding_section_edit`,
-  form `CladdingSectionForm` (just `label` — system_type is fixed programmatically, not
-  user-chosen), template `templates/jobs/cladding_section_form.html`.
-- `jobs.CladdingArea` mirrors `FloorRoofArea` (`section` FK, `area_label`, `area_m2`,
-  `cladding_product` FK limited to `use_as_cladding=True`) but has no spacing-equivalent field —
-  cover comes from the linked product. Multiple areas per section, same as framing.
-- Wastage % and estimate uncertainty % are unchanged — both are already section/job-level, so
-  they apply to cladding for free via the shared `_area_lm()` helper.
-- Hardware allowance has **no dedicated field for cladding** — it stays the existing
-  `Job.hardware_allowance_pct` (job-level, applies to the whole job's materials subtotal).
-  `cladding_section_create` seeds it to `0` the first time a job's `hardware_allowance_pct` is
-  still `None` (i.e. only once, on that job's first cladding section) so cladding jobs default
-  to no hardware allowance instead of inheriting the framing-oriented global default — it's
+**No `Section` layer.** Framing genuinely needs `Section` — `roof_pitch` and the boundary-joist/
+stair-void fields are per-physical-system values, so one job can hold e.g. two roof planes at
+different pitches as two Sections. Cladding has no equivalent per-instance setting: a cladding
+estimate is just a flat list of elevations (North Elevation, Internal Stairway, ...), each with
+its own m² and product — data-equivalent to a framing `FloorRoofArea`, not a `Section`. So
+`jobs.CladdingArea` FKs straight to `Job` (`related_name='cladding_areas'`), and `Job` grows its
+own `calculated_subtotal`/`member_schedule` fields (same shape as `Section`'s) to hold the
+result. A `Job` doing cladding is naturally single-"section" already — an estimate like "Oak
+Option" holding several elevations, with a sibling "Kwila Option" `Job` (via **Duplicate**) for
+a different product line — so nothing is lost by dropping the wrapper.
+- `Job.is_cladding` (`cladding_areas.exists()`) is how a job's category is told apart — there's
+  no stored field, mirrored by `jobs.views._job_allows_framing()`/`_job_allows_cladding()` which
+  check the *other* relation (a job with any `Section` can't take cladding areas and vice versa)
+  to keep the two categories from mixing in one estimate.
+- `jobs.CladdingArea` mirrors `FloorRoofArea` (`area_label`, `area_m2`, `cladding_product` FK
+  limited to `use_as_cladding=True`) but has no spacing-equivalent field — cover comes from the
+  linked product.
+- Single view `jobs:cladding_areas_edit` (`cladding_areas_edit` in `jobs/views.py`) handles both
+  first-add and every subsequent edit — `CladdingAreaFormSet` (in `jobs/forms.py`, now an
+  inline formset on `Job` rather than `Section`) manages the whole job's areas at once, template
+  `templates/jobs/cladding_areas_form.html`. It seeds `Job.hardware_allowance_pct` to `0` the
+  first time (job has no cladding areas yet and the field is still `None`) so cladding jobs
+  default to no hardware allowance instead of inheriting the framing-oriented global default —
   still the same inline-editable "Advanced Settings" field on `job_detail.html`, so a merchant
   can set it above zero later (e.g. flashings) with no schema change needed.
-- `job_detail.html`'s "Add Section" toolbar and empty-state show "+ Add Section" and/or
-  "+ Add Cladding Section" based on `can_add_framing`/`can_add_cladding` context flags (both
-  true only when the job has no sections yet).
+- Calculation: `run_cladding_calculation(job)` (`jobs/calculations.py`) — the cladding
+  counterpart to `run_subjob_calculation(section)`, calling `_calc_cladding(job)` (which loops
+  `job.cladding_areas`, the extracted-out cladding half of what used to be inside
+  `_calc_subjob`) and storing the result directly on the `Job`. `run_job_estimate(job)`
+  dispatches on `job.is_cladding` to pick the right path. Wastage % and estimate uncertainty %
+  are unchanged — both are already job-level, so they apply to cladding for free.
+- `job_detail.html` renders a single "Cladding" card listing every area (not one card per
+  elevation) when `cladding_areas` is non-empty, alongside the normal per-`Section` cards for
+  any framing job. Toolbar/empty-state show "+ Add Cladding Areas" or "Edit Cladding Areas"
+  (`can_add_framing`/`can_add_cladding` context flags, both true only when the job has neither
+  sections nor cladding areas yet).
 - Products: a `Cladding` `ProductType` (seeded via `products/migrations/0012_seed_
   cladding_producttype.py`, same `get_or_create` pattern as the original product-type seed).
   CSV bulk import (`products/admin_import.py`) supports `use_as_cladding` and `cover_mm` columns.

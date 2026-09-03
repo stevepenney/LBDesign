@@ -54,6 +54,11 @@ class Job(models.Model):
         null=True,
         blank=True,
     )
+    # Calculated result for a cladding estimate (no Section layer — see is_cladding below).
+    calculated_subtotal = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+    )
+    member_schedule = models.JSONField(default=dict, blank=True)
     freight_charge = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -80,7 +85,18 @@ class Job(models.Model):
         return f'{self.project.lb_ref}{label_part}'
 
     @property
+    def is_cladding(self):
+        """
+        A cladding estimate has no Section layer — its areas (elevations) attach
+        directly to the Job, since unlike midfloor/roof there's no per-physical-system
+        setting (roof pitch, boundary joists) that would need its own container.
+        """
+        return self.cladding_areas.exists()
+
+    @property
     def subtotal(self):
+        if self.is_cladding:
+            return self.calculated_subtotal or 0
         return sum(s.calculated_subtotal or 0 for s in self.sections.all())
 
     @property
@@ -105,7 +121,6 @@ class Section(models.Model):
         MIDFLOOR = 'midfloor', 'Midfloor'
         ROOF = 'roof', 'Roof'
         OTHER = 'other', 'Other'
-        CLADDING = 'cladding', 'Cladding'
 
     job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='sections')
     label = models.CharField(max_length=200, help_text="e.g. 'Unit 1 Midfloor'")
@@ -178,10 +193,6 @@ class Section(models.Model):
     def is_other(self):
         return self.system_type == self.SystemType.OTHER
 
-    @property
-    def is_cladding(self):
-        return self.system_type == self.SystemType.CLADDING
-
 
 class FloorRoofArea(models.Model):
     """
@@ -227,11 +238,17 @@ class FloorRoofArea(models.Model):
 
 class CladdingArea(models.Model):
     """
-    One or more areas within a cladding section, each covered by a single product.
-    Lineal metres are derived from area_m2 and the product's cover_mm — there is no
-    user-entered spacing/cover, unlike FloorRoofArea's joist_spacing.
+    One elevation/zone within a cladding estimate (e.g. North Elevation, Internal
+    Stairway), each covered by a single product. Lineal metres are derived from
+    area_m2 and the product's cover_mm — there is no user-entered spacing/cover,
+    unlike FloorRoofArea's joist_spacing.
+
+    Attaches directly to Job, not Section — a cladding estimate has no equivalent
+    of midfloor/roof's per-physical-system settings (roof pitch, boundary joists),
+    so there's nothing for a Section layer to hold; elevations are areas, not
+    sections, from a data perspective.
     """
-    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='cladding_areas')
+    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='cladding_areas')
     area_label = models.CharField(max_length=200, blank=True)
     area_m2 = models.DecimalField(max_digits=10, decimal_places=2)
     cladding_product = models.ForeignKey(
@@ -248,7 +265,7 @@ class CladdingArea(models.Model):
 
     def __str__(self):
         label = self.area_label or f'Area {self.pk}'
-        return f'{self.section.label} / {label}'
+        return f'{self.job.project.lb_ref} / {label}'
 
 
 class AdditionalBeam(models.Model):

@@ -51,8 +51,8 @@ class JobAdmin(admin.ModelAdmin):
     list_display  = ['__str__', 'project', 'created_at']
     list_filter   = ['project__organisation']
     search_fields = ['label', 'project__client_name', 'project__site_address', 'project__lb_job_number']
-    readonly_fields = ['created_at', 'updated_at', 'freight_charge', 'freight_surcharge']
-    inlines = [SectionInline, DrawingUploadInline]
+    readonly_fields = ['created_at', 'updated_at', 'freight_charge', 'freight_surcharge', 'calculated_subtotal', 'member_schedule']
+    inlines = [SectionInline, CladdingAreaInline, DrawingUploadInline]
 
 
 @admin.register(Section)
@@ -61,4 +61,4 @@ class SectionAdmin(admin.ModelAdmin):
     list_filter   = ['system_type']
     search_fields = ['label', 'job__project__client_name']
     readonly_fields = ['calculated_subtotal', 'member_schedule']
-    inlines = [FloorRoofAreaInline, CladdingAreaInline, AdditionalBeamInline, CutlistImportLineInline]
+    inlines = [FloorRoofAreaInline, AdditionalBeamInline, CutlistImportLineInline]

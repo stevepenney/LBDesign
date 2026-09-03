@@ -402,7 +402,21 @@
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="2" class="summary-empty">No items added yet.</td></tr>
+          {% if job.is_cladding %}
+          <tr>
+            <td>Cladding</td>
+            <td class="summary-amount">
+              {% if job.calculated_subtotal is not None %}
+                ${{ job.calculated_subtotal|floatformat:2 }}
+                {% if job.member_schedule.has_unpriced %}<span class="summary-partial" title="Some items have no price set">&nbsp;&#9888;</span>{% endif %}
+              {% else %}
+                <span class="summary-nil">&mdash;</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="2" class="summary-empty">No items added yet.</td></tr>
+          {% endif %}
         {% endfor %}
 
         <tr class="summary-rule"><td colspan="2"></td></tr>
@@ -521,44 +535,23 @@
       <a href="{% url 'jobs:section_create' job.pk %}" class="btn btn-primary">+ Add Section</a>
     {% endif %}
     {% if can_add_cladding %}
-      <a href="{% url 'jobs:cladding_section_create' job.pk %}" class="btn btn-primary">+ Add Cladding Section</a>
+      <a href="{% url 'jobs:cladding_areas_edit' job.pk %}" class="btn btn-primary">{% if cladding_areas %}Edit Cladding Areas{% else %}+ Add Cladding Areas{% endif %}</a>
     {% endif %}
   </div>
 </div>
 
-{% if sections %}
+{% if sections or cladding_areas %}
   {% for sj in sections %}
   <div class="subjob-card">
     <div class="subjob-card__header">
       <span class="subjob-card__title">{{ sj.label }}</span>
       <span class="subjob-card__type">{{ sj.get_system_type_display }}</span>
       <div class="subjob-card__actions">
-        {% if sj.is_cladding %}
-          <a href="{% url 'jobs:cladding_section_edit' job.pk sj.pk %}">Edit</a>
-        {% else %}
-          <a href="{% url 'jobs:section_edit' job.pk sj.pk %}">Edit</a>
-        {% endif %}
+        <a href="{% url 'jobs:section_edit' job.pk sj.pk %}">Edit</a>
         <a href="{% url 'jobs:section_delete' job.pk sj.pk %}" class="del-link">Delete</a>
       </div>
     </div>
     <div class="subjob-card__body">
-      {% if sj.is_cladding %}
-        {% if sj.cladding_areas.all %}
-        <table class="areas-table">
-          <thead><tr><th>Area</th><th>Area (m²)</th><th>Cladding</th><th>Cover</th></tr></thead>
-          <tbody>
-            {% for area in sj.cladding_areas.all %}
-            <tr>
-              <td>{{ area.area_label|default:"—" }}</td>
-              <td>{{ area.area_m2 }}</td>
-              <td>{{ area.cladding_product|default:"—" }}</td>
-              <td>{% if area.cladding_product.cover_mm %}{{ area.cladding_product.cover_mm }} mm{% else %}—{% endif %}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% endif %}
-      {% else %}
       {% if sj.areas.all %}
       <table class="areas-table">
         <thead><tr><th>Area</th><th>Area (m²)</th><th>Joist / Rafter</th><th>Spacing</th></tr></thead>
@@ -573,7 +566,6 @@
           {% endfor %}
         </tbody>
       </table>
-      {% endif %}
       {% endif %}
 
       <div class="flag-list">
@@ -649,6 +641,45 @@
   </div>
   {% endfor %}
 
+  {% if cladding_areas %}
+  <div class="subjob-card">
+    <div class="subjob-card__header">
+      <span class="subjob-card__title">Cladding</span>
+      <span class="subjob-card__type">Cladding</span>
+      <div class="subjob-card__actions">
+        <a href="{% url 'jobs:cladding_areas_edit' job.pk %}">Edit</a>
+      </div>
+    </div>
+    <div class="subjob-card__body">
+      <table class="areas-table">
+        <thead><tr><th>Area</th><th>Area (m²)</th><th>Cladding</th><th>Cover</th></tr></thead>
+        <tbody>
+          {% for area in cladding_areas %}
+          <tr>
+            <td>{{ area.area_label|default:"—" }}</td>
+            <td>{{ area.area_m2 }}</td>
+            <td>{{ area.cladding_product|default:"—" }}</td>
+            <td>{% if area.cladding_product.cover_mm %}{{ area.cladding_product.cover_mm }} mm{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div class="subtotal-row">
+        Sub-total:
+        {% if job.calculated_subtotal is not None %}
+          <strong>${{ job.calculated_subtotal|floatformat:2 }}</strong> excl. GST
+          {% if job.member_schedule.has_unpriced %}
+            <span style="font-size:.78rem;color:#b27000;" title="Some items have no price in the active price book.">&#9888; partial</span>
+          {% endif %}
+        {% else %}
+          <strong>—</strong> <span style="font-size:.8rem;color:#aaa;">(products not yet priced)</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
 {% else %}
   <div class="empty-state">
     <p>No sections yet. Add a section to start the estimate.</p>
@@ -657,7 +688,7 @@
         <a href="{% url 'jobs:section_create' job.pk %}" class="btn btn-primary">+ Add Section</a>
       {% endif %}
       {% if can_add_cladding %}
-        <a href="{% url 'jobs:cladding_section_create' job.pk %}" class="btn btn-primary">+ Add Cladding Section</a>
+        <a href="{% url 'jobs:cladding_areas_edit' job.pk %}" class="btn btn-primary">+ Add Cladding Areas</a>
       {% endif %}
     </div>
   </div>

@@ -2,7 +2,7 @@ from django import forms
 from django.forms import inlineformset_factory
 
 from products.models import Product
-from .models import Section, FloorRoofArea, CladdingArea, AdditionalBeam
+from .models import Job, Section, FloorRoofArea, CladdingArea, AdditionalBeam
 
 
 class SectionForm(forms.ModelForm):
@@ -37,11 +37,6 @@ class SectionForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Cladding is created/edited through its own dedicated flow (see CladdingSectionForm) —
-        # a job is locked to one category or the other, so it's never offered here.
-        self.fields['system_type'].choices = [
-            c for c in Section.SystemType.choices if c[0] != Section.SystemType.CLADDING
-        ]
         self.fields['boundary_joist_product'].queryset = (
             Product.objects.filter(use_as_boundary_joist=True, is_active=True)
         )
@@ -161,23 +156,6 @@ AdditionalBeamFormSet = inlineformset_factory(
 )
 
 
-class CladdingSectionForm(forms.ModelForm):
-    """
-    Cladding sections have their own creation/edit flow (see jobs/views.py
-    cladding_section_create/edit) — system_type is fixed to CLADDING there, not user-chosen.
-    """
-
-    class Meta:
-        model = Section
-        fields = ['label']
-        widgets = {
-            'label': forms.TextInput(attrs={'placeholder': "e.g. Unit 1 Cladding"}),
-        }
-        labels = {
-            'label': 'Sub-Job Label',
-        }
-
-
 class CladdingAreaForm(forms.ModelForm):
 
     class Meta:
@@ -203,7 +181,7 @@ class CladdingAreaForm(forms.ModelForm):
 
 
 CladdingAreaFormSet = inlineformset_factory(
-    Section,
+    Job,
     CladdingArea,
     form=CladdingAreaForm,
     extra=0,
