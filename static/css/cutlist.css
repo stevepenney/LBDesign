@@ -801,7 +801,9 @@
   color: var(--brown);
 }
 
-/* ── Timber type colour coding (PRESERVED — do not change) ── */
+/* ── Timber type colour coding ──────────────────────────────
+   LIB/LVL8/LVL11/LVL13/GL/OTHER (PRESERVED — do not change).
+   CLADDING added alongside them — free to restyle if needed. ── */
 .timber-lib .cut-segment,
 .timber-lib .cut-segment-split { background: #FFFF00; }
 
@@ -816,6 +818,9 @@
 
 .timber-gl .cut-segment,
 .timber-gl .cut-segment-split { background: rgb(255, 176, 198); }
+
+.timber-cladding .cut-segment,
+.timber-cladding .cut-segment-split { background: rgb(230, 145, 56); }
 
 .timber-other .cut-segment,
 .timber-other .cut-segment-split {
@@ -988,12 +993,6 @@
 }
 
 .stick-lock-toggle.locked {
-  opacity: 1;
-  filter: none;
-}
-
-span.stick-lock-toggle {
-  cursor: default;
   opacity: 1;
   filter: none;
 }

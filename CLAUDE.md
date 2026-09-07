@@ -283,8 +283,8 @@ only apply at tab-creation time, so a merchant's manual customisation is never s
 by later linking a product.
 
 ### Wizard (5 steps — vertical accordion)
-1. **Cutlist Settings** — `preparedBy`, `kerfWidth` only (project/client info lives in the
-   Project Details card above the wizard, not in this step)
+1. **Cutlist Settings** — `systemType` (Framing / Cladding), `preparedBy`, `kerfWidth`
+   (project/client info lives in the Project Details card above the wizard, not in this step)
 2. **Import Cuts** — textarea (also drop zone for CSV files)
 3. **Review Cuts** — per-member collapsible panels (start collapsed); cuts grouped + collapsible by group within each panel
 4. **Results** — member tabs with cutting diagrams; click cut segment to edit inline (Feature 3)
@@ -294,11 +294,42 @@ Navigation: free to jump to any previously reached step. Actions (Optimise, Next
 
 Print view (`cutlist:project_print`) sources client/site/reference/lb_ref from
 `window.CUTLIST_PROJECT_INFO` (rendered server-side from `project.project.*`), not from
-`jobDetails` — only `preparedBy`/`kerfWidth` still come from the saved state.
+`jobDetails` — only `systemType`/`preparedBy`/`kerfWidth` still come from the saved state.
+
+### Framing vs Cladding (`project.jobDetails.systemType`)
+A cutlist project is one or the other, chosen via a Step 1 dropdown (`'framing'` default —
+old saved cutlists with no `systemType` key keep behaving as framing via `Object.assign`'s
+merge-over-defaults in `restoreProject`, no migration needed since it lives in `state`).
+Deliberately freely switchable, unlike the estimator's per-`Job` framing/cladding lock — it's
+just a presentation flag (bin colour + stock-length defaults), so nothing breaks by flipping
+it; it only takes effect on the next Optimise for tabs already computed.
+- `calculateOptimization()` and `getDefaultStockLengths()` both use
+  `project.jobDetails.systemType === 'cladding' ? 'CLADDING' : getTimberType(tab.memberName)`
+  instead of always guessing from the member name. This is deliberately **not** a
+  `getTimberType(memberName, productId)` signature change consulting `Product.use_as_cladding`
+  — cladding profile names (e.g. "Weatherboard 180", "Rusticator") have no shared substring to
+  guess from the way LIB/LVL8/LVL11/LVL13/GL do, so per-tab guessing would be unreliable;
+  the project-level toggle sidesteps guessing entirely. `openConvertModal()`'s weak
+  timber-type-substring product guess is unchanged — it only ever runs when a tab has no
+  confirmed `productId` yet, so there's nothing for it to check either way.
+- `TimberTypeDefaultStockLengths.TimberType.CLADDING` (`products` app) seeded with the same
+  generic default as LVL11/LVL13/GL/OTHER (`products/migrations/0014_seed_cladding_stock_
+  lengths.py`) — real cladding products should set their own `Product.stock_lengths`, which
+  takes precedence anyway (same tiering as every other timber type).
+- **Do not confuse this with `products.ProductType`** (the real catalog category —
+  I-Joist/LVL/Glulam/Cladding, admin-managed). The two "type" concepts are unrelated: cutlist.js
+  only ever reads `product_type__name` as display text next to a product name in a dropdown —
+  it has no effect on classification, bin colour, or stock-length resolution.
+- Cladding cutlists have no dedicated conversion path yet — `cutlist_convert_to_estimate`
+  (`jobs/views.py`) always creates a framing-style `Section`/`CutlistImportLine`, which doesn't
+  fit the Job-level cladding design at all (no `Section` to attach to, and `CutlistImportLine`
+  stores lineal metres directly rather than `CladdingArea`'s area+cover shape). Needs a design
+  decision before "Convert to Estimate" is offered for a cladding-mode cutlist.
 
 ### CSS
 `cutlist.css` uses `base.css` variables (no separate palette). Timber bin colours are
-functional and must not change: LIB=yellow, LVL8=green, LVL11=cyan, LVL13=teal, GL=pink.
+functional and must not change: LIB=yellow, LVL8=green, LVL11=cyan, LVL13=teal, GL=pink,
+CLADDING=orange (added alongside them, free to restyle).
 
 ### Consolidation algorithm
 `optimizeGroupBins()` (static/js/cutlist.js) replaced three separate, order-dependent
@@ -416,4 +447,9 @@ don't over-engineer now, but don't make choices that box out phase 2 expansion.
 - [ ] Drawing upload → email notification to detailing team (`DETAILING_TEAM_EMAIL` setting exists)
 - [ ] Price book management UI (currently admin-only via Django admin)
 - [ ] Member schedule display on job detail page
+- [ ] "Convert to Estimate" for a cladding-mode cutlist (`cutlist_convert_to_estimate` in
+      `jobs/views.py` only knows how to build a framing `Section` + `CutlistImportLine`; a
+      cladding `Job` has no `Section` to attach one to, and `CutlistImportLine`'s lineal-metres
+      shape doesn't fit `CladdingArea`'s area+cover shape either — needs a real design decision,
+      see "Framing vs Cladding" under Cutlist Optimizer)
 - [x] Cutlist Optimizer — integrated at `/cutlist/` with split-panel layout and DB persistence

@@ -74,17 +74,20 @@ class TimberTypeDefaultStockLengths(models.Model):
     for any member that isn't linked to a specific Product (mapping is optional; wholesale
     merchant customers use the tool directly and may never touch the product catalog).
 
-    `timber_type` mirrors getTimberType() in static/js/cutlist.js exactly (LIB/LVL8/LVL11/
-    LVL13/GL/OTHER, the same classification the cutting-diagram colours already use) — keep
-    both in sync.
+    `timber_type` mirrors the cutting-diagram colour classes in static/js/cutlist.js exactly
+    — keep both in sync. LIB/LVL8/LVL11/LVL13/GL/OTHER come from getTimberType()'s text-based
+    guess on the member name; CLADDING instead comes from the project-level Framing/Cladding
+    toggle (project.jobDetails.systemType) set in Step 1 of the wizard, since cladding profile
+    names have no shared naming convention to guess from the way LIB/LVL/GL do.
     """
     class TimberType(models.TextChoices):
-        LIB   = 'LIB',   'I-Beam / LIB'
-        LVL8  = 'LVL8',  'LVL8'
-        LVL11 = 'LVL11', 'LVL11'
-        LVL13 = 'LVL13', 'LVL13'
-        GL    = 'GL',    'Glulam'
-        OTHER = 'OTHER', 'Other'
+        LIB      = 'LIB',      'I-Beam / LIB'
+        LVL8     = 'LVL8',     'LVL8'
+        LVL11    = 'LVL11',    'LVL11'
+        LVL13    = 'LVL13',    'LVL13'
+        GL       = 'GL',       'Glulam'
+        CLADDING = 'CLADDING', 'Cladding'
+        OTHER    = 'OTHER',    'Other'
 
     timber_type = models.CharField(max_length=10, choices=TimberType, unique=True)
     stock_lengths = models.CharField(

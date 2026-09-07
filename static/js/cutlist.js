@@ -4,6 +4,7 @@
 
 const project = {
     jobDetails: {
+        systemType: 'framing',   // 'framing' | 'cladding' — picks bin colour + stock-length defaults
         preparedBy: '',
         kerfWidth: 25
     },
@@ -30,11 +31,13 @@ function getTab(tabId) { return project.tabs.find(t => t.id === tabId); }
 function getActiveTab() { return getTab(project.activeTabId); }
 
 function readJobDetailsFromDOM() {
+    project.jobDetails.systemType = document.getElementById('systemType').value;
     project.jobDetails.preparedBy = document.getElementById('preparedBy').value;
     project.jobDetails.kerfWidth  = parseFloat(document.getElementById('kerfWidth').value) || 25;
 }
 
 function writeJobDetailsToDOM() {
+    document.getElementById('systemType').value = project.jobDetails.systemType;
     document.getElementById('preparedBy').value = project.jobDetails.preparedBy;
     document.getElementById('kerfWidth').value  = project.jobDetails.kerfWidth;
 }
@@ -54,6 +57,9 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 function initJobDetailListeners() {
+    document.getElementById('systemType').addEventListener('change', e => {
+        project.jobDetails.systemType = e.target.value;
+    });
     document.getElementById('preparedBy').addEventListener('input', e => {
         project.jobDetails.preparedBy = e.target.value;
     });
@@ -239,7 +245,7 @@ function getDefaultStockLengths(memberName, productId) {
             if (lengths.length) return lengths;
         }
     }
-    const timberType = getTimberType(memberName);
+    const timberType = project.jobDetails.systemType === 'cladding' ? 'CLADDING' : getTimberType(memberName);
     const byType = (window.CUTLIST_TIMBER_TYPE_DEFAULTS || {})[timberType];
     return (byType && byType.length) ? byType : FALLBACK_STOCK_LENGTHS;
 }
@@ -745,7 +751,7 @@ function calculateOptimization(tabId) {
     const overlengthSplitStock = tab.overlengthSplitStock || 6000;
     const maxStockLength       = Math.max(...tab.stockLengths);
     const sortedStock          = [...tab.stockLengths].sort((a, b) => a - b);
-    const timberType           = getTimberType(tab.memberName);
+    const timberType           = project.jobDetails.systemType === 'cladding' ? 'CLADDING' : getTimberType(tab.memberName);
 
     const allBins          = [];
     const overlengthSplits = [];
@@ -982,15 +988,13 @@ function generateCuttingDiagram(bin, stickNumber, kerfWidth, tabId) {
             <div class="stick-label${stickLabelClass}" title="${editable ? 'Click to change stock length' : ''}"${stickLabelClick}>Stick ${stickNumber}<br>${stockLength}mm</div>`;
 
     // Every stick gets a lock toggle in the live editor — locking is a general-purpose choice,
-    // not just something that follows automatically from editing. In print view, only show it
-    // (non-interactive) when actually locked, since that's the one state worth recording.
+    // not just something that follows automatically from editing. It's a working-session aid
+    // only, so print/export leaves it off entirely.
     if (editable) {
         html += `
             <button type="button" class="stick-lock-toggle${bin.locked ? ' locked' : ''}"
                     title="${bin.locked ? 'Locked — click to unlock' : 'Not locked — click to lock'}"
                     onclick="toggleBinLock('${tabId}', ${bin.id})">${bin.locked ? '&#128274;' : '&#128275;'}</button>`;
-    } else if (bin.locked) {
-        html += `<span class="stick-lock-toggle locked" title="Locked">&#128274;</span>`;
     }
 
     html += `<div class="stick" style="height:${diagramHeight}px;width:${diagramWidth}px;"${dropHandlers}>`;
@@ -1857,7 +1861,7 @@ function subsetSearchPass(bins, stockSorted, kerfWidth, wasteThreshold, maxSubse
     const groupVal   = bins[best.subsetBinIdx[0]].group;
     const timberType = bins[best.subsetBinIdx[0]].timberType;
     const kept       = bins.filter((b, i) => !subsetSet.has(i));
-    const newBins    = best.newBins.map(nb => ({ stockLength: nb.stockLength, cuts: nb.cuts, remaining: nb.remaining, group: groupVal, timberType }));
+    const newBins    = best.newBins.map(nb => ({ id: binIdCounter++, stockLength: nb.stockLength, cuts: nb.cuts, remaining: nb.remaining, group: groupVal, timberType }));
     return { bins: kept.concat(newBins), changed: true };
 }
 
@@ -1889,7 +1893,7 @@ function poolRepackPass(bins, stockSorted, kerfWidth) {
 
     if (!best) return { bins, changed: false };
 
-    const newBins = best.repacked.map(nb => ({ stockLength: nb.stockLength, cuts: nb.cuts, remaining: nb.remaining, group: groupVal, timberType }));
+    const newBins = best.repacked.map(nb => ({ id: binIdCounter++, stockLength: nb.stockLength, cuts: nb.cuts, remaining: nb.remaining, group: groupVal, timberType }));
     return { bins: newBins, changed: true };
 }
 
