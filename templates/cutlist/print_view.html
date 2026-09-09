@@ -118,13 +118,22 @@
     /* ── replaces Genia's per-layout box — same facts, no per-layout repeat) */
     .print-pattern-table { margin-bottom: 1.25rem; }
 
+    /* ── Per-pattern cut legend (ID/length/mark/qty) — every diagram segment ── */
+    /* ── below is labelled with just its ID, since a narrow offcut has no    ── */
+    /* ── room for full mm+mark text; see static/js/cutting_report.js.        ── */
+    .print-cut-legend { margin: .4rem 0 .6rem 0; }
+    .print-cut-legend th, .print-cut-legend td { padding: .2rem .65rem; }
+    /* Mark is text, not a number — override the table's default "every column
+       but the first is numeric" alignment rule for this one column. */
+    .print-cut-legend th:nth-child(3), .print-cut-legend td:nth-child(3) { text-align: left; }
+
     /* ── Horizontal cutting diagrams — wide bars stacked down the page,     ── */
     /* ── instead of narrow tall sticks wrapped side by side, to cut white   ── */
     /* ── space and give cut labels room to sit inline.                     ── */
     .h-diagrams-container {
       display: flex;
       flex-direction: column;
-      gap: .85rem;
+      gap: 1.25rem;
     }
     .h-diagram__header {
       display: flex;
@@ -159,7 +168,7 @@
       text-overflow: ellipsis;
     }
     .h-stick > *:last-child { border-right: none; }
-    .h-seg-mark { opacity: .85; }
+    .h-seg-letter { font-size: 0.95rem; font-weight: 700; color: rgba(0,0,0,.65); }
 
     /* ── Per-group stats bar ─────────────────────────────────── */
     .print-group-stats {

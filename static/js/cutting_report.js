@@ -76,17 +76,78 @@ function buildPatternSummaryTable(layouts, kerfWidth) {
       </table>`;
 }
 
+// ─── Per-pattern cut legend ──────────────────────────────────────
+// A narrow cut (e.g. a 25mm offcut) has no room to print "25mm · Gable" on
+// its own segment — the text just overlaps into an unreadable mess (the
+// problem that prompted this legend, matching Genia's approach). Instead
+// every segment gets a single bold letter, always readable at any width,
+// and the letter's real length/mark is spelled out once in a small table
+// above that pattern's diagram. Scoped per pattern (not shared across
+// patterns on the page) — deliberately simple: each pattern is a
+// self-contained cutting instruction, so its legend only needs to cover
+// what's actually on that one stick, and never needs more than a couple of
+// dozen letters even on a busy pattern.
+
+function letterFor(index) {
+    let n = index + 1;
+    let s = '';
+    while (n > 0) {
+        const rem = (n - 1) % 26;
+        s = String.fromCharCode(65 + rem) + s;
+        n = Math.floor((n - 1) / 26);
+    }
+    return s;
+}
+
+function buildCutLegend(cuts) {
+    const legend = new Map(); // key (mark|length) -> { letter, mark, length, qty }
+    cuts.forEach(cutInfo => {
+        const mark   = typeof cutInfo === 'object' ? (cutInfo.mark || '') : '';
+        const length = cutLengthOf(cutInfo);
+        const key    = `${mark}|${length}`;
+        if (!legend.has(key)) {
+            legend.set(key, { letter: letterFor(legend.size), mark, length, qty: 0 });
+        }
+        legend.get(key).qty += 1;
+    });
+    return legend;
+}
+
+function buildCutLegendTable(legend) {
+    const rows = Array.from(legend.values()).map(({ letter, mark, length, qty }) => `
+      <tr>
+        <td><strong>${letter}</strong></td>
+        <td class="num">${length}mm</td>
+        <td>${mark ? escReportText(mark) : '&mdash;'}</td>
+        <td class="num">${qty}</td>
+      </tr>`).join('');
+
+    return `<table class="print-table print-cut-legend">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th class="num">Length</th>
+            <th>Mark</th>
+            <th class="num">Qty</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+}
+
 // ─── Horizontal cutting diagram ─────────────────────────────────
 // A dedicated report-only renderer, deliberately separate from
 // generateCuttingDiagram() in cutlist.js — the interactive Step 4 editor
-// keeps its vertical sticks (needed for drag/drop and stick-length editing);
-// this only ever runs on a report page. Widths are simple percentages of
-// stock length; a report doesn't need the pixel-exact kerf-gap math the
-// live editor does.
+// keeps its vertical sticks (needed for drag/drop and stick-length editing)
+// and its full mm/mark labels on every segment; this only ever runs on a
+// (print or on-screen) report page, where the cut legend above replaces
+// that. Widths are simple percentages of stock length; a report doesn't
+// need the pixel-exact kerf-gap math the live editor does.
 
 function generateHorizontalDiagram(bin, label) {
     const { stockLength, cuts, remaining, timberType } = bin;
     const timberClass = timberType ? `timber-${timberType.toLowerCase()}` : 'timber-other';
+    const legend = buildCutLegend(cuts);
 
     let segmentsHtml = '';
     cuts.forEach(cutInfo => {
@@ -101,10 +162,11 @@ function generateHorizontalDiagram(bin, label) {
         const mark          = typeof cutInfo === 'object' ? (cutInfo.mark || '') : '';
         const cutClass      = isSplitPiece ? 'cut-segment-split' : 'cut-segment';
         const widthPct      = (cutLength / stockLength) * 100;
+        const letter        = legend.get(`${mark}|${cutLengthOf(cutInfo)}`).letter;
+        const titleText      = mark ? `${letter}: ${displayLength}mm [${mark}]` : `${letter}: ${displayLength}mm`;
         segmentsHtml += `
-          <div class="${cutClass}" style="width:${widthPct}%;" title="${escReportText(mark)}">
-            <span>${displayLength}mm</span>
-            ${mark ? `<span class="h-seg-mark">${escReportText(mark)}</span>` : ''}
+          <div class="${cutClass}" style="width:${widthPct}%;" title="${escReportText(titleText)}">
+            <span class="h-seg-letter">${letter}</span>
           </div>`;
     });
 
@@ -119,6 +181,7 @@ function generateHorizontalDiagram(bin, label) {
     return `
         <div class="h-diagram ${timberClass}">
           <div class="h-diagram__header"><strong>${escReportText(label)}</strong><span>${stockLength}mm stock</span></div>
+          ${buildCutLegendTable(legend)}
           <div class="h-stick">${segmentsHtml}</div>
         </div>`;
 }
