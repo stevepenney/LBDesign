@@ -134,7 +134,7 @@
       <tr>
         <th>Member</th>
         <th>Description</th>
-        <th class="num">LM</th>
+        <th class="num">Qty</th>
         <th class="num">Unit Price</th>
         <th class="num">Line Total</th>
       </tr>
@@ -144,7 +144,7 @@
       <tr>
         <td>{{ item.label }}</td>
         <td class="desc">{{ item.description|default:"—" }}</td>
-        <td class="num">{{ item.lineal_metres|floatformat:2 }}</td>
+        <td class="num">{{ item.lineal_metres|floatformat:2 }} {{ item.unit|default:"lm" }}</td>
         <td class="num">
           {% if item.unit_price is not None %}
             ${{ item.unit_price|floatformat:2 }}

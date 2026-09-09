@@ -90,6 +90,41 @@
     .print-stock-table thead { display: table-header-group; }
     .print-stock-table tr    { page-break-inside: avoid; }
 
+    /* Elevations table has text (not numeric) in its non-first columns */
+    .print-elevations-table th:nth-child(2), .print-elevations-table td:nth-child(2),
+    .print-elevations-table th:nth-child(6), .print-elevations-table td:nth-child(6) {
+      text-align: left;
+    }
+
+    /* ── Order sheet total line ──────────────────────────────── */
+    .print-order-total {
+      display: flex;
+      align-items: baseline;
+      justify-content: flex-end;
+      gap: .75rem;
+      margin-top: .5rem;
+      padding-top: .75rem;
+      border-top: 2px solid var(--brown);
+    }
+    .print-order-total__note {
+      margin-right: auto;
+      font-size: 0.72rem;
+      color: #b27000;
+      font-style: italic;
+    }
+    .print-order-total__label {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--brown);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .print-order-total__value {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--brown-dark);
+    }
+
     /* ── Diagram page header ─────────────────────────────────── */
     .print-page-header {
       display: flex;
@@ -113,6 +148,53 @@
       font-size: 0.75rem;
       color: #aaa;
     }
+
+    /* ── Pattern summary table (one row per distinct cutting pattern,       ── */
+    /* ── replaces Genia's per-layout box — same facts, no per-layout repeat) */
+    .print-pattern-table { margin-bottom: 1.25rem; }
+
+    /* ── Horizontal cutting diagrams — wide bars stacked down the page,     ── */
+    /* ── instead of narrow tall sticks wrapped side by side, to cut white   ── */
+    /* ── space and give cut/elevation labels room to sit inline.           ── */
+    .h-diagrams-container {
+      display: flex;
+      flex-direction: column;
+      gap: .85rem;
+    }
+    .h-diagram__header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      color: #666;
+      margin-bottom: .25rem;
+    }
+    .h-diagram__header strong { color: var(--brown); font-size: 0.85rem; }
+    .h-stick {
+      display: flex;
+      width: 100%;
+      height: 52px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .h-stick .cut-segment,
+    .h-stick .cut-segment-split,
+    .h-stick .waste-segment {
+      min-height: 0;
+      height: 100%;
+      flex-direction: column;
+      border-bottom: none;
+      border-top: none;
+      border-right: 2px solid white;
+      font-size: 0.66rem;
+      line-height: 1.15;
+      padding: 0 .25rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .h-stick > *:last-child { border-right: none; }
+    .h-seg-mark { opacity: .85; }
 
     /* ── Per-group stats bar ─────────────────────────────────── */
     .print-group-stats {
@@ -139,14 +221,18 @@
         min-height: 0;
       }
 
-      .print-page--diagram { break-before: page; }
+      .print-page--diagram   { break-before: page; }
+      .print-page--ordersheet { break-before: page; }
 
       /* Stock table header repeats across physical pages */
       .print-stock-table thead { display: table-header-group; }
       .print-stock-table tr    { page-break-inside: avoid; }
 
-      .stick-diagram      { page-break-inside: avoid; break-inside: avoid; }
-      .diagrams-container { page-break-inside: auto; }
+      .stick-diagram        { page-break-inside: avoid; break-inside: avoid; }
+      .diagrams-container   { page-break-inside: auto; }
+      .h-diagram            { page-break-inside: avoid; break-inside: avoid; }
+      .h-diagrams-container { page-break-inside: auto; }
+      .print-pattern-table tr { page-break-inside: avoid; }
 
       * {
         -webkit-print-color-adjust: exact !important;
@@ -161,8 +247,14 @@
   <div id="print-root"></div>
 
   {{ project.state|json_script:"print-state-data" }}
+  {{ cladding_areas|json_script:"print-elevations-data" }}
+  {{ extra_items|json_script:"print-extra-items-data" }}
+  {{ product_prices|json_script:"print-product-prices-data" }}
   <script>
     window.CUTLIST_PRINT_MODE = true;
+    window.CUTLIST_ELEVATIONS = JSON.parse(document.getElementById('print-elevations-data').textContent);
+    window.CUTLIST_EXTRA_ITEMS = JSON.parse(document.getElementById('print-extra-items-data').textContent);
+    window.CUTLIST_PRODUCT_PRICES = JSON.parse(document.getElementById('print-product-prices-data').textContent);
     window.CUTLIST_PROJECT_INFO = {
       name: "{{ project.name|escapejs }}",
       lbRef: "{{ project.project.lb_ref|escapejs }}",
@@ -197,6 +289,7 @@
         const tab = {
           id:                   tabId,
           memberName:           tabData.memberName,
+          productId:            tabData.productId ?? null,
           cuts:                 tabData.cuts,
           stockLengths:         tabData.stockLengths,
           cutTolerance:         tabData.cutTolerance !== undefined ? tabData.cutTolerance : 50,
@@ -213,6 +306,8 @@
 
       root.appendChild(buildSummaryPage());
       buildDiagramPages().forEach(page => root.appendChild(page));
+      const orderSheetPage = buildOrderSheetPage();
+      if (orderSheetPage) root.appendChild(orderSheetPage);
 
       setTimeout(() => window.print(), 600);
     });
@@ -253,12 +348,40 @@
             <span class="print-meta-label">Kerf width:</span>   <span>${jd.kerfWidth}mm</span>
           </div>
         </div>
+        ${buildElevationsTable()}
         <div class="print-section-title">Optimisation Overview</div>
         ${buildOverviewTable(tabs)}
-        <div class="print-section-title">Stock Order</div>
-        ${buildStockTable(tabs)}
       `;
       return page;
+    }
+
+    function buildElevationsTable() {
+      const elevations = window.CUTLIST_ELEVATIONS || [];
+      if (!elevations.length) return '';
+
+      const rows = elevations.map(e => `<tr>
+        <td>${esc(e.label) || '—'}</td>
+        <td>${esc(e.orientation)}</td>
+        <td>${Number(e.width_m).toFixed(2)}</td>
+        <td>${Number(e.height_m).toFixed(2)}</td>
+        <td>${Number(e.area_m2).toFixed(2)}</td>
+        <td>${esc(e.product) || '—'}</td>
+      </tr>`).join('');
+
+      return `
+        <div class="print-section-title">Elevations</div>
+        <table class="print-table print-elevations-table">
+          <thead>
+            <tr>
+              <th>Area</th><th>Orientation</th>
+              <th>Width (m)</th>
+              <th>Height (m)</th>
+              <th>Area (m²)</th>
+              <th>Cladding</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
     }
 
     function buildOverviewTable(tabs) {
@@ -311,60 +434,84 @@
       </table>`;
     }
 
-    function buildStockTable(tabs) {
-      if (!tabs.length) return '';
+    // ─── Order sheet (final page) ───────────────────────────────────
+    // One merged table — every stock item from every tab's optimised result,
+    // plus any extra items (scribers, mouldings, etc.) added on the cladding
+    // job — each priced ($/lm from the linked product) and summed to a total.
+    // Sits after the diagram pages, since it's the "what do I actually order
+    // and what does it cost" answer, not part of the cutting instructions.
 
-      const stockData = [];
+    function buildOrderSheetPage() {
+      const tabs   = project.tabs.filter(t => t.results);
+      const extras = window.CUTLIST_EXTRA_ITEMS || [];
+      if (!tabs.length && !extras.length) return null;
+
+      const prices = window.CUTLIST_PRODUCT_PRICES || {};
+      const rows = [];
+      let hasUnpriced = false;
+      let grandTotal  = 0;
+
       tabs.forEach(tab => {
         const counts = {};
         tab.results.bins.forEach(bin => {
-          const group  = bin.group || '';
           const length = bin.stockLength / 1000;
-          const key    = `${group}||${length}`;
-          counts[key]  = (counts[key] || 0) + 1;
+          counts[length] = (counts[length] || 0) + 1;
         });
-        Object.entries(counts).forEach(([key, qty]) => {
-          const [group, lenStr] = key.split('||');
-          stockData.push({ group, product: tab.memberName, length: parseFloat(lenStr), qty });
+        const unitPrice = tab.productId != null ? prices[tab.productId] : undefined;
+        Object.entries(counts).forEach(([lenStr, qty]) => {
+          const length   = parseFloat(lenStr);
+          const costEach = unitPrice !== undefined ? parseFloat(unitPrice) * length : null;
+          const subtotal = costEach !== null ? costEach * qty : null;
+          if (subtotal !== null) grandTotal += subtotal; else hasUnpriced = true;
+          rows.push({ product: tab.memberName, length, qty, costEach, subtotal });
         });
       });
 
-      stockData.sort((a, b) => {
-        const ga = a.group || '￿';
-        const gb = b.group || '￿';
-        if (ga !== gb) return ga.localeCompare(gb);
-        if (a.product !== b.product) return a.product.localeCompare(b.product);
-        return b.length - a.length;
+      extras.forEach(item => {
+        const length = parseFloat(item.length_m);
+        // "each" products price per piece — length doesn't factor into cost, only quantity does.
+        const costEach = item.unit_price !== null
+          ? (item.unit === 'each' ? parseFloat(item.unit_price) : parseFloat(item.unit_price) * length)
+          : null;
+        const subtotal = costEach !== null ? costEach * item.quantity : null;
+        if (subtotal !== null) grandTotal += subtotal; else hasUnpriced = true;
+        rows.push({ product: item.description, length, qty: item.quantity, costEach, subtotal });
       });
 
-      const hasGroups = stockData.some(r => r.group);
-      const rows = stockData.map(row => `<tr>
-        ${hasGroups ? `<td>${esc(row.group || '—')}</td>` : ''}
-        <td>${esc(row.product)}</td>
-        <td>${row.length.toFixed(1)}</td>
-        <td>${row.qty}</td>
+      rows.sort((a, b) => a.product.localeCompare(b.product) || b.length - a.length);
+
+      const bodyRows = rows.map(r => `<tr>
+        <td>${esc(r.product)}</td>
+        <td>${r.length.toFixed(2)}</td>
+        <td>${r.qty}</td>
+        <td>${r.costEach !== null ? '$' + r.costEach.toFixed(2) : '—'}</td>
+        <td>${r.subtotal !== null ? '$' + r.subtotal.toFixed(2) : '—'}</td>
       </tr>`).join('');
 
-      const totalQty = stockData.reduce((s, r) => s + r.qty, 0);
-      const totalFooter = `<tr>
-        ${hasGroups ? '<td></td>' : ''}
-        <td>Total</td>
-        <td></td>
-        <td>${totalQty}</td>
-      </tr>`;
-
-      return `<table class="print-table print-stock-table">
-        <thead>
-          <tr>
-            ${hasGroups ? '<th>Group</th>' : ''}
-            <th>Product</th>
-            <th style="text-align:right">Length (m)</th>
-            <th style="text-align:right">Qty</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-        <tfoot>${totalFooter}</tfoot>
-      </table>`;
+      const page = document.createElement('div');
+      page.className = 'print-page print-page--ordersheet';
+      page.innerHTML = `
+        <div class="print-page-header">
+          <span class="print-page-header__member">Order Summary</span>
+        </div>
+        <table class="print-table print-stock-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th style="text-align:right">Length (m)</th>
+              <th style="text-align:right">Count</th>
+              <th style="text-align:right">Cost ea.</th>
+              <th style="text-align:right">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+        <div class="print-order-total">
+          ${hasUnpriced ? '<span class="print-order-total__note">Some items have no price in the active price book and are excluded from this total.</span>' : ''}
+          <span class="print-order-total__label">Estimate Total</span>
+          <span class="print-order-total__value">$${grandTotal.toFixed(2)}</span>
+        </div>`;
+      return page;
     }
 
     // ─── Diagram pages ────────────────────────────────────────────
@@ -411,15 +558,21 @@
             ? `<span class="print-page-header__group">Group: ${esc(groupLabel)}</span>`
             : '';
 
+          // Collapse physical sticks into distinct cutting patterns — a job can
+          // easily produce dozens of sticks that are really only a handful of
+          // repeated patterns. A wee summary table (one row per pattern) carries
+          // the per-stick facts once, instead of Genia's repeated per-layout box,
+          // and the horizontal diagrams below just show where things sit.
+          const layouts = groupIdenticalLayouts(groupBins);
+
           page.innerHTML = `
             <div class="print-page-header">
               <span class="print-page-header__member">${esc(tab.memberName)}</span>
               ${groupSubtitle}
               <span class="print-page-header__jobref">${esc(jobRef)}</span>
             </div>
-            <div class="cutting-diagrams">
-              <div class="diagrams-container"></div>
-            </div>
+            ${buildPatternSummaryTable(layouts, kerfWidth)}
+            <div class="h-diagrams-container"></div>
             <div class="print-group-stats">
               <div class="stat">
                 <div class="stat-label">Sticks</div>
@@ -439,13 +592,11 @@
               </div>
             </div>`;
 
-          // Inject diagrams using the shared rendering function
-          const container = page.querySelector('.diagrams-container');
-          let stickNum = 1;
-          groupBins.forEach(bin => {
+          const container = page.querySelector('.h-diagrams-container');
+          layouts.forEach((layout, i) => {
             container.insertAdjacentHTML(
               'beforeend',
-              generateCuttingDiagram(bin, stickNum++, kerfWidth, null)
+              generateHorizontalDiagram(layout.representative, `Pattern ${i + 1}`)
             );
           });
 
@@ -454,6 +605,108 @@
       });
 
       return pages;
+    }
+
+    // ─── Repetition grouping ────────────────────────────────────────
+    // Two sticks count as "the same layout" if they share a stock length and
+    // the same multiset of cut lengths, regardless of the order those cuts
+    // happen to sit in on any one physical bin (two independently-produced
+    // bins with identical cuts can end up in a different order). The
+    // representative bin picked for the diagram has its cuts re-sorted
+    // largest-to-smallest so every printed pattern reads consistently.
+
+    function cutLengthOf(cut) {
+      return typeof cut === 'object' ? (cut.displayLength ?? cut.length) : cut;
+    }
+
+    function groupIdenticalLayouts(bins) {
+      const groups = new Map();
+      bins.forEach(bin => {
+        const lengths = bin.cuts.map(cutLengthOf).slice().sort((a, b) => b - a);
+        const key = `${bin.stockLength}|${lengths.join(',')}`;
+        if (!groups.has(key)) {
+          const sortedCuts = [...bin.cuts].sort((a, b) => cutLengthOf(b) - cutLengthOf(a));
+          groups.set(key, { representative: { ...bin, cuts: sortedCuts }, count: 0 });
+        }
+        groups.get(key).count += 1;
+      });
+      return Array.from(groups.values());
+    }
+
+    // ─── Pattern summary table ────────────────────────────────────
+    // One row per distinct pattern — stock length, how many sticks use it,
+    // number of saw cuts, kerf loss, and leftover remnant. All per-stick
+    // (not multiplied by qty off), matching how Genia states these facts,
+    // just consolidated into one table instead of a box repeated per layout.
+
+    function buildPatternSummaryTable(layouts, kerfWidth) {
+      const rows = layouts.map((layout, i) => {
+        const rep      = layout.representative;
+        const numCuts  = rep.cuts.length;
+        const cutWaste = numCuts * kerfWidth;
+        return `<tr>
+          <td>Pattern ${i + 1}</td>
+          <td>${rep.stockLength}mm</td>
+          <td>${layout.count}</td>
+          <td>${numCuts}</td>
+          <td>${cutWaste}mm</td>
+          <td>${rep.remaining || 0}mm</td>
+        </tr>`;
+      }).join('');
+
+      return `<table class="print-table print-pattern-table">
+        <thead>
+          <tr>
+            <th>Pattern</th>
+            <th style="text-align:right">Stock Length</th>
+            <th style="text-align:right">Qty off</th>
+            <th style="text-align:right">Cuts</th>
+            <th style="text-align:right">Cut Waste</th>
+            <th style="text-align:right">Leftover</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    }
+
+    // ─── Horizontal cutting diagram (print-only) ───────────────────
+    // A dedicated print-only renderer, deliberately separate from
+    // generateCuttingDiagram() in cutlist.js — the interactive Step 4 editor
+    // keeps its vertical sticks (needed for drag/drop and stick-length editing),
+    // this only ever runs here. Widths are simple percentages of stock length;
+    // print doesn't need the pixel-exact kerf-gap math the live editor does.
+
+    function generateHorizontalDiagram(bin, label) {
+      const { stockLength, cuts, remaining, timberType } = bin;
+      const timberClass = timberType ? `timber-${timberType.toLowerCase()}` : 'timber-other';
+
+      let segmentsHtml = '';
+      cuts.forEach(cutInfo => {
+        const isSplitPiece  = typeof cutInfo === 'object' ? cutInfo.isSplitPiece : false;
+        const displayLength = typeof cutInfo === 'object' ? (cutInfo.displayLength ?? cutInfo.length) : cutInfo;
+        const mark          = typeof cutInfo === 'object' ? (cutInfo.mark || '') : '';
+        const cutClass      = isSplitPiece ? 'cut-segment-split' : 'cut-segment';
+        const widthPct      = (displayLength / stockLength) * 100;
+        segmentsHtml += `
+          <div class="${cutClass}" style="width:${widthPct}%;" title="${esc(mark)}">
+            <span>${displayLength}mm</span>
+            ${mark ? `<span class="h-seg-mark">${esc(mark)}</span>` : ''}
+          </div>`;
+      });
+
+      if (remaining > 0) {
+        const wastePct = (remaining / stockLength) * 100;
+        segmentsHtml += `
+          <div class="waste-segment" style="width:${wastePct}%;">
+            <span>${remaining}mm</span>
+          </div>`;
+      }
+
+      return `
+        <div class="h-diagram ${timberClass}">
+          <div class="h-diagram__header"><strong>${esc(label)}</strong><span>${stockLength}mm stock</span></div>
+          <div class="h-stick">${segmentsHtml}</div>
+        </div>`;
     }
   </script>
 </body>

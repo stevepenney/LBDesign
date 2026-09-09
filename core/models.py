@@ -74,6 +74,14 @@ class SystemSettings(models.Model):
         default=10.00,
         help_text='Wastage % applied to all lineal metre quantities. Accounts for off-cuts when cutting from discrete stock lengths (typical: 5–15%).',
     )
+    stock_contingency_pct = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=10.00,
+        help_text='Default contingency % added on top of an optimised cutlist\'s real stock '
+                   'quantity, for on-site mis-cuts or breakage (typical: 10–15%). Individual '
+                   'estimates can override this.',
+    )
     stair_void_allowance_lm = models.DecimalField(
         max_digits=8,
         decimal_places=2,

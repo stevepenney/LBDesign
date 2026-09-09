@@ -22,4 +22,6 @@ urlpatterns = [
 
     # Cladding areas (separate flow, no Section layer — see CLAUDE.md Cladding Estimator)
     path('<int:job_pk>/cladding/edit/',              views.cladding_areas_edit, name='cladding_areas_edit'),
+    path('<int:job_pk>/cladding/generate-cutlist/',  views.cladding_generate_cutlist, name='cladding_generate_cutlist'),
+    path('<int:job_pk>/cladding/import-cutlist/',    views.cladding_import_cutlist_results, name='cladding_import_cutlist'),
 ]

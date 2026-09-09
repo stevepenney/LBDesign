@@ -26,6 +26,16 @@ class Job(models.Model):
         related_name='generated_jobs',
         help_text='Set when this estimate was created from a cutlist stock order.',
     )
+    cladding_cutlist = models.ForeignKey(
+        'cutlist.CutlistProject',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cladding_source_jobs',
+        help_text="Cutlist generated from this cladding job's own vertical elevations, if any. "
+                  "Opposite direction to source_cutlist: this job produced that cutlist, rather "
+                  "than being created from one.",
+    )
     label = models.CharField(
         max_length=100,
         blank=True,
@@ -45,6 +55,10 @@ class Job(models.Model):
     estimate_uncertainty_pct = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
         help_text='Override estimate uncertainty band %. Leave blank to use the global default.',
+    )
+    stock_contingency_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Override cutlist stock contingency %. Leave blank to use the global default.',
     )
 
     # Stored totals computed by the calculation engine
@@ -240,17 +254,32 @@ class CladdingArea(models.Model):
     """
     One elevation/zone within a cladding estimate (e.g. North Elevation, Internal
     Stairway), each covered by a single product. Lineal metres are derived from
-    area_m2 and the product's cover_mm — there is no user-entered spacing/cover,
-    unlike FloorRoofArea's joist_spacing.
+    area_m2 (= width_m * height_m) and the product's cover_mm — there is no
+    user-entered spacing/cover, unlike FloorRoofArea's joist_spacing.
 
     Attaches directly to Job, not Section — a cladding estimate has no equivalent
     of midfloor/roof's per-physical-system settings (roof pitch, boundary joists),
     so there's nothing for a Section layer to hold; elevations are areas, not
     sections, from a data perspective.
+
+    orientation matters beyond display: vertical-run boards can't have joins (a
+    board must span the full height in one piece), so a vertical elevation can be
+    broken down into discrete cut pieces (see cut_piece()) and fed to the cutlist
+    optimizer. Horizontal runs tolerate joins, so a course has no single fixed
+    piece length — it stays on the area-based lm estimate below instead of ever
+    producing discrete pieces.
     """
+    class Orientation(models.TextChoices):
+        VERTICAL = 'vertical', 'Vertical'
+        HORIZONTAL = 'horizontal', 'Horizontal'
+
     job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='cladding_areas')
     area_label = models.CharField(max_length=200, blank=True)
-    area_m2 = models.DecimalField(max_digits=10, decimal_places=2)
+    orientation = models.CharField(
+        max_length=10, choices=Orientation.choices, default=Orientation.VERTICAL,
+    )
+    width_m = models.DecimalField(max_digits=8, decimal_places=2)
+    height_m = models.DecimalField(max_digits=8, decimal_places=2)
     cladding_product = models.ForeignKey(
         'products.Product',
         on_delete=models.SET_NULL,
@@ -266,6 +295,61 @@ class CladdingArea(models.Model):
     def __str__(self):
         label = self.area_label or f'Area {self.pk}'
         return f'{self.job.project.lb_ref} / {label}'
+
+    @property
+    def area_m2(self):
+        return self.width_m * self.height_m
+
+    def cut_piece(self):
+        """
+        Vertical boards only — (length_mm, qty) for the discrete boards this
+        elevation needs, or None if it can't be priced/cut yet. A horizontal
+        course tolerates joins, so it has no single fixed piece length; it stays
+        on the area-based lm estimate in jobs.calculations instead.
+        """
+        if self.orientation != self.Orientation.VERTICAL:
+            return None
+        if not self.cladding_product or not self.cladding_product.cover_mm:
+            return None
+        height_mm = int(self.height_m * 1000)
+        width_mm = int(self.width_m * 1000)
+        qty = -(-width_mm // self.cladding_product.cover_mm)  # ceil division
+        return height_mm, qty
+
+
+class CladdingExtraItem(models.Model):
+    """
+    Extra cladding-related products that don't come from an elevation's area —
+    scribers, corner mouldings, flashings, etc. Mirrors AdditionalBeam's shape
+    (product + length + quantity) for the same reason AdditionalBeam exists for
+    framing: a flat, freely-added line that isn't derived from anything else.
+    Attaches directly to Job, not Section, same as CladdingArea.
+    """
+    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='cladding_extra_items')
+    product_description = models.CharField(
+        max_length=200, blank=True,
+        help_text='e.g. Vertica Scriber 40x19 or Corner Mould',
+    )
+    product = models.ForeignKey(
+        'products.Product',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cladding_extra_items',
+    )
+    length_m = models.DecimalField(max_digits=8, decimal_places=2)
+    quantity = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self):
+        label = self.product or self.product_description or 'Extra item'
+        return f'{label} x{self.quantity} @ {self.length_m}m'
+
+    @property
+    def lineal_metres(self):
+        return float(self.length_m) * self.quantity
 
 
 class AdditionalBeam(models.Model):
@@ -323,6 +407,42 @@ class CutlistImportLine(models.Model):
         null=True, blank=True,
         help_text='Index into the source cutlist state.tabs[] this line was mapped from — used to join back to the per-stick stock order for display.',
     )
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self):
+        label = self.product or self.product_description or 'Unmatched member'
+        return f'{label} x{self.quantity} @ {self.length_m}m'
+
+    @property
+    def lineal_metres(self):
+        return float(self.length_m) * self.quantity
+
+
+class CladdingCutlistLine(models.Model):
+    """
+    A priced product line created by importing a cladding job's generated cutlist
+    results — mirrors CutlistImportLine, but attaches directly to Job instead of
+    Section, the same way CladdingArea attaches to Job instead of FloorRoofArea's
+    Section (cladding has no Section layer). length_m is the real optimized gross
+    stock length required for the product, with the job's stock contingency %
+    already applied — see jobs.calculations._calc_cladding.
+    """
+    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='cladding_cutlist_lines')
+    product = models.ForeignKey(
+        'products.Product',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cladding_cutlist_lines',
+    )
+    product_description = models.CharField(
+        max_length=200, blank=True,
+        help_text='Raw member name from the cutlist, kept as a placeholder label when no product was matched.',
+    )
+    length_m = models.DecimalField(max_digits=8, decimal_places=2)
+    quantity = models.PositiveIntegerField(default=1)
 
     class Meta:
         ordering = ['id']

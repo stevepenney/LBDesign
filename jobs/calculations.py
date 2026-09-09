@@ -52,6 +52,22 @@ def _area_lm(area_m2, dimension_mm, wastage_factor, pitch_factor=Decimal('1')):
     return (_d(area_m2) / dimension_m * pitch_factor * wastage_factor).quantize(_CENT)
 
 
+def _priced_quantity(product, length_m, quantity):
+    """
+    The number multiplied by unit price for one schedule line. EACH products price
+    per piece — length_m is ignored (a scriber's price doesn't depend on its
+    length), only quantity counts. LM products (the default) price by
+    length_m * quantity, same as every other calculation in this module.
+
+    Only used by the two "flat line item" blocks (Additional beams, Cladding
+    extra items) — every other block derives its lineal metres from an area or a
+    real cut length, with no independent piece count to price "each" against.
+    """
+    if product and product.unit_of_measure == product.UnitOfMeasure.EACH:
+        return _d(quantity)
+    return _d(length_m) * _d(quantity)
+
+
 # ── Core calculation ──────────────────────────────────────────────────────────
 
 def _calc_subjob(sub_job):
@@ -63,8 +79,16 @@ def _calc_subjob(sub_job):
     has_unpriced — True if any line item has no price in the active book.
 
     Line item dict keys:
-        label, description, lineal_metres, unit_price, line_total
-        (unit_price and line_total are None when not priced)
+        label, description, lineal_metres, unit, unit_price, line_total
+        (unit_price and line_total are None when not priced; unit is only set
+        on the Additional beams block — see _priced_quantity)
+
+    Only "Additional beams" is unit-of-measure aware (via _priced_quantity).
+    Joists/rafters, boundary joists, stair void trimmers, and cutlist import
+    lines all derive their lineal metres from an area or a real cut length —
+    there's no independent piece count there to price "each" against, so they
+    stay pure lineal-metre calculations regardless of a linked product's
+    unit_of_measure.
     """
     organisation = sub_job.job.project.organisation
     schedule = []
@@ -137,12 +161,12 @@ def _calc_subjob(sub_job):
             'line_total': str(line_total) if line_total else None,
         })
 
-    # ── Additional beams ──────────────────────────────────────────────────
+    # ── Additional beams (unit-of-measure aware — see _priced_quantity) ────
     for beam in sub_job.additional_beams.select_related('product').all():
         if not beam.product:
             has_unpriced = True
             continue
-        lm = (_d(beam.length_m) * _d(beam.quantity) * wastage_factor).quantize(_CENT)
+        lm = _priced_quantity(beam.product, _d(beam.length_m) * wastage_factor, beam.quantity)
         price = get_product_price(beam.product, organisation)
         line_total = (lm * price).quantize(_CENT) if price else None
         if line_total:
@@ -153,6 +177,7 @@ def _calc_subjob(sub_job):
             'label': f'Beam ×{beam.quantity}',
             'description': str(beam.product),
             'lineal_metres': str(lm),
+            'unit': beam.product.unit_of_measure,
             'unit_price': str(price) if price else None,
             'line_total': str(line_total) if line_total else None,
         })
@@ -191,7 +216,20 @@ def _calc_cladding(job):
     """
     Same (subtotal, schedule, has_unpriced) contract as _calc_subjob, but for a
     cladding job's areas directly — cladding has no Section, no pitch, no boundary
-    joists/beams/cutlist lines, so it's a much shorter calculation.
+    joists/beams, so it's a much shorter calculation.
+
+    Areas and CladdingCutlistLines are merged per product, not switched wholesale:
+    a vertical area whose product has already been imported from a generated
+    cutlist (see cladding_import_cutlist_results) is priced from that real stock
+    quantity instead of its rough area estimate; every other area (horizontal —
+    which never goes through the cutlist — or vertical but not yet imported)
+    keeps the area-based estimate. This avoids double-counting a product that's
+    priced both ways while still supporting a job that mixes both orientations.
+
+    Only "Cladding extra items" is unit-of-measure aware (via _priced_quantity).
+    Areas (area→cover derived) and cutlist lines (real cut stock lengths) have no
+    independent piece count to price "each" against, so they stay pure
+    lineal-metre calculations regardless of a linked product's unit_of_measure.
     """
     organisation = job.project.organisation
     schedule = []
@@ -202,7 +240,12 @@ def _calc_cladding(job):
     effective_wastage = job.wastage_pct if job.wastage_pct is not None else freight_settings.wastage_pct
     wastage_factor = Decimal('1') + _d(effective_wastage) / Decimal('100')
 
+    cutlist_lines = list(job.cladding_cutlist_lines.select_related('product').all())
+    cutlist_product_ids = {line.product_id for line in cutlist_lines if line.product_id}
+
     for area in job.cladding_areas.select_related('cladding_product').all():
+        if area.orientation == area.Orientation.VERTICAL and area.cladding_product_id in cutlist_product_ids:
+            continue
         if not area.cladding_product or not area.cladding_product.cover_mm:
             has_unpriced = True
             continue
@@ -217,6 +260,60 @@ def _calc_cladding(job):
             'label': area.area_label or 'Cladding',
             'description': str(area.cladding_product),
             'lineal_metres': str(lm),
+            'unit_price': str(price) if price else None,
+            'line_total': str(line_total) if line_total else None,
+        })
+
+    for line in cutlist_lines:
+        lm = _d(line.length_m) * _d(line.quantity)
+        if not line.product:
+            has_unpriced = True
+            schedule.append({
+                'label': 'Cutlist output',
+                'description': line.product_description or 'Unmatched cutlist member',
+                'lineal_metres': str(lm),
+                'unit_price': None,
+                'line_total': '0.00',
+            })
+            continue
+        price = get_product_price(line.product, organisation)
+        line_total = (lm * price).quantize(_CENT) if price else None
+        if line_total:
+            subtotal += line_total
+        else:
+            has_unpriced = True
+        schedule.append({
+            'label': 'Cutlist output',
+            'description': str(line.product),
+            'lineal_metres': str(lm),
+            'unit_price': str(price) if price else None,
+            'line_total': str(line_total) if line_total else None,
+        })
+
+    for item in job.cladding_extra_items.select_related('product').all():
+        if not item.product:
+            has_unpriced = True
+            lm = _d(item.length_m) * _d(item.quantity) * wastage_factor
+            schedule.append({
+                'label': item.product_description or 'Extra item',
+                'description': item.product_description or 'Unmatched product',
+                'lineal_metres': str(lm),
+                'unit_price': None,
+                'line_total': '0.00',
+            })
+            continue
+        lm = _priced_quantity(item.product, _d(item.length_m) * wastage_factor, item.quantity)
+        price = get_product_price(item.product, organisation)
+        line_total = (lm * price).quantize(_CENT) if price else None
+        if line_total:
+            subtotal += line_total
+        else:
+            has_unpriced = True
+        schedule.append({
+            'label': item.product_description or str(item.product),
+            'description': str(item.product),
+            'lineal_metres': str(lm),
+            'unit': item.product.unit_of_measure,
             'unit_price': str(price) if price else None,
             'line_total': str(line_total) if line_total else None,
         })

@@ -2,7 +2,7 @@ from django import forms
 from django.forms import inlineformset_factory
 
 from products.models import Product
-from .models import Job, Section, FloorRoofArea, CladdingArea, AdditionalBeam
+from .models import Job, Section, FloorRoofArea, CladdingArea, CladdingExtraItem, AdditionalBeam
 
 
 class SectionForm(forms.ModelForm):
@@ -157,14 +157,17 @@ class CladdingAreaForm(forms.ModelForm):
 
     class Meta:
         model = CladdingArea
-        fields = ['area_label', 'area_m2', 'cladding_product']
+        fields = ['area_label', 'orientation', 'width_m', 'height_m', 'cladding_product']
         widgets = {
             'area_label': forms.TextInput(attrs={'placeholder': 'e.g. North Elevation (optional)'}),
-            'area_m2': forms.NumberInput(attrs={'step': '0.1', 'placeholder': '0.0'}),
+            'width_m': forms.NumberInput(attrs={'step': '0.1', 'placeholder': '0.0'}),
+            'height_m': forms.NumberInput(attrs={'step': '0.1', 'placeholder': '0.0'}),
         }
         labels = {
             'area_label': 'Area label (optional)',
-            'area_m2': 'Area (m²)',
+            'orientation': 'Orientation',
+            'width_m': 'Width (m)',
+            'height_m': 'Height (m)',
             'cladding_product': 'Cladding',
         }
 
@@ -184,5 +187,39 @@ CladdingAreaFormSet = inlineformset_factory(
     extra=0,
     min_num=1,
     validate_min=True,
+    can_delete=True,
+)
+
+
+class CladdingExtraItemForm(forms.ModelForm):
+
+    class Meta:
+        model = CladdingExtraItem
+        fields = ['product_description', 'product', 'length_m', 'quantity']
+        widgets = {
+            'product_description': forms.TextInput(attrs={'placeholder': 'e.g. Corner Mould (optional)'}),
+            'length_m': forms.NumberInput(attrs={'step': '0.1', 'placeholder': '0.0'}),
+            'quantity': forms.NumberInput(attrs={'min': '1', 'placeholder': '1'}),
+        }
+        labels = {
+            'product_description': 'Description (optional)',
+            'product': 'Product',
+            'length_m': 'Length per piece (m)',
+            'quantity': 'Qty',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['product'].queryset = Product.objects.filter(is_active=True)
+        self.fields['product'].empty_label = '— select —'
+        self.fields['product'].required = False
+
+
+CladdingExtraItemFormSet = inlineformset_factory(
+    Job,
+    CladdingExtraItem,
+    form=CladdingExtraItemForm,
+    extra=1,
+    min_num=0,
     can_delete=True,
 )

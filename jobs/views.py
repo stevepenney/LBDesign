@@ -20,9 +20,12 @@ from projects.views import _assert_project_access
 from .calculations import run_job_estimate, run_subjob_calculation, run_cladding_calculation
 from .forms import (
     SectionForm, FloorRoofAreaFormSet, FloorRoofAreaOptionalFormSet, AdditionalBeamFormSet,
-    CladdingAreaFormSet,
+    CladdingAreaFormSet, CladdingExtraItemFormSet,
 )
-from .models import Job, Section, FloorRoofArea, CladdingArea, AdditionalBeam, CutlistImportLine
+from .models import (
+    Job, Section, FloorRoofArea, CladdingArea, CladdingExtraItem, AdditionalBeam,
+    CutlistImportLine, CladdingCutlistLine,
+)
 
 
 def _priced_cutlist_lines(section):
@@ -253,6 +256,14 @@ def job_detail(request, pk):
         'additional_beams', 'cutlist_import_lines',
     ).all())
     cladding_areas = list(job.cladding_areas.select_related('cladding_product').all())
+    cladding_extra_items = list(job.cladding_extra_items.select_related('product').all())
+    has_vertical_cladding_areas = any(
+        a.orientation == CladdingArea.Orientation.VERTICAL for a in cladding_areas
+    )
+    cladding_cutlist_has_results = bool(
+        job.cladding_cutlist_id
+        and any(t.get('results') for t in (job.cladding_cutlist.state or {}).get('tabs', []))
+    )
     if job.source_cutlist_id:
         for sj in sections:
             if sj.cutlist_import_lines.all():
@@ -281,6 +292,9 @@ def job_detail(request, pk):
         'job': job,
         'sections': sections,
         'cladding_areas': cladding_areas,
+        'cladding_extra_items': cladding_extra_items,
+        'has_vertical_cladding_areas': has_vertical_cladding_areas,
+        'cladding_cutlist_has_results': cladding_cutlist_has_results,
         'system_settings': system_settings,
         'effective_hardware_pct':     effective_hardware_pct,
         'effective_wastage_pct':      effective_wastage_pct,
@@ -405,10 +419,12 @@ def cladding_areas_edit(request, job_pk):
         return redirect('jobs:job_detail', pk=job.pk)
 
     if request.method == 'POST':
-        area_fs = CladdingAreaFormSet(request.POST, instance=job, prefix='areas')
+        area_fs  = CladdingAreaFormSet(request.POST, instance=job, prefix='areas')
+        extra_fs = CladdingExtraItemFormSet(request.POST, instance=job, prefix='extras')
 
-        if area_fs.is_valid():
+        if area_fs.is_valid() and extra_fs.is_valid():
             area_fs.save()
+            extra_fs.save()
             if is_new and job.hardware_allowance_pct is None:
                 job.hardware_allowance_pct = Decimal('0')
                 job.save(update_fields=['hardware_allowance_pct', 'updated_at'])
@@ -416,13 +432,154 @@ def cladding_areas_edit(request, job_pk):
             messages.success(request, 'Cladding areas updated.')
             return redirect('jobs:job_detail', pk=job.pk)
     else:
-        area_fs = CladdingAreaFormSet(instance=job, prefix='areas')
+        area_fs  = CladdingAreaFormSet(instance=job, prefix='areas')
+        extra_fs = CladdingExtraItemFormSet(instance=job, prefix='extras')
 
     return render(request, 'jobs/cladding_areas_form.html', {
         'job': job,
         'area_formset': area_fs,
+        'extra_formset': extra_fs,
         'action': 'Add Cladding Areas' if is_new else 'Edit Cladding Areas',
     })
+
+
+@login_required
+@require_POST
+def cladding_generate_cutlist(request, job_pk):
+    """
+    Build a cutlist from a cladding job's vertical elevations — one tab per
+    product, one cut per area via CladdingArea.cut_piece(). Horizontal areas have
+    no fixed piece length (joins are acceptable) so they're never included; they
+    stay on the area-based estimate. Elevation labels go on each cut's `mark`,
+    not `group` — `group` is a hard packing partition in the optimizer, and we
+    want pieces from different elevations free to share a stick.
+    """
+    job = get_object_or_404(Job, pk=job_pk)
+    if not _assert_job_access(request.user, job):
+        messages.error(request, 'You do not have access to that estimate.')
+        return redirect('projects:project_list')
+
+    vertical_areas = job.cladding_areas.filter(
+        orientation=CladdingArea.Orientation.VERTICAL
+    ).select_related('cladding_product')
+
+    tabs_by_product = {}
+    skipped = 0
+    for area in vertical_areas:
+        piece = area.cut_piece()
+        if piece is None:
+            skipped += 1
+            continue
+        length_mm, qty = piece
+        product = area.cladding_product
+        tab = tabs_by_product.get(product.id)
+        if tab is None:
+            tab = {
+                'memberName': product.name,
+                'productId': product.id,
+                'cuts': [],
+                'stockLengths': product.stock_lengths_list(),
+                'cutTolerance': 50,
+                'overlengthSplitStock': 6000,
+                'results': None,
+            }
+            tabs_by_product[product.id] = tab
+        tab['cuts'].append({
+            'length': length_mm, 'quantity': qty,
+            'mark': area.area_label or '', 'group': '',
+        })
+
+    if not tabs_by_product:
+        messages.error(
+            request,
+            'No vertical elevations with a priced cladding product were found — '
+            'add at least one before generating a cutlist.',
+        )
+        return redirect('jobs:job_detail', pk=job.pk)
+
+    if skipped:
+        messages.warning(
+            request,
+            f'{skipped} vertical area(s) were skipped (no cladding product or '
+            f'cover width set).',
+        )
+
+    cutlist = CutlistProject.objects.create(
+        project=job.project,
+        created_by=request.user,
+        name=f'{job.label} — Cladding Cutlist'[:100],
+        state={
+            'jobDetails': {'systemType': 'cladding', 'preparedBy': '', 'kerfWidth': 3},
+            'tabs': list(tabs_by_product.values()),
+            'activeTabId': None,
+            'skippedData': [],
+        },
+    )
+    job.cladding_cutlist = cutlist
+    job.save(update_fields=['cladding_cutlist', 'updated_at'])
+
+    return redirect('cutlist:project_edit', pk=cutlist.pk)
+
+
+@login_required
+@require_POST
+def cladding_import_cutlist_results(request, job_pk):
+    """
+    Pull real optimized stock quantities from the job's generated cutlist back
+    into pricing, replacing the rough area-based estimate for each product the
+    cutlist covers (see _calc_cladding's per-product merge). Gross stock length
+    (not net cut length) is used as the base, since a contingency % for on-site
+    mis-cuts/breakage is meant to pad the actual quantity ordered, not just the
+    cutting waste already inherent in the optimizer's own result.
+    """
+    job = get_object_or_404(Job, pk=job_pk)
+    if not _assert_job_access(request.user, job):
+        messages.error(request, 'You do not have access to that estimate.')
+        return redirect('projects:project_list')
+
+    cutlist = job.cladding_cutlist
+    if not cutlist:
+        messages.error(request, 'Generate a cutlist for this job before importing results.')
+        return redirect('jobs:job_detail', pk=job.pk)
+
+    freight_settings = SystemSettings.get()
+    contingency_pct = (
+        job.stock_contingency_pct if job.stock_contingency_pct is not None
+        else freight_settings.stock_contingency_pct
+    )
+    contingency_factor = Decimal('1') + Decimal(str(contingency_pct)) / Decimal('100')
+
+    tabs = (cutlist.state or {}).get('tabs', [])
+    products = Product.objects.filter(
+        pk__in=[t.get('productId') for t in tabs if t.get('productId')], is_active=True
+    ).in_bulk()
+
+    lines = []
+    for tab in tabs:
+        results = tab.get('results')
+        if not results:
+            continue
+        gross_mm = Decimal(str(results.get('totalStockUsed', 0)))
+        if gross_mm <= 0:
+            continue
+        length_m = (
+            (gross_mm / Decimal('1000')) * contingency_factor
+        ).quantize(Decimal('0.01'))
+        product = products.get(tab.get('productId'))
+        lines.append(CladdingCutlistLine(
+            job=job, product=product, length_m=length_m,
+            product_description=tab.get('memberName', ''),
+        ))
+
+    if not lines:
+        messages.error(request, 'Optimise at least one tab in the cutlist before importing.')
+        return redirect('jobs:job_detail', pk=job.pk)
+
+    job.cladding_cutlist_lines.all().delete()
+    CladdingCutlistLine.objects.bulk_create(lines)
+    run_cladding_calculation(job, user=request.user)
+    messages.success(request, 'Cutlist results imported into pricing.')
+    return redirect('jobs:job_detail', pk=job.pk)
 
 
 @login_required

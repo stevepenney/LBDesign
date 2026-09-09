@@ -13,6 +13,7 @@ from accounts.models import Organisation
 from core.models import UsageEvent
 from core.usage import log_usage_event
 from products.models import Product, TimberTypeDefaultStockLengths
+from products.pricing import get_product_price
 from projects.models import Project
 from projects.views import _assert_project_access, _get_projects_for_user
 from .models import CutlistProject, MemberProductMapping
@@ -179,7 +180,52 @@ def project_duplicate(request, pk):
 def project_print(request, pk):
     cutlist = get_object_or_404(CutlistProject, pk=pk)
     _assert_cutlist_access(request.user, cutlist)
-    return render(request, 'cutlist/print_view.html', {'project': cutlist})
+    organisation = cutlist.project.organisation
+
+    # Reverse accessor only — cutlist app never imports jobs models directly,
+    # jobs.Job.cladding_cutlist is the one FK linking the two apps.
+    cladding_job = cutlist.cladding_source_jobs.select_related('project').first()
+    cladding_areas = []
+    extra_items = []
+    if cladding_job:
+        for area in cladding_job.cladding_areas.select_related('cladding_product').all():
+            cladding_areas.append({
+                'label': area.area_label,
+                'orientation': area.get_orientation_display(),
+                'width_m': str(area.width_m),
+                'height_m': str(area.height_m),
+                'area_m2': str(area.area_m2),
+                'product': str(area.cladding_product) if area.cladding_product else '',
+            })
+        for item in cladding_job.cladding_extra_items.select_related('product').all():
+            price = get_product_price(item.product, organisation) if item.product else None
+            extra_items.append({
+                'description': item.product_description or (str(item.product) if item.product else 'Unmatched item'),
+                'length_m': str(item.length_m),
+                'quantity': item.quantity,
+                'unit_price': str(price) if price else None,
+                'unit': item.product.unit_of_measure if item.product else None,
+            })
+
+    # Unit price ($/lm) per product referenced by any tab, so the print view's
+    # own JS can build the priced order sheet without needing a second round
+    # trip — this is the one place cutlist's print output needs pricing at all.
+    product_ids = {
+        t.get('productId') for t in (cutlist.state or {}).get('tabs', []) if t.get('productId')
+    }
+    products = Product.objects.filter(pk__in=product_ids).in_bulk()
+    product_prices = {}
+    for pid, product in products.items():
+        price = get_product_price(product, organisation)
+        if price is not None:
+            product_prices[pid] = str(price)
+
+    return render(request, 'cutlist/print_view.html', {
+        'project': cutlist,
+        'cladding_areas': cladding_areas,
+        'extra_items': extra_items,
+        'product_prices': product_prices,
+    })
 
 
 @login_required

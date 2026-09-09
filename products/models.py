@@ -20,6 +20,10 @@ class Product(models.Model):
     all price books. A product may be suitable for multiple uses —
     e.g. a 240x45 LVL11 can serve as a joist, beam, or boundary joist.
     """
+    class UnitOfMeasure(models.TextChoices):
+        LM = 'lm', 'Lineal Metre'
+        EACH = 'each', 'Each'
+
     name = models.CharField(max_length=100)
     product_type = models.ForeignKey(
         ProductType,
@@ -50,6 +54,14 @@ class Product(models.Model):
         blank=True,
         help_text='Cladding cover width in mm once lapped/jointed — the estimator divides area '
                    'by this to get lineal metres. Only relevant for products used as Cladding.',
+    )
+
+    unit_of_measure = models.CharField(
+        max_length=10, choices=UnitOfMeasure.choices, default=UnitOfMeasure.LM,
+        help_text='How this product is priced — per lineal metre (the default) or per piece '
+                   '(e.g. scribers, fixings). Only affects Additional Beams and Cladding Extra '
+                   'Items — every other calculation derives its lineal metres from area/spacing '
+                   'and has no independent piece count to price "each" against.',
     )
 
     class Meta:
@@ -167,7 +179,8 @@ class PriceBookEntry(models.Model):
     price_per_lm = models.DecimalField(
         max_digits=10,
         decimal_places=4,
-        help_text='Wholesale price per lineal metre, ex GST.',
+        help_text='Wholesale price, ex GST — per lineal metre, or per piece if the product\'s '
+                   'unit of measure is "Each".',
     )
 
     class Meta:

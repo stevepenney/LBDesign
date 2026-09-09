@@ -20,26 +20,26 @@ class ProductTypeAdmin(admin.ModelAdmin):
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     list_display = [
-        'name', 'product_type', 'stock_lengths', 'cover_mm',
+        'name', 'product_type', 'unit_of_measure', 'stock_lengths', 'cover_mm',
         'use_as_joist_rafter', 'use_as_boundary_joist',
         'use_as_stair_void_trimmer', 'use_as_beam', 'use_as_cladding',
         'is_active', 'sort_order',
     ]
     list_filter = [
-        'product_type', 'is_active',
+        'product_type', 'unit_of_measure', 'is_active',
         'use_as_joist_rafter', 'use_as_boundary_joist',
         'use_as_stair_void_trimmer', 'use_as_beam', 'use_as_cladding',
     ]
     search_fields = ['name']
     list_editable = [
-        'stock_lengths', 'cover_mm',
+        'unit_of_measure', 'stock_lengths', 'cover_mm',
         'use_as_joist_rafter', 'use_as_boundary_joist',
         'use_as_stair_void_trimmer', 'use_as_beam', 'use_as_cladding',
         'is_active', 'sort_order',
     ]
     fieldsets = (
         (None, {
-            'fields': ('name', 'product_type', 'is_active', 'sort_order'),
+            'fields': ('name', 'product_type', 'unit_of_measure', 'is_active', 'sort_order'),
         }),
         ('Permitted Uses', {
             'description': 'Tick every role this product may be selected for.',
@@ -83,8 +83,16 @@ class TimberTypeDefaultStockLengthsAdmin(admin.ModelAdmin):
 class PriceBookEntryInline(admin.TabularInline):
     model = PriceBookEntry
     extra = 0
-    fields = ['product', 'price_per_lm']
+    fields = ['product', 'unit', 'price_per_lm']
+    readonly_fields = ['unit']
     autocomplete_fields = ['product']
+
+    def unit(self, obj):
+        # Read-only cue next to the price so it's clear at a glance whether a
+        # row's price is per lineal metre or per piece — nothing else stops
+        # someone entering a per-lm-looking number for an each-priced product.
+        return obj.product.get_unit_of_measure_display() if obj.product_id else '—'
+    unit.short_description = 'Unit'
 
 
 class PriceBookAdminForm(forms.ModelForm):

@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import Job, Section, FloorRoofArea, CladdingArea, AdditionalBeam, CutlistImportLine, DrawingUpload
+from .models import (
+    Job, Section, FloorRoofArea, CladdingArea, CladdingExtraItem, AdditionalBeam,
+    CutlistImportLine, CladdingCutlistLine, DrawingUpload,
+)
 
 
 class FloorRoofAreaInline(admin.TabularInline):
@@ -11,7 +14,13 @@ class FloorRoofAreaInline(admin.TabularInline):
 class CladdingAreaInline(admin.TabularInline):
     model = CladdingArea
     extra = 1
-    fields = ['area_label', 'area_m2', 'cladding_product']
+    fields = ['area_label', 'orientation', 'width_m', 'height_m', 'cladding_product']
+
+
+class CladdingExtraItemInline(admin.TabularInline):
+    model = CladdingExtraItem
+    extra = 0
+    fields = ['product_description', 'product', 'length_m', 'quantity']
 
 
 class AdditionalBeamInline(admin.TabularInline):
@@ -22,6 +31,12 @@ class AdditionalBeamInline(admin.TabularInline):
 
 class CutlistImportLineInline(admin.TabularInline):
     model = CutlistImportLine
+    extra = 0
+    fields = ['product', 'product_description', 'length_m', 'quantity']
+
+
+class CladdingCutlistLineInline(admin.TabularInline):
+    model = CladdingCutlistLine
     extra = 0
     fields = ['product', 'product_description', 'length_m', 'quantity']
 
@@ -52,7 +67,10 @@ class JobAdmin(admin.ModelAdmin):
     list_filter   = ['project__organisation']
     search_fields = ['label', 'project__client_name', 'project__site_address', 'project__lb_job_number']
     readonly_fields = ['created_at', 'updated_at', 'freight_charge', 'freight_surcharge', 'calculated_subtotal', 'member_schedule']
-    inlines = [SectionInline, CladdingAreaInline, DrawingUploadInline]
+    inlines = [
+        SectionInline, CladdingAreaInline, CladdingExtraItemInline,
+        CladdingCutlistLineInline, DrawingUploadInline,
+    ]
 
 
 @admin.register(Section)

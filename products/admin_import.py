@@ -75,6 +75,9 @@ def import_products_csv(request):
             except ValueError:
                 cover_mm = None
 
+            unit_raw = (row.get('unit_of_measure') or '').strip().lower()
+            unit_of_measure = unit_raw if unit_raw in Product.UnitOfMeasure.values else Product.UnitOfMeasure.LM
+
             defaults = {
                 'product_type': product_type,
                 'is_active': _parse_bool(row.get('is_active')),
@@ -86,6 +89,7 @@ def import_products_csv(request):
                 'use_as_cladding': _parse_bool(row.get('use_as_cladding')),
                 'stock_lengths': (row.get('stock_lengths') or '').strip(),
                 'cover_mm': cover_mm,
+                'unit_of_measure': unit_of_measure,
             }
             _, was_created = Product.objects.update_or_create(name=name, defaults=defaults)
             if was_created:

@@ -100,6 +100,11 @@
   .subjob-card__actions a:hover { color: var(--white); text-decoration: none; }
   .subjob-card__actions .del-link { color: rgba(255,120,120,.8); }
   .subjob-card__actions .del-link:hover { color: #ff8888; }
+  .subjob-card__actions .btn-link-action {
+    background: none; border: none; padding: 0; margin: 0; cursor: pointer;
+    font: inherit; color: rgba(255,255,255,.8); font-size: 0.8rem;
+  }
+  .subjob-card__actions .btn-link-action:hover { color: var(--white); }
   .subjob-card__body { padding: 1rem; }
 
   .areas-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-bottom: .75rem; }
@@ -646,22 +651,59 @@
       <span class="subjob-card__type">Cladding</span>
       <div class="subjob-card__actions">
         <a href="{% url 'jobs:cladding_areas_edit' job.pk %}">Edit</a>
+        {% if has_vertical_cladding_areas %}
+          <form method="post" action="{% url 'jobs:cladding_generate_cutlist' job.pk %}" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn-link-action">{% if job.cladding_cutlist_id %}Regenerate Cutlist{% else %}Generate Cutlist{% endif %}</button>
+          </form>
+        {% endif %}
+        {% if job.cladding_cutlist_id %}
+          <a href="{% url 'cutlist:project_edit' job.cladding_cutlist_id %}">Open Cutlist</a>
+          {% if cladding_cutlist_has_results %}
+            <form method="post" action="{% url 'jobs:cladding_import_cutlist' job.pk %}" style="display:inline;">
+              {% csrf_token %}
+              <button type="submit" class="btn-link-action">Import Cutlist Results</button>
+            </form>
+          {% endif %}
+        {% endif %}
       </div>
     </div>
     <div class="subjob-card__body">
       <table class="areas-table">
-        <thead><tr><th>Area</th><th>Area (m²)</th><th>Cladding</th><th>Cover</th></tr></thead>
+        <thead><tr><th>Area</th><th>Orientation</th><th>Width</th><th>Height</th><th>Area (m²)</th><th>Cladding</th><th>Cover</th></tr></thead>
         <tbody>
           {% for area in cladding_areas %}
           <tr>
             <td>{{ area.area_label|default:"—" }}</td>
-            <td>{{ area.area_m2 }}</td>
+            <td>{{ area.get_orientation_display }}</td>
+            <td>{{ area.width_m }} m</td>
+            <td>{{ area.height_m }} m</td>
+            <td>{{ area.area_m2|floatformat:2 }}</td>
             <td>{{ area.cladding_product|default:"—" }}</td>
             <td>{% if area.cladding_product.cover_mm %}{{ area.cladding_product.cover_mm }} mm{% else %}—{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
+
+      {% if cladding_extra_items %}
+      <div style="margin-top:.75rem;">
+        <div class="detail-label" style="margin-bottom:.4rem;">Extra Items</div>
+        <table class="areas-table">
+          <thead><tr><th>Description</th><th>Product</th><th>Length (m)</th><th>Qty</th></tr></thead>
+          <tbody>
+            {% for item in cladding_extra_items %}
+            <tr>
+              <td>{{ item.product_description|default:"—" }}</td>
+              <td>{{ item.product|default:"—" }}</td>
+              <td>{{ item.length_m }}</td>
+              <td>{{ item.quantity }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
 
       <div class="subtotal-row">
         Sub-total:

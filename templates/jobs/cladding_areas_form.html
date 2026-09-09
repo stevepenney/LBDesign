@@ -42,17 +42,32 @@
 
   .form-error { color: #b20000; font-size: 0.8rem; margin-top: .25rem; }
 
-  /* Formset grid — areas: label | m² | product | × */
+  /* Formset grid — areas: label | orientation | width | height | product | × */
   .area-row {
     display: grid;
-    grid-template-columns: 1fr 100px 1.8fr 36px;
+    grid-template-columns: 1fr 130px 90px 90px 1.6fr 36px;
     gap: .6rem;
     align-items: end;
     margin-bottom: .6rem;
   }
   .area-header {
     display: grid;
-    grid-template-columns: 1fr 100px 1.8fr 36px;
+    grid-template-columns: 1fr 130px 90px 90px 1.6fr 36px;
+    gap: .6rem;
+    margin-bottom: .35rem;
+  }
+
+  /* Formset grid — extras: description | product | length | qty | × */
+  .extra-row {
+    display: grid;
+    grid-template-columns: 1fr 1.6fr 110px 80px 36px;
+    gap: .6rem;
+    align-items: end;
+    margin-bottom: .6rem;
+  }
+  .extra-header {
+    display: grid;
+    grid-template-columns: 1fr 1.6fr 110px 80px 36px;
     gap: .6rem;
     margin-bottom: .35rem;
   }
@@ -106,7 +121,7 @@
   }
 
   @media (max-width: 640px) {
-    .area-row, .area-header { grid-template-columns: 1fr 1fr; }
+    .area-row, .area-header, .extra-row, .extra-header { grid-template-columns: 1fr 1fr; }
   }
 </style>
 {% endblock %}
@@ -123,6 +138,7 @@
 <form method="post" id="cladding-areas-form">
 {% csrf_token %}
 {{ area_formset.management_form }}
+{{ extra_formset.management_form }}
 
 <!-- ── Cladding Areas ──────────────────────────────────────── -->
 <div class="form-card">
@@ -134,7 +150,9 @@
 
     <div class="area-header">
       <span class="col-label">Area label — e.g. North Elevation (optional)</span>
-      <span class="col-label">Area (m²) <span class="required-star">*</span></span>
+      <span class="col-label">Orientation</span>
+      <span class="col-label">Width (m) <span class="required-star">*</span></span>
+      <span class="col-label">Height (m) <span class="required-star">*</span></span>
       <span class="col-label">Cladding <span class="required-star">*</span></span>
       <span></span>
     </div>
@@ -144,10 +162,12 @@
         <div class="area-row{% if af.DELETE.value %} deleted-row{% endif %}">
           {{ af.id }}
           {% render_field af.area_label class="form-control" %}
-          {% render_field af.area_m2 class="form-control" %}
+          {% render_field af.orientation class="form-control" %}
+          {% render_field af.width_m class="form-control" %}
+          {% render_field af.height_m class="form-control" %}
           {% render_field af.cladding_product class="form-control" %}
           <button type="button" class="btn-remove" title="Remove"
-                  onclick="removeRow(this, '{{ af.DELETE.html_name }}')">&#215;</button>
+                  onclick="removeRow(this, '{{ af.DELETE.html_name }}', 'area')">&#215;</button>
           <div style="display:none">{{ af.DELETE }}</div>
         </div>
         {% if af.errors %}
@@ -163,14 +183,68 @@
       <div class="area-row">
         {{ area_formset.empty_form.id }}
         {% render_field area_formset.empty_form.area_label class="form-control" %}
-        {% render_field area_formset.empty_form.area_m2 class="form-control" %}
+        {% render_field area_formset.empty_form.orientation class="form-control" %}
+        {% render_field area_formset.empty_form.width_m class="form-control" %}
+        {% render_field area_formset.empty_form.height_m class="form-control" %}
         {% render_field area_formset.empty_form.cladding_product class="form-control" %}
         <button type="button" class="btn-remove" title="Remove"
-                onclick="removeRow(this, null)">&#215;</button>
+                onclick="removeRow(this, null, 'area')">&#215;</button>
       </div>
     </div>
 
-    <button type="button" class="btn-add" onclick="addRow()">+ Add area</button>
+    <button type="button" class="btn-add" onclick="addRow('area', 'areas')">+ Add area</button>
+  </div>
+</div>
+
+<!-- ── Extra Items (scribers, mouldings, etc.) ─────────────── -->
+<div class="form-card">
+  <div class="form-card__header">
+    Extra Items
+    <span style="font-weight:400;font-size:.8rem;opacity:.8;margin-left:.5rem;">— optional, e.g. scribers, corner mouldings</span>
+  </div>
+  <div class="form-card__body">
+
+    <div class="extra-header">
+      <span class="col-label">Description (optional)</span>
+      <span class="col-label">Product</span>
+      <span class="col-label">Length per piece (m)</span>
+      <span class="col-label">Qty</span>
+      <span></span>
+    </div>
+
+    <div id="extra-formset-container">
+      {% for ef in extra_formset %}
+        <div class="extra-row{% if ef.DELETE.value %} deleted-row{% endif %}">
+          {{ ef.id }}
+          {% render_field ef.product_description class="form-control" %}
+          {% render_field ef.product class="form-control" %}
+          {% render_field ef.length_m class="form-control" %}
+          {% render_field ef.quantity class="form-control" %}
+          <button type="button" class="btn-remove" title="Remove"
+                  onclick="removeRow(this, '{{ ef.DELETE.html_name }}', 'extra')">&#215;</button>
+          <div style="display:none">{{ ef.DELETE }}</div>
+        </div>
+        {% if ef.errors %}
+          <div class="form-error" style="margin:-0.25rem 0 .5rem;">
+            {% for f, errs in ef.errors.items %}{{ errs|join:", " }} {% endfor %}
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <div id="extra-empty-form" style="display:none" aria-hidden="true">
+      <div class="extra-row">
+        {{ extra_formset.empty_form.id }}
+        {% render_field extra_formset.empty_form.product_description class="form-control" %}
+        {% render_field extra_formset.empty_form.product class="form-control" %}
+        {% render_field extra_formset.empty_form.length_m class="form-control" %}
+        {% render_field extra_formset.empty_form.quantity class="form-control" %}
+        <button type="button" class="btn-remove" title="Remove"
+                onclick="removeRow(this, null, 'extra')">&#215;</button>
+      </div>
+    </div>
+
+    <button type="button" class="btn-add" onclick="addRow('extra', 'extras')">+ Add extra item</button>
   </div>
 </div>
 
@@ -186,15 +260,17 @@
 {% block extra_js %}
 <script>
   // ── Generic formset add-row ───────────────────────────────
-  function addRow() {
-    const totalForms = document.querySelector('[name="areas-TOTAL_FORMS"]');
+  // formsetName: 'area' or 'extra' — selects which container/row-class to use.
+  // prefix: the Django formset prefix ('areas' or 'extras') for TOTAL_FORMS.
+  function addRow(formsetName, prefix) {
+    const totalForms = document.querySelector(`[name="${prefix}-TOTAL_FORMS"]`);
     const idx        = parseInt(totalForms.value);
 
     // Clone the hidden empty form and replace __prefix__ with the real index
-    const emptyHtml = document.getElementById('area-empty-form').innerHTML
+    const emptyHtml = document.getElementById(`${formsetName}-empty-form`).innerHTML
       .replace(/__prefix__/g, idx);
 
-    const container = document.getElementById('area-formset-container');
+    const container = document.getElementById(`${formsetName}-formset-container`);
 
     const wrapper = document.createElement('div');
     wrapper.innerHTML = emptyHtml;
@@ -204,8 +280,8 @@
   }
 
   // ── Remove a formset row ──────────────────────────────────
-  function removeRow(btn, deleteFieldName) {
-    const row = btn.closest('.area-row');
+  function removeRow(btn, deleteFieldName, formsetName) {
+    const row = btn.closest(`.${formsetName}-row`);
     if (deleteFieldName) {
       // Mark existing saved row for deletion via the DELETE checkbox
       const delField = document.querySelector(`[name="${deleteFieldName}"]`);
