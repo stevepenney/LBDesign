@@ -6,6 +6,6 @@ here so admins know what to fill in.
 """
 
 REGISTERED_TOPICS = {
-    'sections-overview': 'Job detail — Sections heading',
+    'parts-overview': 'Job detail — Parts heading',
     'area-description': 'Area description'
 }
