@@ -113,7 +113,7 @@ function buildCutLegend(cuts) {
     return legend;
 }
 
-function buildCutLegendTable(legend) {
+function buildCutLegendTable(legend, remaining) {
     const rows = Array.from(legend.values()).map(({ letter, mark, length, qty }) => `
       <tr>
         <td><strong>${letter}</strong></td>
@@ -121,6 +121,16 @@ function buildCutLegendTable(legend) {
         <td>${mark ? escReportText(mark) : '&mdash;'}</td>
         <td class="num">${qty}</td>
       </tr>`).join('');
+
+    // Waste gets its own row instead of a letter — it's leftover material, not a piece
+    // that was cut to a mark, so there's nothing to letter-tag on the diagram for it.
+    const wasteRow = remaining > 0 ? `
+      <tr class="print-cut-legend__waste">
+        <td>&mdash;</td>
+        <td class="num">${remaining}mm</td>
+        <td>Waste</td>
+        <td class="num">1</td>
+      </tr>` : '';
 
     return `<table class="print-table print-cut-legend">
         <thead>
@@ -131,7 +141,7 @@ function buildCutLegendTable(legend) {
             <th class="num">Qty</th>
           </tr>
         </thead>
-        <tbody>${rows}</tbody>
+        <tbody>${rows}${wasteRow}</tbody>
       </table>`;
 }
 
@@ -144,12 +154,13 @@ function buildCutLegendTable(legend) {
 // that. Widths are simple percentages of stock length; a report doesn't
 // need the pixel-exact kerf-gap math the live editor does.
 
-function generateHorizontalDiagram(bin, label) {
+function generateHorizontalDiagram(bin, label, qtyOff) {
     const { stockLength, cuts, remaining, timberType } = bin;
     const timberClass = timberType ? `timber-${timberType.toLowerCase()}` : 'timber-other';
     const legend = buildCutLegend(cuts);
 
     let segmentsHtml = '';
+    let cutPctTotal = 0;
     cuts.forEach(cutInfo => {
         const isSplitPiece  = typeof cutInfo === 'object' ? cutInfo.isSplitPiece : false;
         // `length` (not `displayLength`) is the actual physical stock consumed by this cut —
@@ -162,6 +173,7 @@ function generateHorizontalDiagram(bin, label) {
         const mark          = typeof cutInfo === 'object' ? (cutInfo.mark || '') : '';
         const cutClass      = isSplitPiece ? 'cut-segment-split' : 'cut-segment';
         const widthPct      = (cutLength / stockLength) * 100;
+        cutPctTotal += widthPct;
         const letter        = legend.get(`${mark}|${cutLengthOf(cutInfo)}`).letter;
         const titleText      = mark ? `${letter}: ${displayLength}mm [${mark}]` : `${letter}: ${displayLength}mm`;
         segmentsHtml += `
@@ -171,17 +183,29 @@ function generateHorizontalDiagram(bin, label) {
     });
 
     if (remaining > 0) {
-        const wastePct = (remaining / stockLength) * 100;
+        // Sized as "whatever's left of the 100%", not remaining/stockLength directly — the
+        // bin's own `remaining` figure only tracks material never claimed by a cut, not the
+        // saw-kerf lost *between* cuts (bin.remaining in cutlist.js's FFD placement doesn't
+        // charge a kerf for the first cut on a bin, so kerfWidth * (cuts.length - 1) of real
+        // stock is spoken for but not attributed to any single segment). Sizing off remaining
+        // alone leaves that sliver as unshaded blank space after the waste block; folding it
+        // into the waste segment's width keeps the diagram's segments summing to exactly 100%
+        // without changing the (correct, unchanged) mm figure printed on the label.
+        const wastePct = Math.max(0, 100 - cutPctTotal);
+        // No visible label — the legend table above already has a Waste row with the real
+        // figure, which fits in every case, unlike text squeezed into a segment that can be
+        // just a few pixels wide. Tooltip still carries it for anyone hovering the diagram.
         segmentsHtml += `
-          <div class="waste-segment" style="width:${wastePct}%;">
-            <span>${remaining}mm</span>
-          </div>`;
+          <div class="waste-segment" style="width:${wastePct}%;" title="Leftover: ${remaining}mm"></div>`;
     }
+
+    const stockM = (stockLength / 1000).toFixed(1);
+    const meta   = `${stockM}m stock, ${qtyOff} off`;
 
     return `
         <div class="h-diagram ${timberClass}">
-          <div class="h-diagram__header"><strong>${escReportText(label)}</strong><span>${stockLength}mm stock</span></div>
-          ${buildCutLegendTable(legend)}
+          <div class="h-diagram__header"><strong>${escReportText(label)}</strong> &mdash; ${escReportText(meta)}</div>
+          ${buildCutLegendTable(legend, remaining)}
           <div class="h-stick">${segmentsHtml}</div>
         </div>`;
 }

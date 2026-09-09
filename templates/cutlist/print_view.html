@@ -126,6 +126,7 @@
     /* Mark is text, not a number — override the table's default "every column
        but the first is numeric" alignment rule for this one column. */
     .print-cut-legend th:nth-child(3), .print-cut-legend td:nth-child(3) { text-align: left; }
+    .print-cut-legend__waste td { color: #999; font-style: italic; }
 
     /* ── Horizontal cutting diagrams — wide bars stacked down the page,     ── */
     /* ── instead of narrow tall sticks wrapped side by side, to cut white   ── */
@@ -136,8 +137,6 @@
       gap: 1.25rem;
     }
     .h-diagram__header {
-      display: flex;
-      justify-content: space-between;
       font-size: 0.78rem;
       color: #666;
       margin-bottom: .25rem;
@@ -169,6 +168,10 @@
     }
     .h-stick > *:last-child { border-right: none; }
     .h-seg-letter { font-size: 0.95rem; font-weight: 700; color: rgba(0,0,0,.65); }
+    /* Subtler than the bright red/pink cutlist.css uses for the live Step 4 editor (where
+       waste needs to grab attention while working) — this is a finished, printable report,
+       so leftover material just needs to read as "spare", not "warning". */
+    .h-stick .waste-segment { background: var(--tan-bg); border-top: none; color: #999; }
 
     /* ── Per-group stats bar ─────────────────────────────────── */
     .print-group-stats {
@@ -499,7 +502,7 @@
           layouts.forEach((layout, i) => {
             container.insertAdjacentHTML(
               'beforeend',
-              generateHorizontalDiagram(layout.representative, `Pattern ${i + 1}`)
+              generateHorizontalDiagram(layout.representative, `Pattern ${i + 1}`, layout.count)
             );
           });
 

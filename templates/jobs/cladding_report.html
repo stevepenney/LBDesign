@@ -57,9 +57,10 @@
     .print-pattern-table { margin-bottom: 1.25rem; }
     .print-cut-legend { margin: .4rem 0 .6rem 0; }
     .print-cut-legend th, .print-cut-legend td { padding: .2rem .65rem; }
+    .print-cut-legend__waste td { color: #999; font-style: italic; }
 
     .h-diagrams-container { display: flex; flex-direction: column; gap: 1.25rem; }
-    .h-diagram__header { display: flex; justify-content: space-between; font-size: 0.78rem; color: #666; margin-bottom: .25rem; }
+    .h-diagram__header { font-size: 0.78rem; color: #666; margin-bottom: .25rem; }
     .h-diagram__header strong { color: var(--brown); font-size: 0.85rem; }
     .h-stick { display: flex; width: 100%; height: 52px; border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
     .h-stick .cut-segment, .h-stick .cut-segment-split, .h-stick .waste-segment {
@@ -69,6 +70,10 @@
     }
     .h-stick > *:last-child { border-right: none; }
     .h-seg-letter { font-size: 0.95rem; font-weight: 700; color: rgba(0,0,0,.65); }
+    /* Subtler than the bright red/pink cutlist.css uses for the live Step 4 editor (where
+       waste needs to grab attention while working) — this is a finished client-facing
+       document, so leftover material just needs to read as "spare", not "warning". */
+    .h-stick .waste-segment { background: var(--tan-bg); border-top: none; color: #999; }
 
     .print-group-stats {
       display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; margin-top: 1rem;
@@ -228,7 +233,7 @@
 
           const container = page.querySelector('.h-diagrams-container');
           layouts.forEach((layout, i) => {
-            container.insertAdjacentHTML('beforeend', generateHorizontalDiagram(layout.representative, `Pattern ${i + 1}`));
+            container.insertAdjacentHTML('beforeend', generateHorizontalDiagram(layout.representative, `Pattern ${i + 1}`, layout.count));
           });
 
           root.appendChild(page);
