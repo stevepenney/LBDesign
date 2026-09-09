@@ -121,6 +121,12 @@
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:1rem;">
+    {% if cladding_source_section %}
+      <form method="post" action="{% url 'jobs:cladding_import_cutlist' cladding_source_section.job_id cladding_source_section.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary" title="Pull the current optimised results into this part's pricing and go back">Return to Estimate</button>
+      </form>
+    {% endif %}
     <span class="cutlist-save-indicator" id="saveIndicator">&#10003; Saved</span>
   </div>
 </div>

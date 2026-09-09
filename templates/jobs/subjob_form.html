@@ -178,7 +178,7 @@
 {{ area_formset.management_form }}
 {{ beam_formset.management_form }}
 
-<!-- ── Sub-job header ─────────────────────────────────────── -->
+<!-- ── Part header ────────────────────────────────────────── -->
 <div class="form-card">
   <div class="form-card__header">{{ action }}</div>
   <div class="form-card__body">
@@ -189,7 +189,7 @@
         {% if form.label.errors %}<div class="form-error">{{ form.label.errors|join:", " }}</div>{% endif %}
       </div>
       <div class="form-group">
-        <label for="{{ form.system_type.id_for_label }}">System Type <span class="required-star">*</span></label>
+        <label for="{{ form.system_type.id_for_label }}">Part Type <span class="required-star">*</span></label>
         {% render_field form.system_type class="form-control" id="id_system_type" %}
         {% if form.system_type.errors %}<div class="form-error">{{ form.system_type.errors|join:", " }}</div>{% endif %}
       </div>
@@ -363,7 +363,7 @@
 
 <!-- ── Form footer ────────────────────────────────────────── -->
 <div class="form-footer">
-  <button type="submit" class="btn btn-primary">{% if job %}Save Section{% else %}Calculate{% endif %}</button>
+  <button type="submit" class="btn btn-primary">{% if job %}Save Part{% else %}Calculate{% endif %}</button>
   {% if job %}
     <a href="{% url 'jobs:job_detail' job.pk %}" class="btn btn-secondary">Cancel</a>
   {% else %}
@@ -376,11 +376,24 @@
 
 {% block extra_js %}
 <script>
-  // ── System type show/hide ─────────────────────────────────
+  // ── Part type show/hide ────────────────────────────────────
   const systemTypeEl      = document.getElementById('id_system_type');
   const midfloorSections  = document.getElementById('midfloor-sections');
   const areasRequiredHint = document.getElementById('areas-required-hint');
   const areasOptionalHint = document.getElementById('areas-optional-hint');
+
+  // Cladding has a completely different shape (elevations + extra items, not
+  // areas/beams) — a client-side show/hide can't produce that, so picking it
+  // here reloads into the cladding-shaped form instead. Only wired up on
+  // "Add Part" (no existing instance) — switching an already-saved part's type
+  // is handled by the server-side guard in SectionForm.clean() once it has data.
+  {% if not section %}
+  systemTypeEl.addEventListener('change', function () {
+    if (systemTypeEl.value === 'cladding') {
+      window.location.href = '{% url "jobs:section_create" job.pk %}?system_type=cladding';
+    }
+  });
+  {% endif %}
 
   function applySystemType() {
     const val = systemTypeEl.value;

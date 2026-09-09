@@ -140,10 +140,29 @@
 {{ area_formset.management_form }}
 {{ extra_formset.management_form }}
 
+<!-- ── Part header ────────────────────────────────────────── -->
+<div class="form-card">
+  <div class="form-card__header">{{ action }}</div>
+  <div class="form-card__body">
+    <div class="form-row" style="display:grid;grid-template-columns:2fr 1fr;gap:1rem;">
+      <div class="form-group">
+        <label for="{{ form.label.id_for_label }}">Label <span class="required-star">*</span></label>
+        {% render_field form.label class="form-control" %}
+        {% if form.label.errors %}<div class="form-error">{{ form.label.errors|join:", " }}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.system_type.id_for_label }}">Part Type <span class="required-star">*</span></label>
+        {% render_field form.system_type class="form-control" id="id_system_type" %}
+        {% if form.system_type.errors %}<div class="form-error">{{ form.system_type.errors|join:", " }}</div>{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Cladding Areas ──────────────────────────────────────── -->
 <div class="form-card">
   <div class="form-card__header">
-    {{ action }}
+    Cladding Areas
     <span style="font-weight:400;font-size:.8rem;opacity:.8;margin-left:.5rem;">— at least one required</span>
   </div>
   <div class="form-card__body">
@@ -250,7 +269,7 @@
 
 <!-- ── Form footer ────────────────────────────────────────── -->
 <div class="form-footer">
-  <button type="submit" class="btn btn-primary">Save</button>
+  <button type="submit" class="btn btn-primary">Save Part</button>
   <a href="{% url 'jobs:job_detail' job.pk %}" class="btn btn-secondary">Cancel</a>
 </div>
 
@@ -259,6 +278,20 @@
 
 {% block extra_js %}
 <script>
+  // ── Part type change (create only) ─────────────────────────
+  // Cladding's elevations/extra-items shape has nothing in common with
+  // FloorRoofArea/AdditionalBeam, so switching away reloads into that
+  // form instead of trying to show/hide fields client-side. Only wired up
+  // on "Add Part" (no existing instance) — see subjob_form.html's mirror
+  // of this for the framing side.
+  {% if not section %}
+  document.getElementById('id_system_type').addEventListener('change', function (e) {
+    if (e.target.value !== 'cladding') {
+      window.location.href = '{% url "jobs:section_create" job.pk %}?system_type=' + e.target.value;
+    }
+  });
+  {% endif %}
+
   // ── Generic formset add-row ───────────────────────────────
   // formsetName: 'area' or 'extra' — selects which container/row-class to use.
   // prefix: the Django formset prefix ('areas' or 'extras') for TOTAL_FORMS.

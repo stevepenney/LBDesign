@@ -20,7 +20,7 @@ from django.core.management.base import BaseCommand
 
 from accounts.models import Organisation, User
 from core.models import RoofPitch
-from jobs.calculations import run_subjob_calculation
+from jobs.calculations import run_section_calculation
 from jobs.models import Job, Section, FloorRoofArea, AdditionalBeam
 from products.models import Product
 from projects.models import Project
@@ -280,7 +280,7 @@ class Command(BaseCommand):
                                 quantity=rng.randint(1, 4),
                             )
 
-                    run_subjob_calculation(section)
+                    run_section_calculation(section)
                     self.stdout.write(
                         f'      Section: {label} ({sys_type}) '
                         f'— ${section.calculated_subtotal or "unpriced"}'

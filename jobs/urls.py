@@ -15,13 +15,16 @@ urlpatterns = [
     path('<int:pk>/delete/',          views.job_delete,      name='job_delete'),
     path('<int:pk>/breakdown/',       views.job_breakdown,   name='job_breakdown'),
 
-    # Sections (nested under an estimate)
-    path('<int:job_pk>/sections/new/',              views.section_create, name='section_create'),
-    path('<int:job_pk>/sections/<int:pk>/edit/',    views.section_edit,   name='section_edit'),
-    path('<int:job_pk>/sections/<int:pk>/delete/',  views.section_delete, name='section_delete'),
+    # Parts (nested under an estimate) — "Section" internally, "Part" user-facing.
+    # One type is chosen inside the form (Midfloor/Roof/Other/Cladding), including cladding —
+    # see jobs.models.Section.SystemType.CLADDING.
+    path('<int:job_pk>/sections/new/',                 views.section_create,       name='section_create'),
+    path('<int:job_pk>/sections/<int:pk>/edit/',       views.section_edit,         name='section_edit'),
+    path('<int:job_pk>/sections/<int:pk>/delete/',     views.section_delete,       name='section_delete'),
+    path('<int:job_pk>/sections/<int:pk>/update-field/', views.section_update_field, name='section_update_field'),
 
-    # Cladding areas (separate flow, no Section layer — see CLAUDE.md Cladding Estimator)
-    path('<int:job_pk>/cladding/edit/',              views.cladding_areas_edit, name='cladding_areas_edit'),
-    path('<int:job_pk>/cladding/generate-cutlist/',  views.cladding_generate_cutlist, name='cladding_generate_cutlist'),
-    path('<int:job_pk>/cladding/import-cutlist/',    views.cladding_import_cutlist_results, name='cladding_import_cutlist'),
+    # Cladding-part cutlist hand-off (nested under the specific cladding Part).
+    path('<int:job_pk>/sections/<int:pk>/cladding/generate-cutlist/', views.cladding_generate_cutlist, name='cladding_generate_cutlist'),
+    path('<int:job_pk>/sections/<int:pk>/cladding/import-cutlist/',   views.cladding_import_cutlist_results, name='cladding_import_cutlist'),
+    path('<int:job_pk>/sections/<int:pk>/cladding/report/',           views.cladding_report, name='cladding_report'),
 ]

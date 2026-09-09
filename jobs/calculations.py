@@ -3,24 +3,22 @@ Estimation calculation engine.
 
 Entry points
 ------------
-run_subjob_calculation(sub_job, user=None)
-    Calculate one framing sub-job (Section) and persist results.  Call this
-    immediately after saving a sub-job and its area / beam formsets.
-
-run_cladding_calculation(job, user=None)
-    Calculate a cladding job's areas and persist results directly onto the Job
-    (cladding has no Section layer — see Job.is_cladding).  Call this
-    immediately after saving a job's cladding area formset.
+run_section_calculation(section, user=None)
+    Calculate one Part (Section) — framing or cladding, dispatched on
+    section.is_cladding — and persist its results, including its own hardware
+    allowance amount, then refresh job freight. Call this after saving a part
+    and its area/beam or cladding-area/extra-item formsets.
 
 run_job_estimate(job, user=None)
-    Recalculate a whole job — every framing sub-job, or the cladding areas —
-    then refresh freight.  Returns the job total as a Decimal.
+    Recalculate every Part in a job, then refresh freight. Returns the job
+    total as a Decimal. Useful for bulk recalculation (e.g. after a price book
+    update).
 
 calc_freight(subtotal, freight_settings)
     Pure function — returns (freight_charge, surcharge).
 
-All three entry points take an optional `user` — pass `request.user` from a view
-to record a UsageEvent (see core.usage.log_usage_event). Leave it out for
+Both entry points take an optional `user` — pass `request.user` from a view to
+record a UsageEvent (see core.usage.log_usage_event). Leave it out for
 non-request-driven callers (e.g. load_dummy_data) so seed/bulk work never
 pollutes real usage stats.
 """
@@ -39,6 +37,22 @@ _CENT = Decimal('0.01')
 def _d(value):
     """Cast any numeric value to Decimal without float rounding."""
     return Decimal(str(value))
+
+
+def _effective_pct(section, field):
+    """
+    Three-tier override resolution: the Part's own value, else the Job's
+    default, else the global SystemSettings value. Used for wastage_pct and
+    hardware_allowance_pct — the two factors that moved from Job to Section so
+    each part of an estimate can carry its own rate.
+    """
+    section_value = getattr(section, field)
+    if section_value is not None:
+        return _d(section_value)
+    job_value = getattr(section.job, field)
+    if job_value is not None:
+        return _d(job_value)
+    return _d(getattr(SystemSettings.get(), field))
 
 
 def _area_lm(area_m2, dimension_mm, wastage_factor, pitch_factor=Decimal('1')):
@@ -70,9 +84,9 @@ def _priced_quantity(product, length_m, quantity):
 
 # ── Core calculation ──────────────────────────────────────────────────────────
 
-def _calc_subjob(sub_job):
+def _calc_subjob(sub_job, wastage_factor):
     """
-    Returns (subtotal, schedule, has_unpriced).
+    Returns (subtotal, schedule, has_unpriced) for a framing Part.
 
     subtotal     — Decimal sum of all priced line items.
     schedule     — list of dicts, one per line item.
@@ -96,8 +110,6 @@ def _calc_subjob(sub_job):
     has_unpriced = False
 
     freight_settings = SystemSettings.get()
-    effective_wastage = sub_job.job.wastage_pct if sub_job.job.wastage_pct is not None else freight_settings.wastage_pct
-    wastage_factor = Decimal('1') + _d(effective_wastage) / Decimal('100')
 
     # ── Areas (joists / rafters) ──────────────────────────────────────────
     for area in sub_job.areas.select_related('joist_product', 'roof_pitch').all():
@@ -212,11 +224,10 @@ def _calc_subjob(sub_job):
     return subtotal, schedule, has_unpriced
 
 
-def _calc_cladding(job):
+def _calc_cladding(section, wastage_factor):
     """
     Same (subtotal, schedule, has_unpriced) contract as _calc_subjob, but for a
-    cladding job's areas directly — cladding has no Section, no pitch, no boundary
-    joists/beams, so it's a much shorter calculation.
+    cladding Part's areas directly.
 
     Areas and CladdingCutlistLines are merged per product, not switched wholesale:
     a vertical area whose product has already been imported from a generated
@@ -224,26 +235,22 @@ def _calc_cladding(job):
     quantity instead of its rough area estimate; every other area (horizontal —
     which never goes through the cutlist — or vertical but not yet imported)
     keeps the area-based estimate. This avoids double-counting a product that's
-    priced both ways while still supporting a job that mixes both orientations.
+    priced both ways while still supporting a part that mixes both orientations.
 
     Only "Cladding extra items" is unit-of-measure aware (via _priced_quantity).
     Areas (area→cover derived) and cutlist lines (real cut stock lengths) have no
     independent piece count to price "each" against, so they stay pure
     lineal-metre calculations regardless of a linked product's unit_of_measure.
     """
-    organisation = job.project.organisation
+    organisation = section.job.project.organisation
     schedule = []
     subtotal = Decimal('0')
     has_unpriced = False
 
-    freight_settings = SystemSettings.get()
-    effective_wastage = job.wastage_pct if job.wastage_pct is not None else freight_settings.wastage_pct
-    wastage_factor = Decimal('1') + _d(effective_wastage) / Decimal('100')
-
-    cutlist_lines = list(job.cladding_cutlist_lines.select_related('product').all())
+    cutlist_lines = list(section.cladding_cutlist_lines.select_related('product').all())
     cutlist_product_ids = {line.product_id for line in cutlist_lines if line.product_id}
 
-    for area in job.cladding_areas.select_related('cladding_product').all():
+    for area in section.cladding_areas.select_related('cladding_product').all():
         if area.orientation == area.Orientation.VERTICAL and area.cladding_product_id in cutlist_product_ids:
             continue
         if not area.cladding_product or not area.cladding_product.cover_mm:
@@ -290,7 +297,7 @@ def _calc_cladding(job):
             'line_total': str(line_total) if line_total else None,
         })
 
-    for item in job.cladding_extra_items.select_related('product').all():
+    for item in section.cladding_extra_items.select_related('product').all():
         if not item.product:
             has_unpriced = True
             lm = _d(item.length_m) * _d(item.quantity) * wastage_factor
@@ -341,111 +348,88 @@ def calc_freight(subtotal, freight_settings):
 
 
 def _update_job_freight(job):
-    """Recompute and store hardware allowance, freight, and surcharge for the whole job."""
-    from django.db.models import Sum
-    if job.is_cladding:
-        materials = job.calculated_subtotal or Decimal('0')
-    else:
-        materials = (
-            job.sections.aggregate(s=Sum('calculated_subtotal'))['s'] or Decimal('0')
-        )
-    freight_settings = SystemSettings.get()
-    pct = (
-        _d(job.hardware_allowance_pct)
-        if job.hardware_allowance_pct is not None
-        else _d(freight_settings.hardware_allowance_pct)
+    """
+    Recompute and store freight/surcharge for the whole job. Hardware allowance
+    is no longer a Job-level figure to compute here — each Part already stored
+    its own (see run_section_calculation); this just sums materials + hardware
+    across every part to get the pre-freight total.
+    """
+    materials = sum(
+        (s.calculated_subtotal or Decimal('0')) + (s.hardware_allowance_amount or Decimal('0'))
+        for s in job.sections.all()
     )
-    hardware_amount = (materials * pct / Decimal('100')).quantize(_CENT)
-    pre_freight = materials + hardware_amount
-    freight_charge, surcharge = calc_freight(pre_freight, freight_settings)
+    freight_settings = SystemSettings.get()
+    freight_charge, surcharge = calc_freight(materials, freight_settings)
     Job.objects.filter(pk=job.pk).update(
-        hardware_allowance_amount=hardware_amount,
         freight_charge=freight_charge,
         freight_surcharge=surcharge,
     )
 
 
-# ── Public entry points ───────────────────────────────────────────────────────
-
-def run_subjob_calculation(sub_job, user=None):
+def _calc_and_store_section(section):
     """
-    Calculate and persist results for one framing sub-job (Section), then refresh
-    job freight. Call this after saving a sub-job and its area / beam formsets.
-
-    Stores the partial subtotal (sum of priced lines only).
-    If ALL lines are unpriced, calculated_subtotal is set to None.
-    The member_schedule JSON always records every line and whether any
-    items are missing prices.
+    Calculate one Part (framing or cladding, dispatched on section.is_cladding)
+    and persist its subtotal/hardware allowance/schedule — everything
+    run_section_calculation does except refreshing job freight and logging,
+    so run_job_estimate can call this per part and update freight once at the
+    end instead of once per part.
     """
-    subtotal, schedule, has_unpriced = _calc_subjob(sub_job)
+    wastage_factor = Decimal('1') + _effective_pct(section, 'wastage_pct') / Decimal('100')
+    if section.is_cladding:
+        subtotal, schedule, has_unpriced = _calc_cladding(section, wastage_factor)
+    else:
+        subtotal, schedule, has_unpriced = _calc_subjob(section, wastage_factor)
 
     # None means "cannot price yet" — only set when nothing could be priced.
     stored_subtotal = None if (has_unpriced and subtotal == 0) else subtotal
 
-    Section.objects.filter(pk=sub_job.pk).update(
+    hardware_pct = _effective_pct(section, 'hardware_allowance_pct')
+    hardware_amount = ((stored_subtotal or Decimal('0')) * hardware_pct / Decimal('100')).quantize(_CENT)
+
+    Section.objects.filter(pk=section.pk).update(
         calculated_subtotal=stored_subtotal,
+        hardware_allowance_amount=hardware_amount,
         member_schedule={
             'items': schedule,
             'has_unpriced': has_unpriced,
         },
     )
-    _update_job_freight(sub_job.job)
-    log_usage_event(user, UsageEvent.EventType.ESTIMATE_CALCULATED)
 
 
-def run_cladding_calculation(job, user=None):
+# ── Public entry points ───────────────────────────────────────────────────────
+
+def run_section_calculation(section, user=None):
     """
-    Calculate and persist results for a cladding job's areas directly onto the
-    Job, then refresh freight. Call this after saving the job's cladding area
-    formset. Same None/partial-pricing semantics as run_subjob_calculation.
+    Calculate and persist results for one Part (Section), then refresh job
+    freight. Call this after saving a part and its area/beam or
+    cladding-area/extra-item formsets.
     """
-    subtotal, schedule, has_unpriced = _calc_cladding(job)
-
-    stored_subtotal = None if (has_unpriced and subtotal == 0) else subtotal
-
-    Job.objects.filter(pk=job.pk).update(
-        calculated_subtotal=stored_subtotal,
-        member_schedule={
-            'items': schedule,
-            'has_unpriced': has_unpriced,
-        },
-    )
-    job.calculated_subtotal = stored_subtotal
-    _update_job_freight(job)
+    _calc_and_store_section(section)
+    _update_job_freight(section.job)
     log_usage_event(user, UsageEvent.EventType.ESTIMATE_CALCULATED)
 
 
 def run_job_estimate(job, user=None):
     """
-    Recalculate a whole job — every framing sub-job, or (for a cladding job) its
-    areas directly — refresh freight, and return the job total. Useful for bulk
-    recalculation (e.g. after a price book update).
+    Recalculate every Part in a job, refresh freight once, and return the job
+    total. Useful for bulk recalculation (e.g. after a price book update).
 
-    Logs at most one ESTIMATE_CALCULATED event for the whole call, regardless of
-    how many sections get recalculated underneath — run_cladding_calculation
-    already logs its own when delegated to below, so this doesn't log twice.
+    Logs at most one ESTIMATE_CALCULATED event for the whole call, regardless
+    of how many parts get recalculated.
     """
-    if job.is_cladding:
-        run_cladding_calculation(job, user=user)
-    else:
-        for sub_job in job.sections.prefetch_related(
-            'areas__joist_product',
-            'areas__roof_pitch',
-            'additional_beams__product',
-            'cutlist_import_lines__product',
-            'boundary_joist_product',
-            'stair_void_trimmer_product',
-        ).all():
-            subtotal, schedule, has_unpriced = _calc_subjob(sub_job)
-            stored_subtotal = None if (has_unpriced and subtotal == 0) else subtotal
-            Section.objects.filter(pk=sub_job.pk).update(
-                calculated_subtotal=stored_subtotal,
-                member_schedule={
-                    'items': schedule,
-                    'has_unpriced': has_unpriced,
-                },
-            )
-        _update_job_freight(job)
-        log_usage_event(user, UsageEvent.EventType.ESTIMATE_CALCULATED)
+    for section in job.sections.prefetch_related(
+        'areas__joist_product',
+        'areas__roof_pitch',
+        'additional_beams__product',
+        'cutlist_import_lines__product',
+        'boundary_joist_product',
+        'stair_void_trimmer_product',
+        'cladding_areas__cladding_product',
+        'cladding_extra_items__product',
+        'cladding_cutlist_lines__product',
+    ).all():
+        _calc_and_store_section(section)
+    _update_job_freight(job)
+    log_usage_event(user, UsageEvent.EventType.ESTIMATE_CALCULATED)
     job.refresh_from_db()
     return job.total

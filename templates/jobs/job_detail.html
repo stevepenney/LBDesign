@@ -95,16 +95,25 @@
     padding: .15rem .5rem;
     border-radius: 20px;
   }
-  .subjob-card__actions { margin-left: auto; display: flex; gap: .75rem; }
-  .subjob-card__actions a { color: rgba(255,255,255,.8); font-size: 0.8rem; }
-  .subjob-card__actions a:hover { color: var(--white); text-decoration: none; }
-  .subjob-card__actions .del-link { color: rgba(255,120,120,.8); }
-  .subjob-card__actions .del-link:hover { color: #ff8888; }
-  .subjob-card__actions .btn-link-action {
-    background: none; border: none; padding: 0; margin: 0; cursor: pointer;
-    font: inherit; color: rgba(255,255,255,.8); font-size: 0.8rem;
+  .subjob-card__actions { margin-left: auto; display: flex; align-items: center; gap: .25rem; }
+  .subjob-card__actions .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: none;
+    background: none;
+    color: rgba(255,255,255,.8);
+    font-size: 0.95rem;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background .15s, color .15s;
   }
-  .subjob-card__actions .btn-link-action:hover { color: var(--white); }
+  .subjob-card__actions .icon-btn:hover { background: rgba(255,255,255,.15); color: var(--white); }
+  .subjob-card__actions .icon-btn--danger { color: rgba(255,120,120,.8); }
+  .subjob-card__actions .icon-btn--danger:hover { background: rgba(255,90,90,.2); color: #ff8888; }
   .subjob-card__body { padding: 1rem; }
 
   .areas-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-bottom: .75rem; }
@@ -407,21 +416,7 @@
           </td>
         </tr>
         {% empty %}
-          {% if job.is_cladding %}
-          <tr>
-            <td>Cladding</td>
-            <td class="summary-amount">
-              {% if job.calculated_subtotal is not None %}
-                ${{ job.calculated_subtotal|floatformat:2 }}
-                {% if job.member_schedule.has_unpriced %}<span class="summary-partial" title="Some items have no price set">&nbsp;&#9888;</span>{% endif %}
-              {% else %}
-                <span class="summary-nil">&mdash;</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% else %}
           <tr><td colspan="2" class="summary-empty">No items added yet.</td></tr>
-          {% endif %}
         {% endfor %}
 
         <tr class="summary-rule"><td colspan="2"></td></tr>
@@ -430,9 +425,9 @@
           <td class="summary-amount">${{ job.subtotal|floatformat:2 }}</td>
         </tr>
         <tr>
-          <td>Hardware allowance ({{ effective_hardware_pct|floatformat:"-2" }}%)</td>
+          <td>Hardware allowance<span style="font-size:.78rem;color:#aaa;"> (per part)</span></td>
           <td class="summary-amount">
-            {% if job.hardware_allowance_amount is not None %}
+            {% if job.hardware_allowance_amount %}
               ${{ job.hardware_allowance_amount|floatformat:2 }}
             {% else %}
               <span class="summary-nil">&mdash;</span>
@@ -473,7 +468,7 @@
     <div class="est-row">
       <div class="est-label">
         Wastage %
-        <span class="est-hint">Applies to all lineal metre quantities</span>
+        <span class="est-hint">Default for new Parts — each Part can override its own</span>
       </div>
       <div class="est-control">
         <span class="est-value{% if job.wastage_pct is not None %} est-value--overridden{% endif %}"
@@ -492,7 +487,7 @@
     <div class="est-row">
       <div class="est-label">
         Hardware allowance %
-        <span class="est-hint">Applied to materials subtotal</span>
+        <span class="est-hint">Default for new Parts — each Part can override its own</span>
       </div>
       <div class="est-control">
         <span class="est-value{% if job.hardware_allowance_pct is not None %} est-value--overridden{% endif %}"
@@ -529,104 +524,155 @@
   </div>
 </details>
 
-<!-- Sections -->
+<!-- Parts -->
 <div class="section-toolbar">
   <div class="section-title">
-    Sections
+    Parts
     {% help_trigger "sections-overview" %}
   </div>
   <div style="display:flex;gap:.6rem;margin-left:1rem;">
-    {% if can_add_framing %}
-      <a href="{% url 'jobs:section_create' job.pk %}" class="btn btn-primary">+ Add Section</a>
-    {% endif %}
-    {% if can_add_cladding %}
-      <a href="{% url 'jobs:cladding_areas_edit' job.pk %}" class="btn btn-primary">{% if cladding_areas %}Edit Cladding Areas{% else %}+ Add Cladding Areas{% endif %}</a>
-    {% endif %}
+    <a href="{% url 'jobs:section_create' job.pk %}" class="btn btn-primary">+ Add Part</a>
   </div>
 </div>
 
-{% if sections or cladding_areas %}
+{% if sections %}
   {% for sj in sections %}
   <div class="subjob-card">
     <div class="subjob-card__header">
       <span class="subjob-card__title">{{ sj.label }}</span>
       <span class="subjob-card__type">{{ sj.get_system_type_display }}</span>
       <div class="subjob-card__actions">
-        <a href="{% url 'jobs:section_edit' job.pk sj.pk %}">Edit</a>
-        <a href="{% url 'jobs:section_delete' job.pk sj.pk %}" class="del-link">Delete</a>
+        <a href="{% url 'jobs:section_edit' job.pk sj.pk %}" class="icon-btn" title="Edit" aria-label="Edit"><i class="bi bi-pencil"></i></a>
+        <a href="{% url 'jobs:section_delete' job.pk sj.pk %}" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete"><i class="bi bi-trash"></i></a>
+        {% if sj.is_cladding %}
+          {% if sj.has_vertical_cladding_areas %}
+            <form method="post" action="{% url 'jobs:cladding_generate_cutlist' job.pk sj.pk %}" style="display:contents;">
+              {% csrf_token %}
+              <button type="submit" class="icon-btn" title="{% if sj.cladding_cutlist_id %}Regenerate Cutlist{% else %}Generate Cutlist{% endif %}" aria-label="{% if sj.cladding_cutlist_id %}Regenerate Cutlist{% else %}Generate Cutlist{% endif %}"><i class="bi bi-scissors"></i></button>
+            </form>
+          {% endif %}
+          {% if sj.cladding_cutlist_id %}
+            <a href="{% url 'cutlist:project_edit' sj.cladding_cutlist_id %}" class="icon-btn" title="Open Cutlist" aria-label="Open Cutlist"><i class="bi bi-box-arrow-up-right"></i></a>
+            {% if sj.cladding_cutlist_has_results %}
+              <form method="post" action="{% url 'jobs:cladding_import_cutlist' job.pk sj.pk %}" style="display:contents;">
+                {% csrf_token %}
+                <button type="submit" class="icon-btn" title="Import Cutlist Results" aria-label="Import Cutlist Results"><i class="bi bi-download"></i></button>
+              </form>
+            {% endif %}
+          {% endif %}
+          <a href="{% url 'jobs:cladding_report' job.pk sj.pk %}" class="icon-btn" title="Report" aria-label="Report"><i class="bi bi-file-earmark-text"></i></a>
+        {% endif %}
       </div>
     </div>
     <div class="subjob-card__body">
-      {% if sj.areas.all %}
-      <table class="areas-table">
-        <thead><tr><th>Area</th><th>Area (m²)</th><th>Joist / Rafter</th><th>Spacing</th>{% if sj.is_roof %}<th>Pitch</th>{% endif %}</tr></thead>
-        <tbody>
-          {% for area in sj.areas.all %}
-          <tr>
-            <td>{{ area.area_label|default:"—" }}</td>
-            <td>{{ area.area_m2 }}</td>
-            <td>{{ area.joist_product|default:"—" }}</td>
-            <td>{{ area.joist_spacing }} mm</td>
-            {% if sj.is_roof %}<td>{{ area.roof_pitch|default:"—" }}</td>{% endif %}
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% endif %}
+      {% if sj.is_cladding %}
+        <table class="areas-table">
+          <thead><tr><th>Area</th><th>Orientation</th><th>Width</th><th>Height</th><th>Area (m²)</th><th>Cladding</th><th>Cover</th></tr></thead>
+          <tbody>
+            {% for area in sj.cladding_areas.all %}
+            <tr>
+              <td>{{ area.area_label|default:"—" }}</td>
+              <td>{{ area.get_orientation_display }}</td>
+              <td>{{ area.width_m }} m</td>
+              <td>{{ area.height_m }} m</td>
+              <td>{{ area.area_m2|floatformat:2 }}</td>
+              <td>{{ area.cladding_product|default:"—" }}</td>
+              <td>{% if area.cladding_product.cover_mm %}{{ area.cladding_product.cover_mm }} mm{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
 
-      <div class="flag-list">
-        {% if sj.is_midfloor %}
-          {% if sj.include_boundary_joists %}
-            <span class="flag-pill">Boundary joists{% if sj.boundary_perimeter_lm %} — {{ sj.boundary_perimeter_lm }} lm{% endif %}{% if sj.boundary_joist_product %} ({{ sj.boundary_joist_product }}){% endif %}</span>
-          {% endif %}
-          {% if sj.include_stair_void_trimmers %}
-            <span class="flag-pill">Stair void trimmers{% if sj.stair_void_trimmer_product %} ({{ sj.stair_void_trimmer_product }}){% endif %}</span>
-          {% endif %}
+        {% if sj.cladding_extra_items.all %}
+        <div style="margin-top:.75rem;">
+          <div class="detail-label" style="margin-bottom:.4rem;">Extra Items</div>
+          <table class="areas-table">
+            <thead><tr><th>Description</th><th>Product</th><th>Length (m)</th><th>Qty</th></tr></thead>
+            <tbody>
+              {% for item in sj.cladding_extra_items.all %}
+              <tr>
+                <td>{{ item.product_description|default:"—" }}</td>
+                <td>{{ item.product|default:"—" }}</td>
+                <td>{{ item.length_m }}</td>
+                <td>{{ item.quantity }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
         {% endif %}
-      </div>
-
-      {% if sj.additional_beams.all %}
-      <div style="margin-top:.75rem;">
-        <div class="detail-label" style="margin-bottom:.4rem;">Additional Beams</div>
+      {% else %}
+        {% if sj.areas.all %}
         <table class="areas-table">
-          <thead><tr><th>Member</th><th>Length (m)</th><th>Qty</th></tr></thead>
+          <thead><tr><th>Area</th><th>Area (m²)</th><th>Joist / Rafter</th><th>Spacing</th>{% if sj.is_roof %}<th>Pitch</th>{% endif %}</tr></thead>
           <tbody>
-            {% for beam in sj.additional_beams.all %}
+            {% for area in sj.areas.all %}
             <tr>
-              <td>{{ beam.product|default:"—" }}</td>
-              <td>{{ beam.length_m }}</td>
-              <td>{{ beam.quantity }}</td>
+              <td>{{ area.area_label|default:"—" }}</td>
+              <td>{{ area.area_m2 }}</td>
+              <td>{{ area.joist_product|default:"—" }}</td>
+              <td>{{ area.joist_spacing }} mm</td>
+              {% if sj.is_roof %}<td>{{ area.roof_pitch|default:"—" }}</td>{% endif %}
             </tr>
             {% endfor %}
           </tbody>
         </table>
-      </div>
-      {% endif %}
+        {% endif %}
 
-      {% if sj.priced_cutlist_lines %}
-      <div style="margin-top:.75rem;">
-        <div class="detail-label" style="margin-bottom:.4rem;">Cutlist Stock Order</div>
-        <table class="areas-table">
-          <thead><tr><th>Zone</th><th>Product</th><th>Length (m)</th><th>Qty</th><th>Total</th></tr></thead>
-          <tbody>
-            {% for row in sj.priced_cutlist_lines %}
-            <tr>
-              <td>{{ row.group }}</td>
-              <td>{{ row.product }}</td>
-              <td>{{ row.length_m|floatformat:1 }}</td>
-              <td>{{ row.qty }}</td>
-              <td>
-                {% if row.line_total is not None %}
-                  ${{ row.line_total|floatformat:2 }}
-                {% else %}
-                  <span class="summary-nil">&mdash;</span>
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+        <div class="flag-list">
+          {% if sj.is_midfloor %}
+            {% if sj.include_boundary_joists %}
+              <span class="flag-pill">Boundary joists{% if sj.boundary_perimeter_lm %} — {{ sj.boundary_perimeter_lm }} lm{% endif %}{% if sj.boundary_joist_product %} ({{ sj.boundary_joist_product }}){% endif %}</span>
+            {% endif %}
+            {% if sj.include_stair_void_trimmers %}
+              <span class="flag-pill">Stair void trimmers{% if sj.stair_void_trimmer_product %} ({{ sj.stair_void_trimmer_product }}){% endif %}</span>
+            {% endif %}
+          {% endif %}
+        </div>
+
+        {% if sj.additional_beams.all %}
+        <div style="margin-top:.75rem;">
+          <div class="detail-label" style="margin-bottom:.4rem;">Additional Beams</div>
+          <table class="areas-table">
+            <thead><tr><th>Member</th><th>Length (m)</th><th>Qty</th></tr></thead>
+            <tbody>
+              {% for beam in sj.additional_beams.all %}
+              <tr>
+                <td>{{ beam.product|default:"—" }}</td>
+                <td>{{ beam.length_m }}</td>
+                <td>{{ beam.quantity }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+
+        {% if sj.priced_cutlist_lines %}
+        <div style="margin-top:.75rem;">
+          <div class="detail-label" style="margin-bottom:.4rem;">Cutlist Stock Order</div>
+          <table class="areas-table">
+            <thead><tr><th>Zone</th><th>Product</th><th>Length (m)</th><th>Qty</th><th>Total</th></tr></thead>
+            <tbody>
+              {% for row in sj.priced_cutlist_lines %}
+              <tr>
+                <td>{{ row.group }}</td>
+                <td>{{ row.product }}</td>
+                <td>{{ row.length_m|floatformat:1 }}</td>
+                <td>{{ row.qty }}</td>
+                <td>
+                  {% if row.line_total is not None %}
+                    ${{ row.line_total|floatformat:2 }}
+                  {% else %}
+                    <span class="summary-nil">&mdash;</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
       {% endif %}
 
       <div class="subtotal-row">
@@ -640,96 +686,39 @@
           <strong>—</strong> <span style="font-size:.8rem;color:#aaa;">(products not yet priced)</span>
         {% endif %}
       </div>
+
+      <div class="flag-list" style="margin-top:.6rem;gap:1.25rem;">
+        <span style="font-size:.8rem;color:#999;">
+          Wastage:
+          <span class="est-value{% if sj.wastage_pct is not None %} est-value--overridden{% endif %}"
+                data-field="wastage_pct"
+                data-update-url="{% url 'jobs:section_update_field' job.pk sj.pk %}"
+                data-global="{{ effective_wastage_pct|floatformat:'-2' }}"
+                title="Click to edit">{{ sj.effective_wastage_pct|floatformat:"-2" }}%</span>
+          {% if sj.wastage_pct is not None %}
+            <button type="button" class="est-reset" data-field="wastage_pct" data-update-url="{% url 'jobs:section_update_field' job.pk sj.pk %}" title="Reset to job default ({{ effective_wastage_pct|floatformat:'-2' }}%)">reset</button>
+          {% endif %}
+        </span>
+        <span style="font-size:.8rem;color:#999;">
+          Hardware:
+          <span class="est-value{% if sj.hardware_allowance_pct is not None %} est-value--overridden{% endif %}"
+                data-field="hardware_allowance_pct"
+                data-update-url="{% url 'jobs:section_update_field' job.pk sj.pk %}"
+                data-global="{{ effective_hardware_pct|floatformat:'-2' }}"
+                title="Click to edit">{{ sj.effective_hardware_pct|floatformat:"-2" }}%</span>
+          {% if sj.hardware_allowance_pct is not None %}
+            <button type="button" class="est-reset" data-field="hardware_allowance_pct" data-update-url="{% url 'jobs:section_update_field' job.pk sj.pk %}" title="Reset to job default ({{ effective_hardware_pct|floatformat:'-2' }}%)">reset</button>
+          {% endif %}
+        </span>
+      </div>
     </div>
   </div>
   {% endfor %}
-
-  {% if cladding_areas %}
-  <div class="subjob-card">
-    <div class="subjob-card__header">
-      <span class="subjob-card__title">Cladding</span>
-      <span class="subjob-card__type">Cladding</span>
-      <div class="subjob-card__actions">
-        <a href="{% url 'jobs:cladding_areas_edit' job.pk %}">Edit</a>
-        {% if has_vertical_cladding_areas %}
-          <form method="post" action="{% url 'jobs:cladding_generate_cutlist' job.pk %}" style="display:inline;">
-            {% csrf_token %}
-            <button type="submit" class="btn-link-action">{% if job.cladding_cutlist_id %}Regenerate Cutlist{% else %}Generate Cutlist{% endif %}</button>
-          </form>
-        {% endif %}
-        {% if job.cladding_cutlist_id %}
-          <a href="{% url 'cutlist:project_edit' job.cladding_cutlist_id %}">Open Cutlist</a>
-          {% if cladding_cutlist_has_results %}
-            <form method="post" action="{% url 'jobs:cladding_import_cutlist' job.pk %}" style="display:inline;">
-              {% csrf_token %}
-              <button type="submit" class="btn-link-action">Import Cutlist Results</button>
-            </form>
-          {% endif %}
-        {% endif %}
-      </div>
-    </div>
-    <div class="subjob-card__body">
-      <table class="areas-table">
-        <thead><tr><th>Area</th><th>Orientation</th><th>Width</th><th>Height</th><th>Area (m²)</th><th>Cladding</th><th>Cover</th></tr></thead>
-        <tbody>
-          {% for area in cladding_areas %}
-          <tr>
-            <td>{{ area.area_label|default:"—" }}</td>
-            <td>{{ area.get_orientation_display }}</td>
-            <td>{{ area.width_m }} m</td>
-            <td>{{ area.height_m }} m</td>
-            <td>{{ area.area_m2|floatformat:2 }}</td>
-            <td>{{ area.cladding_product|default:"—" }}</td>
-            <td>{% if area.cladding_product.cover_mm %}{{ area.cladding_product.cover_mm }} mm{% else %}—{% endif %}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-
-      {% if cladding_extra_items %}
-      <div style="margin-top:.75rem;">
-        <div class="detail-label" style="margin-bottom:.4rem;">Extra Items</div>
-        <table class="areas-table">
-          <thead><tr><th>Description</th><th>Product</th><th>Length (m)</th><th>Qty</th></tr></thead>
-          <tbody>
-            {% for item in cladding_extra_items %}
-            <tr>
-              <td>{{ item.product_description|default:"—" }}</td>
-              <td>{{ item.product|default:"—" }}</td>
-              <td>{{ item.length_m }}</td>
-              <td>{{ item.quantity }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% endif %}
-
-      <div class="subtotal-row">
-        Sub-total:
-        {% if job.calculated_subtotal is not None %}
-          <strong>${{ job.calculated_subtotal|floatformat:2 }}</strong> excl. GST
-          {% if job.member_schedule.has_unpriced %}
-            <span style="font-size:.78rem;color:#b27000;" title="Some items have no price in the active price book.">&#9888; partial</span>
-          {% endif %}
-        {% else %}
-          <strong>—</strong> <span style="font-size:.8rem;color:#aaa;">(products not yet priced)</span>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-  {% endif %}
-
 {% else %}
   <div class="empty-state">
-    <p>No sections yet. Add a section to start the estimate.</p>
+    <p>No parts yet. Add a part to start the estimate.</p>
     <div style="display:flex;gap:.6rem;justify-content:center;">
-      {% if can_add_framing %}
-        <a href="{% url 'jobs:section_create' job.pk %}" class="btn btn-primary">+ Add Section</a>
-      {% endif %}
-      {% if can_add_cladding %}
-        <a href="{% url 'jobs:cladding_areas_edit' job.pk %}" class="btn btn-primary">+ Add Cladding Areas</a>
-      {% endif %}
+      <a href="{% url 'jobs:section_create' job.pk %}" class="btn btn-primary">+ Add Part</a>
     </div>
   </div>
 {% endif %}

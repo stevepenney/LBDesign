@@ -164,7 +164,7 @@
     </tbody>
   </table>
   <div class="section-subtotal">
-    Section subtotal:
+    Part subtotal:
     {% if section.calculated_subtotal is not None %}
       <strong>${{ section.calculated_subtotal|floatformat:2 }}</strong>
       {% if schedule.has_unpriced %}<span class="unpriced" title="Some items have no price">&#9888; partial</span>{% endif %}
@@ -173,12 +173,12 @@
     {% endif %}
   </div>
   {% else %}
-  <div class="no-items">No line items calculated for this section.</div>
+  <div class="no-items">No line items calculated for this part.</div>
   {% endif %}
   {% endwith %}
 </div>
 {% empty %}
-<p style="color:#aaa;font-style:italic;">No sections in this estimate.</p>
+<p style="color:#aaa;font-style:italic;">No parts in this estimate.</p>
 {% endfor %}
 
 <div class="grand-total">

@@ -2,7 +2,7 @@ from django import forms
 from django.forms import inlineformset_factory
 
 from products.models import Product
-from .models import Job, Section, FloorRoofArea, CladdingArea, CladdingExtraItem, AdditionalBeam
+from .models import Section, FloorRoofArea, CladdingArea, CladdingExtraItem, AdditionalBeam
 
 
 class SectionForm(forms.ModelForm):
@@ -23,8 +23,8 @@ class SectionForm(forms.ModelForm):
             ),
         }
         labels = {
-            'label': 'Sub-Job Label',
-            'system_type': 'System Type',
+            'label': 'Part Label',
+            'system_type': 'Part Type',
             'include_boundary_joists': 'Include boundary joists',
             'boundary_perimeter_lm': 'Perimeter (lineal metres)',
             'boundary_joist_product': 'Member',
@@ -59,12 +59,26 @@ class SectionForm(forms.ModelForm):
             cleaned['include_stair_void_trimmers'] = False
             cleaned['stair_void_trimmer_product'] = None
 
-        if system_type == Section.SystemType.OTHER:
+        if system_type in (Section.SystemType.OTHER, Section.SystemType.CLADDING):
             cleaned['include_boundary_joists'] = False
             cleaned['boundary_perimeter_lm'] = None
             cleaned['boundary_joist_product'] = None
             cleaned['include_stair_void_trimmers'] = False
             cleaned['stair_void_trimmer_product'] = None
+
+        if self.instance.pk and 'system_type' in cleaned:
+            old_type = self.instance.system_type
+            new_type = cleaned['system_type']
+            switching_cladding = (
+                (old_type == Section.SystemType.CLADDING) != (new_type == Section.SystemType.CLADDING)
+            )
+            has_data = self.instance.cladding_areas.exists() if old_type == Section.SystemType.CLADDING \
+                else self.instance.areas.exists()
+            if switching_cladding and has_data:
+                self.add_error(
+                    'system_type',
+                    'This part already has areas — remove them before changing to/from Cladding.',
+                )
 
         return cleaned
 
@@ -181,7 +195,7 @@ class CladdingAreaForm(forms.ModelForm):
 
 
 CladdingAreaFormSet = inlineformset_factory(
-    Job,
+    Section,
     CladdingArea,
     form=CladdingAreaForm,
     extra=0,
@@ -216,7 +230,7 @@ class CladdingExtraItemForm(forms.ModelForm):
 
 
 CladdingExtraItemFormSet = inlineformset_factory(
-    Job,
+    Section,
     CladdingExtraItem,
     form=CladdingExtraItemForm,
     extra=1,

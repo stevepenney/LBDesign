@@ -13,7 +13,6 @@ from accounts.models import Organisation
 from core.models import UsageEvent
 from core.usage import log_usage_event
 from products.models import Product, TimberTypeDefaultStockLengths
-from products.pricing import get_product_price
 from projects.models import Project
 from projects.views import _assert_project_access, _get_projects_for_user
 from .models import CutlistProject, MemberProductMapping
@@ -94,11 +93,17 @@ def project_edit(request, pk):
         t.timber_type: t.stock_lengths_list()
         for t in TimberTypeDefaultStockLengths.objects.all()
     }
+    # Reverse accessor only — cutlist app never imports jobs models directly,
+    # jobs.Section.cladding_cutlist is the one FK linking the two apps. Set
+    # only when this cutlist was generated from a cladding Part (not a
+    # standalone CSV import), to show the "Return to Estimate" action.
+    cladding_source_section = cutlist.cladding_source_sections.select_related('job').first()
     return render(request, 'cutlist/project_edit.html', {
         'project': cutlist,
         'products': products,
         'member_mappings': member_mappings,
         'timber_type_defaults': timber_type_defaults,
+        'cladding_source_section': cladding_source_section,
     })
 
 
@@ -178,54 +183,16 @@ def project_duplicate(request, pk):
 
 @login_required
 def project_print(request, pk):
+    """
+    Pure cutting-optimisation report — diagrams, pattern summary, unpriced
+    stock quantities. Deliberately estimate-agnostic: no pricing, no elevation
+    data, works the same for any cutlist (framing or cladding, standalone or
+    estimate-sourced). The priced, elevation-aware cladding report lives in
+    the jobs app instead (jobs:cladding_report) — see CLAUDE.md.
+    """
     cutlist = get_object_or_404(CutlistProject, pk=pk)
     _assert_cutlist_access(request.user, cutlist)
-    organisation = cutlist.project.organisation
-
-    # Reverse accessor only — cutlist app never imports jobs models directly,
-    # jobs.Job.cladding_cutlist is the one FK linking the two apps.
-    cladding_job = cutlist.cladding_source_jobs.select_related('project').first()
-    cladding_areas = []
-    extra_items = []
-    if cladding_job:
-        for area in cladding_job.cladding_areas.select_related('cladding_product').all():
-            cladding_areas.append({
-                'label': area.area_label,
-                'orientation': area.get_orientation_display(),
-                'width_m': str(area.width_m),
-                'height_m': str(area.height_m),
-                'area_m2': str(area.area_m2),
-                'product': str(area.cladding_product) if area.cladding_product else '',
-            })
-        for item in cladding_job.cladding_extra_items.select_related('product').all():
-            price = get_product_price(item.product, organisation) if item.product else None
-            extra_items.append({
-                'description': item.product_description or (str(item.product) if item.product else 'Unmatched item'),
-                'length_m': str(item.length_m),
-                'quantity': item.quantity,
-                'unit_price': str(price) if price else None,
-                'unit': item.product.unit_of_measure if item.product else None,
-            })
-
-    # Unit price ($/lm) per product referenced by any tab, so the print view's
-    # own JS can build the priced order sheet without needing a second round
-    # trip — this is the one place cutlist's print output needs pricing at all.
-    product_ids = {
-        t.get('productId') for t in (cutlist.state or {}).get('tabs', []) if t.get('productId')
-    }
-    products = Product.objects.filter(pk__in=product_ids).in_bulk()
-    product_prices = {}
-    for pid, product in products.items():
-        price = get_product_price(product, organisation)
-        if price is not None:
-            product_prices[pid] = str(price)
-
-    return render(request, 'cutlist/print_view.html', {
-        'project': cutlist,
-        'cladding_areas': cladding_areas,
-        'extra_items': extra_items,
-        'product_prices': product_prices,
-    })
+    return render(request, 'cutlist/print_view.html', {'project': cutlist})
 
 
 @login_required

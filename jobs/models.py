@@ -26,16 +26,6 @@ class Job(models.Model):
         related_name='generated_jobs',
         help_text='Set when this estimate was created from a cutlist stock order.',
     )
-    cladding_cutlist = models.ForeignKey(
-        'cutlist.CutlistProject',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='cladding_source_jobs',
-        help_text="Cutlist generated from this cladding job's own vertical elevations, if any. "
-                  "Opposite direction to source_cutlist: this job produced that cutlist, rather "
-                  "than being created from one.",
-    )
     label = models.CharField(
         max_length=100,
         blank=True,
@@ -43,36 +33,23 @@ class Job(models.Model):
         help_text="Optional label to distinguish multiple estimates on the same project, e.g. 'Option A'.",
     )
 
-    # Per-job overrides — null means use the global SystemSettings value
+    # Per-job overrides — null means use the global SystemSettings value. Also the default a new
+    # Part/Section starts from for wastage_pct/hardware_allowance_pct — see Section below, which
+    # is where these are actually applied now (a job's total is just its parts summed).
     hardware_allowance_pct = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
-        help_text='Override hardware allowance %. Leave blank to use the global default.',
+        help_text='Default hardware allowance % for new Parts. Leave blank to use the global '
+                   'default. Each Part can override this individually.',
     )
     wastage_pct = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
-        help_text='Override wastage %. Leave blank to use the global default.',
+        help_text='Default wastage % for new Parts. Leave blank to use the global default. '
+                   'Each Part can override this individually.',
     )
     estimate_uncertainty_pct = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
         help_text='Override estimate uncertainty band %. Leave blank to use the global default.',
     )
-    stock_contingency_pct = models.DecimalField(
-        max_digits=5, decimal_places=2, null=True, blank=True,
-        help_text='Override cutlist stock contingency %. Leave blank to use the global default.',
-    )
-
-    # Stored totals computed by the calculation engine
-    hardware_allowance_amount = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        null=True,
-        blank=True,
-    )
-    # Calculated result for a cladding estimate (no Section layer — see is_cladding below).
-    calculated_subtotal = models.DecimalField(
-        max_digits=12, decimal_places=2, null=True, blank=True,
-    )
-    member_schedule = models.JSONField(default=dict, blank=True)
     freight_charge = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -99,19 +76,14 @@ class Job(models.Model):
         return f'{self.project.lb_ref}{label_part}'
 
     @property
-    def is_cladding(self):
-        """
-        A cladding estimate has no Section layer — its areas (elevations) attach
-        directly to the Job, since unlike midfloor/roof there's no per-physical-system
-        setting (roof pitch, boundary joists) that would need its own container.
-        """
-        return self.cladding_areas.exists()
+    def subtotal(self):
+        """Materials only, summed across every Part — hardware is tracked separately below."""
+        return sum(s.calculated_subtotal or 0 for s in self.sections.all())
 
     @property
-    def subtotal(self):
-        if self.is_cladding:
-            return self.calculated_subtotal or 0
-        return sum(s.calculated_subtotal or 0 for s in self.sections.all())
+    def hardware_allowance_amount(self):
+        """Sum of every Part's own hardware allowance $ — each Part can carry a different rate."""
+        return sum(s.hardware_allowance_amount or 0 for s in self.sections.all())
 
     @property
     def total(self):
@@ -127,18 +99,52 @@ class Job(models.Model):
 
 class Section(models.Model):
     """
-    A discrete floor or roof framing system within an estimate (e.g. Unit 1 Midfloor,
-    Unit 1 Roof). Each section has its own areas, beams, and calculated subtotal.
+    A discrete system within an estimate (e.g. Unit 1 Midfloor, Unit 1 Roof, or a
+    Cladding part) — user-facing term is "Part" (see CLAUDE.md), same as this model
+    itself is user-facing "Section" internally vs. the old "sub-job" term. Each part
+    has its own areas/items, wastage/hardware factors, and calculated subtotal.
+
+    CLADDING is a part type like any other — it has no boundary-joist/stair-void
+    settings (nothing for those fields to apply to) but is otherwise a peer of
+    MIDFLOOR/ROOF/OTHER, priced and factored independently. This is what lets one
+    job hold both framing and cladding parts (or several cladding parts) together.
     """
 
     class SystemType(models.TextChoices):
         MIDFLOOR = 'midfloor', 'Midfloor'
         ROOF = 'roof', 'Roof'
         OTHER = 'other', 'Other'
+        CLADDING = 'cladding', 'Cladding'
 
     job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='sections')
     label = models.CharField(max_length=200, help_text="e.g. 'Unit 1 Midfloor'")
     system_type = models.CharField(max_length=10, choices=SystemType)
+
+    # Per-part overrides — null means use the job's default, which itself falls back to the
+    # global SystemSettings value (three-tier: SystemSettings -> Job -> Section).
+    wastage_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Override wastage % for this part. Leave blank to use the job default.',
+    )
+    hardware_allowance_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Override hardware allowance % for this part. Leave blank to use the job default.',
+    )
+    stock_contingency_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Override cutlist stock contingency % for this part (cladding only). Leave '
+                   'blank to use the global default.',
+    )
+
+    # Cutlist generated from this part's own vertical cladding elevations, if any.
+    cladding_cutlist = models.ForeignKey(
+        'cutlist.CutlistProject',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cladding_source_sections',
+        help_text='Cutlist generated from this part\'s own vertical elevations, if any.',
+    )
 
     # Boundary joists (midfloor only)
     include_boundary_joists = models.BooleanField(default=True)
@@ -167,9 +173,12 @@ class Section(models.Model):
         limit_choices_to={'use_as_stair_void_trimmer': True},
     )
 
-    # Calculated result (stored after engine runs)
+    # Calculated result (stored after engine runs) — materials only, hardware tracked separately.
     calculated_subtotal = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
+    )
+    hardware_allowance_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
     )
 
     # Background member schedule stored as JSON for internal use
@@ -180,8 +189,8 @@ class Section(models.Model):
 
     class Meta:
         ordering = ['created_at']
-        verbose_name = 'section'
-        verbose_name_plural = 'sections'
+        verbose_name = 'part'
+        verbose_name_plural = 'parts'
 
     def __str__(self):
         return f'{self.job.project.lb_ref} / {self.label}'
@@ -197,6 +206,10 @@ class Section(models.Model):
     @property
     def is_other(self):
         return self.system_type == self.SystemType.OTHER
+
+    @property
+    def is_cladding(self):
+        return self.system_type == self.SystemType.CLADDING
 
 
 class FloorRoofArea(models.Model):
@@ -252,15 +265,14 @@ class FloorRoofArea(models.Model):
 
 class CladdingArea(models.Model):
     """
-    One elevation/zone within a cladding estimate (e.g. North Elevation, Internal
+    One elevation/zone within a cladding part (e.g. North Elevation, Internal
     Stairway), each covered by a single product. Lineal metres are derived from
     area_m2 (= width_m * height_m) and the product's cover_mm — there is no
     user-entered spacing/cover, unlike FloorRoofArea's joist_spacing.
 
-    Attaches directly to Job, not Section — a cladding estimate has no equivalent
-    of midfloor/roof's per-physical-system settings (roof pitch, boundary joists),
-    so there's nothing for a Section layer to hold; elevations are areas, not
-    sections, from a data perspective.
+    Attaches to a Section whose system_type is CLADDING — cladding is a part type
+    like Midfloor/Roof/Other, just one with no boundary-joist/stair-void settings
+    to hold (those fields are simply unused on a cladding Section).
 
     orientation matters beyond display: vertical-run boards can't have joins (a
     board must span the full height in one piece), so a vertical elevation can be
@@ -273,7 +285,7 @@ class CladdingArea(models.Model):
         VERTICAL = 'vertical', 'Vertical'
         HORIZONTAL = 'horizontal', 'Horizontal'
 
-    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='cladding_areas')
+    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='cladding_areas')
     area_label = models.CharField(max_length=200, blank=True)
     orientation = models.CharField(
         max_length=10, choices=Orientation.choices, default=Orientation.VERTICAL,
@@ -294,7 +306,7 @@ class CladdingArea(models.Model):
 
     def __str__(self):
         label = self.area_label or f'Area {self.pk}'
-        return f'{self.job.project.lb_ref} / {label}'
+        return f'{self.section.job.project.lb_ref} / {label}'
 
     @property
     def area_m2(self):
@@ -323,9 +335,9 @@ class CladdingExtraItem(models.Model):
     scribers, corner mouldings, flashings, etc. Mirrors AdditionalBeam's shape
     (product + length + quantity) for the same reason AdditionalBeam exists for
     framing: a flat, freely-added line that isn't derived from anything else.
-    Attaches directly to Job, not Section, same as CladdingArea.
+    Attaches to a cladding-type Section, same as CladdingArea.
     """
-    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='cladding_extra_items')
+    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='cladding_extra_items')
     product_description = models.CharField(
         max_length=200, blank=True,
         help_text='e.g. Vertica Scriber 40x19 or Corner Mould',
@@ -387,7 +399,7 @@ class CutlistImportLine(models.Model):
     """
     A priced member line created by converting a cutlist stock order into an
     estimate. length_m is the net lineal metres required for the member —
-    wastage is applied via the section's job-level wastage_pct, not baked in here.
+    wastage is applied via the section's own effective wastage_pct, not baked in here.
     """
     section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='cutlist_import_lines')
     product = models.ForeignKey(
@@ -422,14 +434,13 @@ class CutlistImportLine(models.Model):
 
 class CladdingCutlistLine(models.Model):
     """
-    A priced product line created by importing a cladding job's generated cutlist
-    results — mirrors CutlistImportLine, but attaches directly to Job instead of
-    Section, the same way CladdingArea attaches to Job instead of FloorRoofArea's
-    Section (cladding has no Section layer). length_m is the real optimized gross
-    stock length required for the product, with the job's stock contingency %
-    already applied — see jobs.calculations._calc_cladding.
+    A priced product line created by importing a cladding part's generated cutlist
+    results — mirrors CutlistImportLine (same shape, both now Section-scoped).
+    length_m is the real optimized gross stock length required for the product,
+    with the part's stock contingency % already applied — see
+    jobs.calculations._calc_cladding.
     """
-    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='cladding_cutlist_lines')
+    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='cladding_cutlist_lines')
     product = models.ForeignKey(
         'products.Product',
         on_delete=models.SET_NULL,

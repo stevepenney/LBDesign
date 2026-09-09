@@ -17,7 +17,7 @@ from products.models import Product
 from products.pricing import get_product_price
 from projects.models import Project
 from projects.views import _assert_project_access
-from .calculations import run_job_estimate, run_subjob_calculation, run_cladding_calculation
+from .calculations import run_job_estimate, run_section_calculation
 from .forms import (
     SectionForm, FloorRoofAreaFormSet, FloorRoofAreaOptionalFormSet, AdditionalBeamFormSet,
     CladdingAreaFormSet, CladdingExtraItemFormSet,
@@ -66,19 +66,10 @@ def _priced_cutlist_lines(section):
 
 
 def _area_formset_cls(system_type):
-    """Return the right area formset class — Other sections have optional areas."""
+    """Return the right area formset class for a framing part — Other parts have optional areas."""
     if system_type == Section.SystemType.OTHER:
         return FloorRoofAreaOptionalFormSet
     return FloorRoofAreaFormSet
-
-
-def _job_allows_framing(job):
-    """A job locks to one category on its first section/area — framing and cladding never mix."""
-    return not job.cladding_areas.exists()
-
-
-def _job_allows_cladding(job):
-    return not job.sections.exists()
 
 
 @login_required
@@ -129,6 +120,9 @@ def job_update_field(request, pk):
     field = request.POST.get('field', '')
     value = request.POST.get('value', '').strip()
 
+    # hardware_allowance_pct/wastage_pct are now just the default new Parts start from —
+    # changing them here still recalculates the whole job, since any Part without its own
+    # override picks up the new default automatically.
     PCT_FIELDS = {'hardware_allowance_pct', 'wastage_pct', 'estimate_uncertainty_pct'}
     if field not in {'label'} | PCT_FIELDS:
         return JsonResponse({'ok': False, 'error': 'Invalid field'}, status=400)
@@ -152,6 +146,36 @@ def job_update_field(request, pk):
     setattr(job, field, value)
     job.save(update_fields=[field, 'updated_at'])
     return JsonResponse({'ok': True, 'value': value})
+
+
+@login_required
+@require_POST
+def section_update_field(request, job_pk, pk):
+    """Mirrors job_update_field, for a Part's own wastage_pct/hardware_allowance_pct override."""
+    job = get_object_or_404(Job, pk=job_pk)
+    section = get_object_or_404(Section, pk=pk, job=job)
+    if not _assert_job_access(request.user, job):
+        return JsonResponse({'ok': False}, status=403)
+    field = request.POST.get('field', '')
+    value = request.POST.get('value', '').strip()
+
+    PCT_FIELDS = {'wastage_pct', 'hardware_allowance_pct'}
+    if field not in PCT_FIELDS:
+        return JsonResponse({'ok': False, 'error': 'Invalid field'}, status=400)
+
+    if value == '':
+        setattr(section, field, None)
+    else:
+        try:
+            pct = Decimal(value)
+            if not (Decimal('0') <= pct <= Decimal('200')):
+                return JsonResponse({'ok': False, 'error': 'Enter a value between 0 and 200'}, status=400)
+            setattr(section, field, pct)
+        except InvalidOperation:
+            return JsonResponse({'ok': False, 'error': 'Invalid percentage'}, status=400)
+    section.save(update_fields=[field, 'updated_at'])
+    run_section_calculation(section, user=request.user)
+    return JsonResponse({'ok': True, 'reload': True})
 
 
 # ── Job views ─────────────────────────────────────────────────────────────────
@@ -224,7 +248,6 @@ def cutlist_convert_to_estimate(request, cutlist_pk):
         project=cutlist.project,
         created_by=request.user,
         label=cutlist.name,
-        wastage_pct=wastage_pct,
         estimate_uncertainty_pct=Decimal('0'),
         source_cutlist=cutlist,
     )
@@ -232,6 +255,7 @@ def cutlist_convert_to_estimate(request, cutlist_pk):
         job=job,
         label=cutlist.name,
         system_type=Section.SystemType.OTHER,
+        wastage_pct=wastage_pct,
     )
     CutlistImportLine.objects.bulk_create([
         CutlistImportLine(
@@ -254,20 +278,22 @@ def job_detail(request, pk):
     sections = list(job.sections.prefetch_related(
         Prefetch('areas', queryset=FloorRoofArea.objects.select_related('joist_product', 'roof_pitch')),
         'additional_beams', 'cutlist_import_lines',
+        Prefetch('cladding_areas', queryset=CladdingArea.objects.select_related('cladding_product')),
+        Prefetch('cladding_extra_items', queryset=CladdingExtraItem.objects.select_related('product')),
     ).all())
-    cladding_areas = list(job.cladding_areas.select_related('cladding_product').all())
-    cladding_extra_items = list(job.cladding_extra_items.select_related('product').all())
-    has_vertical_cladding_areas = any(
-        a.orientation == CladdingArea.Orientation.VERTICAL for a in cladding_areas
-    )
-    cladding_cutlist_has_results = bool(
-        job.cladding_cutlist_id
-        and any(t.get('results') for t in (job.cladding_cutlist.state or {}).get('tabs', []))
-    )
     if job.source_cutlist_id:
         for sj in sections:
             if sj.cutlist_import_lines.all():
                 sj.priced_cutlist_lines = _priced_cutlist_lines(sj)
+    for sj in sections:
+        if sj.is_cladding:
+            sj.has_vertical_cladding_areas = any(
+                a.orientation == CladdingArea.Orientation.VERTICAL for a in sj.cladding_areas.all()
+            )
+            sj.cladding_cutlist_has_results = bool(
+                sj.cladding_cutlist_id
+                and any(t.get('results') for t in (sj.cladding_cutlist.state or {}).get('tabs', []))
+            )
     system_settings = SystemSettings.get()
     effective_hardware_pct = (
         job.hardware_allowance_pct
@@ -284,6 +310,13 @@ def job_detail(request, pk):
         if job.wastage_pct is not None
         else system_settings.wastage_pct
     )
+    for sj in sections:
+        sj.effective_wastage_pct = (
+            sj.wastage_pct if sj.wastage_pct is not None else effective_wastage_pct
+        )
+        sj.effective_hardware_pct = (
+            sj.hardware_allowance_pct if sj.hardware_allowance_pct is not None else effective_hardware_pct
+        )
     total = float(job.total)
     band  = float(effective_uncertainty_pct) / 100
     estimate_low  = int(total * (1 - band * 0.30) // 50) * 50
@@ -291,22 +324,16 @@ def job_detail(request, pk):
     return render(request, 'jobs/job_detail.html', {
         'job': job,
         'sections': sections,
-        'cladding_areas': cladding_areas,
-        'cladding_extra_items': cladding_extra_items,
-        'has_vertical_cladding_areas': has_vertical_cladding_areas,
-        'cladding_cutlist_has_results': cladding_cutlist_has_results,
         'system_settings': system_settings,
         'effective_hardware_pct':     effective_hardware_pct,
         'effective_wastage_pct':      effective_wastage_pct,
         'effective_uncertainty_pct':  effective_uncertainty_pct,
         'estimate_low':  f'{estimate_low:,}',
         'estimate_high': f'{estimate_high:,}',
-        'can_add_framing':  _job_allows_framing(job),
-        'can_add_cladding': _job_allows_cladding(job),
     })
 
 
-# ── Section views ─────────────────────────────────────────────────────────────
+# ── Section (Part) views ──────────────────────────────────────────────────────
 
 @login_required
 def job_recalculate(request, pk):
@@ -322,19 +349,46 @@ def job_recalculate(request, pk):
 
 @login_required
 def section_create(request, job_pk):
+    """
+    Add a new Part to an estimate. The type is the first thing chosen — for a
+    Cladding part this renders a differently-shaped form (elevations + extra
+    items, no boundary-joist/stair-void/beam fields) since CladdingArea's shape
+    has nothing in common with FloorRoofArea's. Picking Cladding in the type
+    dropdown reloads this same view with ?system_type=cladding (a real page
+    load, not a client-side show/hide, because the formsets themselves differ).
+    """
     job = get_object_or_404(Job, pk=job_pk)
     if not _assert_job_access(request.user, job):
         messages.error(request, 'You do not have access to that estimate.')
         return redirect('projects:project_list')
-    if not _job_allows_framing(job):
-        messages.error(request, "This estimate already contains a Cladding section — cladding "
-                                 "and framing can't be mixed in one estimate. Start a new "
-                                 "estimate for framing.")
-        return redirect('jobs:job_detail', pk=job.pk)
 
     if request.method == 'POST':
+        posted_type = request.POST.get('system_type')
+        if posted_type == Section.SystemType.CLADDING:
+            form = SectionForm(request.POST)
+            area_fs = CladdingAreaFormSet(request.POST, prefix='areas')
+            extra_fs = CladdingExtraItemFormSet(request.POST, prefix='extras')
+            if form.is_valid() and area_fs.is_valid() and extra_fs.is_valid():
+                section = form.save(commit=False)
+                section.job = job
+                # A fresh cladding part defaults to no hardware allowance rather than
+                # inheriting the framing-oriented job/global default.
+                section.hardware_allowance_pct = Decimal('0')
+                section.save()
+                area_fs.instance = section
+                area_fs.save()
+                extra_fs.instance = section
+                extra_fs.save()
+                run_section_calculation(section, user=request.user)
+                messages.success(request, f'"{section.label}" added.')
+                return redirect('jobs:job_detail', pk=job.pk)
+            return render(request, 'jobs/cladding_areas_form.html', {
+                'job': job, 'form': form, 'area_formset': area_fs, 'extra_formset': extra_fs,
+                'action': 'Add Part',
+            })
+
         form    = SectionForm(request.POST)
-        AreaFS  = _area_formset_cls(request.POST.get('system_type'))
+        AreaFS  = _area_formset_cls(posted_type)
         area_fs = AreaFS(request.POST, prefix='areas')
         beam_fs = AdditionalBeamFormSet(request.POST, prefix='beams')
 
@@ -346,20 +400,30 @@ def section_create(request, job_pk):
             area_fs.save()
             beam_fs.instance = section
             beam_fs.save()
-            run_subjob_calculation(section, user=request.user)
+            run_section_calculation(section, user=request.user)
             messages.success(request, f'"{section.label}" added.')
             return redirect('jobs:job_detail', pk=job.pk)
-    else:
-        form    = SectionForm()
-        area_fs = FloorRoofAreaFormSet(prefix='areas')
-        beam_fs = AdditionalBeamFormSet(prefix='beams')
+        return render(request, 'jobs/subjob_form.html', {
+            'job': job, 'form': form, 'area_formset': area_fs, 'beam_formset': beam_fs,
+            'action': 'Add Part',
+        })
 
+    requested_type = request.GET.get('system_type', Section.SystemType.MIDFLOOR)
+    if requested_type == Section.SystemType.CLADDING:
+        form = SectionForm(initial={'system_type': Section.SystemType.CLADDING})
+        area_fs = CladdingAreaFormSet(prefix='areas')
+        extra_fs = CladdingExtraItemFormSet(prefix='extras')
+        return render(request, 'jobs/cladding_areas_form.html', {
+            'job': job, 'form': form, 'area_formset': area_fs, 'extra_formset': extra_fs,
+            'action': 'Add Part',
+        })
+
+    form    = SectionForm(initial={'system_type': requested_type})
+    area_fs = FloorRoofAreaFormSet(prefix='areas')
+    beam_fs = AdditionalBeamFormSet(prefix='beams')
     return render(request, 'jobs/subjob_form.html', {
-        'job': job,
-        'form': form,
-        'area_formset': area_fs,
-        'beam_formset': beam_fs,
-        'action': 'Add Section',
+        'job': job, 'form': form, 'area_formset': area_fs, 'beam_formset': beam_fs,
+        'action': 'Add Part',
     })
 
 
@@ -372,8 +436,25 @@ def section_edit(request, job_pk, pk):
         return redirect('projects:project_list')
 
     if request.method == 'POST':
+        posted_type = request.POST.get('system_type')
+        if posted_type == Section.SystemType.CLADDING:
+            form = SectionForm(request.POST, instance=section)
+            area_fs = CladdingAreaFormSet(request.POST, instance=section, prefix='areas')
+            extra_fs = CladdingExtraItemFormSet(request.POST, instance=section, prefix='extras')
+            if form.is_valid() and area_fs.is_valid() and extra_fs.is_valid():
+                form.save()
+                area_fs.save()
+                extra_fs.save()
+                run_section_calculation(section, user=request.user)
+                messages.success(request, f'"{section.label}" updated.')
+                return redirect('jobs:job_detail', pk=job.pk)
+            return render(request, 'jobs/cladding_areas_form.html', {
+                'job': job, 'section': section, 'form': form,
+                'area_formset': area_fs, 'extra_formset': extra_fs, 'action': 'Edit Part',
+            })
+
         form    = SectionForm(request.POST, instance=section)
-        AreaFS  = _area_formset_cls(request.POST.get('system_type'))
+        AreaFS  = _area_formset_cls(posted_type)
         area_fs = AreaFS(request.POST, instance=section, prefix='areas')
         beam_fs = AdditionalBeamFormSet(request.POST, instance=section, prefix='beams')
 
@@ -381,73 +462,38 @@ def section_edit(request, job_pk, pk):
             form.save()
             area_fs.save()
             beam_fs.save()
-            run_subjob_calculation(section, user=request.user)
+            run_section_calculation(section, user=request.user)
             messages.success(request, f'"{section.label}" updated.')
             return redirect('jobs:job_detail', pk=job.pk)
-    else:
-        form    = SectionForm(instance=section)
-        AreaFS  = _area_formset_cls(section.system_type)
-        area_fs = AreaFS(instance=section, prefix='areas')
-        beam_fs = AdditionalBeamFormSet(instance=section, prefix='beams')
+        return render(request, 'jobs/subjob_form.html', {
+            'job': job, 'section': section, 'form': form,
+            'area_formset': area_fs, 'beam_formset': beam_fs, 'action': 'Edit Part',
+        })
 
+    if section.is_cladding:
+        form = SectionForm(instance=section)
+        area_fs = CladdingAreaFormSet(instance=section, prefix='areas')
+        extra_fs = CladdingExtraItemFormSet(instance=section, prefix='extras')
+        return render(request, 'jobs/cladding_areas_form.html', {
+            'job': job, 'section': section, 'form': form,
+            'area_formset': area_fs, 'extra_formset': extra_fs, 'action': 'Edit Part',
+        })
+
+    form    = SectionForm(instance=section)
+    AreaFS  = _area_formset_cls(section.system_type)
+    area_fs = AreaFS(instance=section, prefix='areas')
+    beam_fs = AdditionalBeamFormSet(instance=section, prefix='beams')
     return render(request, 'jobs/subjob_form.html', {
-        'job': job,
-        'section': section,
-        'form': form,
-        'area_formset': area_fs,
-        'beam_formset': beam_fs,
-        'action': 'Edit Section',
-    })
-
-
-@login_required
-def cladding_areas_edit(request, job_pk):
-    """
-    Single flow for creating and editing a cladding job's areas (elevations) —
-    there's no Section layer to create first, since cladding has no per-physical-
-    system settings for one to hold. See CLAUDE.md Cladding Estimator.
-    """
-    job = get_object_or_404(Job, pk=job_pk)
-    if not _assert_job_access(request.user, job):
-        messages.error(request, 'You do not have access to that estimate.')
-        return redirect('projects:project_list')
-    is_new = not job.cladding_areas.exists()
-    if is_new and not _job_allows_cladding(job):
-        messages.error(request, "This estimate already contains framing sections — cladding "
-                                 "and framing can't be mixed in one estimate. Start a new "
-                                 "estimate for cladding.")
-        return redirect('jobs:job_detail', pk=job.pk)
-
-    if request.method == 'POST':
-        area_fs  = CladdingAreaFormSet(request.POST, instance=job, prefix='areas')
-        extra_fs = CladdingExtraItemFormSet(request.POST, instance=job, prefix='extras')
-
-        if area_fs.is_valid() and extra_fs.is_valid():
-            area_fs.save()
-            extra_fs.save()
-            if is_new and job.hardware_allowance_pct is None:
-                job.hardware_allowance_pct = Decimal('0')
-                job.save(update_fields=['hardware_allowance_pct', 'updated_at'])
-            run_cladding_calculation(job, user=request.user)
-            messages.success(request, 'Cladding areas updated.')
-            return redirect('jobs:job_detail', pk=job.pk)
-    else:
-        area_fs  = CladdingAreaFormSet(instance=job, prefix='areas')
-        extra_fs = CladdingExtraItemFormSet(instance=job, prefix='extras')
-
-    return render(request, 'jobs/cladding_areas_form.html', {
-        'job': job,
-        'area_formset': area_fs,
-        'extra_formset': extra_fs,
-        'action': 'Add Cladding Areas' if is_new else 'Edit Cladding Areas',
+        'job': job, 'section': section, 'form': form,
+        'area_formset': area_fs, 'beam_formset': beam_fs, 'action': 'Edit Part',
     })
 
 
 @login_required
 @require_POST
-def cladding_generate_cutlist(request, job_pk):
+def cladding_generate_cutlist(request, job_pk, pk):
     """
-    Build a cutlist from a cladding job's vertical elevations — one tab per
+    Build a cutlist from a cladding Part's vertical elevations — one tab per
     product, one cut per area via CladdingArea.cut_piece(). Horizontal areas have
     no fixed piece length (joins are acceptable) so they're never included; they
     stay on the area-based estimate. Elevation labels go on each cut's `mark`,
@@ -455,11 +501,12 @@ def cladding_generate_cutlist(request, job_pk):
     want pieces from different elevations free to share a stick.
     """
     job = get_object_or_404(Job, pk=job_pk)
+    section = get_object_or_404(Section, pk=pk, job=job)
     if not _assert_job_access(request.user, job):
         messages.error(request, 'You do not have access to that estimate.')
         return redirect('projects:project_list')
 
-    vertical_areas = job.cladding_areas.filter(
+    vertical_areas = section.cladding_areas.filter(
         orientation=CladdingArea.Orientation.VERTICAL
     ).select_related('cladding_product')
 
@@ -507,7 +554,7 @@ def cladding_generate_cutlist(request, job_pk):
     cutlist = CutlistProject.objects.create(
         project=job.project,
         created_by=request.user,
-        name=f'{job.label} — Cladding Cutlist'[:100],
+        name=f'{section.label} — Cladding Cutlist'[:100],
         state={
             'jobDetails': {'systemType': 'cladding', 'preparedBy': '', 'kerfWidth': 3},
             'tabs': list(tabs_by_product.values()),
@@ -515,17 +562,17 @@ def cladding_generate_cutlist(request, job_pk):
             'skippedData': [],
         },
     )
-    job.cladding_cutlist = cutlist
-    job.save(update_fields=['cladding_cutlist', 'updated_at'])
+    section.cladding_cutlist = cutlist
+    section.save(update_fields=['cladding_cutlist', 'updated_at'])
 
     return redirect('cutlist:project_edit', pk=cutlist.pk)
 
 
 @login_required
 @require_POST
-def cladding_import_cutlist_results(request, job_pk):
+def cladding_import_cutlist_results(request, job_pk, pk):
     """
-    Pull real optimized stock quantities from the job's generated cutlist back
+    Pull real optimized stock quantities from the Part's generated cutlist back
     into pricing, replacing the rough area-based estimate for each product the
     cutlist covers (see _calc_cladding's per-product merge). Gross stock length
     (not net cut length) is used as the base, since a contingency % for on-site
@@ -533,18 +580,19 @@ def cladding_import_cutlist_results(request, job_pk):
     cutting waste already inherent in the optimizer's own result.
     """
     job = get_object_or_404(Job, pk=job_pk)
+    section = get_object_or_404(Section, pk=pk, job=job)
     if not _assert_job_access(request.user, job):
         messages.error(request, 'You do not have access to that estimate.')
         return redirect('projects:project_list')
 
-    cutlist = job.cladding_cutlist
+    cutlist = section.cladding_cutlist
     if not cutlist:
-        messages.error(request, 'Generate a cutlist for this job before importing results.')
+        messages.error(request, 'Generate a cutlist for this part before importing results.')
         return redirect('jobs:job_detail', pk=job.pk)
 
     freight_settings = SystemSettings.get()
     contingency_pct = (
-        job.stock_contingency_pct if job.stock_contingency_pct is not None
+        section.stock_contingency_pct if section.stock_contingency_pct is not None
         else freight_settings.stock_contingency_pct
     )
     contingency_factor = Decimal('1') + Decimal(str(contingency_pct)) / Decimal('100')
@@ -567,7 +615,7 @@ def cladding_import_cutlist_results(request, job_pk):
         ).quantize(Decimal('0.01'))
         product = products.get(tab.get('productId'))
         lines.append(CladdingCutlistLine(
-            job=job, product=product, length_m=length_m,
+            section=section, product=product, length_m=length_m,
             product_description=tab.get('memberName', ''),
         ))
 
@@ -575,11 +623,41 @@ def cladding_import_cutlist_results(request, job_pk):
         messages.error(request, 'Optimise at least one tab in the cutlist before importing.')
         return redirect('jobs:job_detail', pk=job.pk)
 
-    job.cladding_cutlist_lines.all().delete()
+    section.cladding_cutlist_lines.all().delete()
     CladdingCutlistLine.objects.bulk_create(lines)
-    run_cladding_calculation(job, user=request.user)
+    run_section_calculation(section, user=request.user)
     messages.success(request, 'Cutlist results imported into pricing.')
     return redirect('jobs:job_detail', pk=job.pk)
+
+
+@login_required
+def cladding_report(request, job_pk, pk):
+    """
+    The client-facing cladding estimate report — elevations, priced order
+    sheet, and (if a cutlist has been generated) the optimised cutting
+    diagrams. Lives here, not in the cutlist app: every dollar figure comes
+    straight from this Part's already-computed member_schedule (the same data
+    job_breakdown.html shows) — nothing is recalculated on this page. The
+    cutlist's own state is only ever read for its raw cutting geometry
+    (bins/cuts), never for pricing; cutlist stays a pure, estimate-agnostic
+    bin-packing tool (see templates/cutlist/print_view.html).
+    """
+    job = get_object_or_404(Job, pk=job_pk)
+    section = get_object_or_404(Section, pk=pk, job=job)
+    if not _assert_job_access(request.user, job):
+        messages.error(request, 'You do not have access to that estimate.')
+        return redirect('projects:project_list')
+    if not section.is_cladding:
+        messages.error(request, 'This report is only available for a Cladding part.')
+        return redirect('jobs:job_detail', pk=job.pk)
+
+    return render(request, 'jobs/cladding_report.html', {
+        'job': job,
+        'section': section,
+        'areas': section.cladding_areas.select_related('cladding_product').all(),
+        'schedule': section.member_schedule,
+        'cutlist_state': section.cladding_cutlist.state if section.cladding_cutlist_id else None,
+    })
 
 
 @login_required
@@ -597,13 +675,19 @@ def job_duplicate(request, pk):
         created_by             = request.user,
         label                  = f'Copy of {job.label}' if job.label else 'Copy',
         hardware_allowance_pct = job.hardware_allowance_pct,
+        wastage_pct            = job.wastage_pct,
     )
 
-    for section in job.sections.prefetch_related('areas', 'additional_beams').all():
+    for section in job.sections.prefetch_related(
+        'areas', 'additional_beams', 'cladding_areas', 'cladding_extra_items',
+    ).all():
         new_section = Section.objects.create(
             job=new_job,
             label=section.label,
             system_type=section.system_type,
+            wastage_pct=section.wastage_pct,
+            hardware_allowance_pct=section.hardware_allowance_pct,
+            stock_contingency_pct=section.stock_contingency_pct,
             include_boundary_joists=section.include_boundary_joists,
             boundary_perimeter_lm=section.boundary_perimeter_lm,
             boundary_joist_description=section.boundary_joist_description,
@@ -630,14 +714,26 @@ def job_duplicate(request, pk):
                 length_m=beam.length_m,
                 quantity=beam.quantity,
             )
-
-    for area in job.cladding_areas.all():
-        CladdingArea.objects.create(
-            job=new_job,
-            area_label=area.area_label,
-            area_m2=area.area_m2,
-            cladding_product=area.cladding_product,
-        )
+        for area in section.cladding_areas.all():
+            CladdingArea.objects.create(
+                section=new_section,
+                area_label=area.area_label,
+                orientation=area.orientation,
+                width_m=area.width_m,
+                height_m=area.height_m,
+                cladding_product=area.cladding_product,
+            )
+        for item in section.cladding_extra_items.all():
+            CladdingExtraItem.objects.create(
+                section=new_section,
+                product_description=item.product_description,
+                product=item.product,
+                length_m=item.length_m,
+                quantity=item.quantity,
+            )
+        # Cutlist-derived lines (CutlistImportLine/CladdingCutlistLine) and any generated
+        # cutlist link are deliberately not copied — those represent a specific optimizer
+        # run against the original part, not something a duplicate should inherit blind.
 
     run_job_estimate(new_job, user=request.user)
     messages.success(request, 'Estimate duplicated.')
@@ -686,7 +782,9 @@ def job_breakdown(request, pk):
         messages.error(request, 'You do not have access to that estimate.')
         return redirect('projects:project_list')
 
-    sections = job.sections.prefetch_related('areas', 'additional_beams').all()
+    sections = job.sections.prefetch_related(
+        'areas', 'additional_beams', 'cladding_areas', 'cladding_extra_items',
+    ).all()
     return render(request, 'jobs/job_breakdown.html', {
         'job': job,
         'sections': sections,

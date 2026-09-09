@@ -53,12 +53,12 @@ class SectionInline(admin.StackedInline):
     extra = 0
     show_change_link = True
     fields = [
-        'label', 'system_type',
+        'label', 'system_type', 'wastage_pct', 'hardware_allowance_pct',
         'include_boundary_joists', 'boundary_perimeter_lm', 'boundary_joist_product',
         'include_stair_void_trimmers', 'stair_void_trimmer_product',
-        'calculated_subtotal',
+        'calculated_subtotal', 'hardware_allowance_amount',
     ]
-    readonly_fields = ['calculated_subtotal']
+    readonly_fields = ['calculated_subtotal', 'hardware_allowance_amount']
 
 
 @admin.register(Job)
@@ -66,17 +66,17 @@ class JobAdmin(admin.ModelAdmin):
     list_display  = ['__str__', 'project', 'created_at']
     list_filter   = ['project__organisation']
     search_fields = ['label', 'project__client_name', 'project__site_address', 'project__lb_job_number']
-    readonly_fields = ['created_at', 'updated_at', 'freight_charge', 'freight_surcharge', 'calculated_subtotal', 'member_schedule']
-    inlines = [
-        SectionInline, CladdingAreaInline, CladdingExtraItemInline,
-        CladdingCutlistLineInline, DrawingUploadInline,
-    ]
+    readonly_fields = ['created_at', 'updated_at', 'freight_charge', 'freight_surcharge']
+    inlines = [SectionInline, DrawingUploadInline]
 
 
 @admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
-    list_display  = ['label', 'job', 'system_type', 'calculated_subtotal']
+    list_display  = ['label', 'job', 'system_type', 'calculated_subtotal', 'hardware_allowance_amount']
     list_filter   = ['system_type']
     search_fields = ['label', 'job__project__client_name']
-    readonly_fields = ['calculated_subtotal', 'member_schedule']
-    inlines = [FloorRoofAreaInline, AdditionalBeamInline, CutlistImportLineInline]
+    readonly_fields = ['calculated_subtotal', 'hardware_allowance_amount', 'member_schedule']
+    inlines = [
+        FloorRoofAreaInline, AdditionalBeamInline, CutlistImportLineInline,
+        CladdingAreaInline, CladdingExtraItemInline, CladdingCutlistLineInline,
+    ]
