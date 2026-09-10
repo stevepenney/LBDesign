@@ -724,15 +724,45 @@ function removeStock(tabId, index) {
 // OVERLENGTH SPLITTING
 // =============================================================================
 
-function splitOverlengthCut(cutLength, splitStockLength, kerfWidth, cutTolerance) {
+function splitOverlengthCut(cutLength, splitStockLength, cutTolerance) {
     const splits = [];
     let remaining = cutLength;
     while (remaining >= splitStockLength) {
         splits.push({ length: splitStockLength, isFullStick: true });
         remaining -= splitStockLength;
     }
-    if (remaining > 0) splits.push({ length: remaining + kerfWidth + cutTolerance, isFullStick: false });
+    // No kerf added here (only cutTolerance) — this remainder piece still has to be cut out of
+    // some stock length like any other cut, so it goes through the normal FFD placement below
+    // and gets its one kerf charged there, same as every other cut. Baking an extra kerf in here
+    // too would double-charge it once placement stops special-casing "the first cut is free"
+    // (see kerfLossForBin).
+    if (remaining > 0) splits.push({ length: remaining + cutTolerance, isFullStick: false });
     return splits;
+}
+
+// A "full stick" segment (from an overlength split, see splitOverlengthCut) uses 100% of its
+// own dedicated stock length as one piece, with nothing trimmed off it — no saw cut separates it
+// from anything, so unlike every other cut it costs no kerf. A full-stick bin never gains any
+// other cuts (its `remaining` is always 0, so nothing else can ever fit alongside it — see
+// calculateOptimization), so counting "real" cuts per bin is enough; no need to track state.
+function isFullStickCut(cut) {
+    return typeof cut === 'object' && !!cut.isFullStick;
+}
+
+// Every real cut consumes one kerf-width of material as saw swarf, regardless of whether it's
+// the first cut made on a stick or the last one — a 5400mm stick with a single 5000mm piece cut
+// off it leaves `400 - kerfWidth` of real leftover, not 400mm flat. This is the single source of
+// truth for that, used everywhere a bin's `remaining` needs recomputing from its cuts (the
+// incremental placement/consolidation loops apply the same "+kerfWidth per cut" rule directly,
+// since they only ever see one cut at a time).
+function kerfLossForBin(bin, kerfWidth) {
+    const realCuts = bin.cuts.filter(c => !isFullStickCut(c)).length;
+    return realCuts * kerfWidth;
+}
+
+function usedLengthForBin(bin, kerfWidth) {
+    const cutTotal = bin.cuts.reduce((sum, c) => sum + (typeof c === 'object' ? c.length : c), 0);
+    return cutTotal + kerfLossForBin(bin, kerfWidth);
 }
 
 // =============================================================================
@@ -782,18 +812,18 @@ function calculateOptimization(tabId) {
                     // lets "route onto a custom stick" (unsplitOverlengthCut) find exactly the
                     // pieces belonging to ONE occurrence rather than any matching cutIndex.
                     const splitGroupId = `${cutIdx}-${i}`;
-                    const splits = splitOverlengthCut(cutLength, overlengthSplitStock, kerfWidth, cutTolerance);
+                    const splits = splitOverlengthCut(cutLength, overlengthSplitStock, cutTolerance);
                     overlengthSplits.push({ originalLength: cutLength, splits, group: groupKey, cutIndex: cutIdx, splitGroupId });
                     splits.forEach(splitPiece => {
                         expandedCuts.push({
                             length: splitPiece.length, isSplitPiece: true,
                             isFullStick: splitPiece.isFullStick, displayLength: cutLength,
                             // The true physical length of this segment, for display — distinct
-                            // from `length`, which is padded with kerf/tolerance for fit
+                            // from `length`, which is padded with cut tolerance for fit
                             // calculations on the non-full-stick (remainder) segment.
                             segmentLength: splitPiece.isFullStick
                                 ? splitPiece.length
-                                : splitPiece.length - kerfWidth - cutTolerance,
+                                : splitPiece.length - cutTolerance,
                             mark: cut.mark || '', group: groupKey, cutIndex: cutIdx, originalLength: 0,
                             splitGroupId,
                         });
@@ -815,10 +845,10 @@ function calculateOptimization(tabId) {
                 allBins.push({ id: binIdCounter++, stockLength: cutInfo.length, cuts: [cutInfo], remaining: 0, timberType, group: groupKey });
                 return;
             }
+            const spaceNeeded = cutInfo.length + kerfWidth; // every real cut costs one kerf, first or not
             const groupBins = allBins.filter(b => b.group === groupKey);
             let placed = false;
             for (let bin of groupBins) {
-                const spaceNeeded = cutInfo.length + (bin.cuts.length > 0 ? kerfWidth : 0);
                 if (bin.remaining >= spaceNeeded) {
                     bin.cuts.push(cutInfo);
                     bin.remaining -= spaceNeeded;
@@ -829,7 +859,7 @@ function calculateOptimization(tabId) {
             if (!placed) {
                 const suitableStock = sortedStock.find(stock => stock >= cutInfo.length);
                 if (suitableStock) {
-                    allBins.push({ id: binIdCounter++, stockLength: suitableStock, cuts: [cutInfo], remaining: suitableStock - cutInfo.length, timberType, group: groupKey });
+                    allBins.push({ id: binIdCounter++, stockLength: suitableStock, cuts: [cutInfo], remaining: suitableStock - spaceNeeded, timberType, group: groupKey });
                 } else {
                     showToast(`Cut length ${cutInfo.length}mm exceeds all available stock lengths!`, 'error');
                 }
@@ -840,7 +870,7 @@ function calculateOptimization(tabId) {
     const bins            = allBins;
     const totalStockUsed  = bins.reduce((sum, bin) => sum + bin.stockLength, 0);
     const totalActualCutLength = bins.reduce((sum, bin) => bin.cuts.reduce((s, c) => s + c.length, sum), 0);
-    const totalKerfLoss   = bins.reduce((sum, bin) => sum + (bin.cuts.length - 1) * kerfWidth, 0);
+    const totalKerfLoss   = bins.reduce((sum, bin) => sum + kerfLossForBin(bin, kerfWidth), 0);
     const totalTolerance  = totalActualCutLength - totalOriginalCutLength;
     const totalWaste      = totalStockUsed - totalActualCutLength - totalKerfLoss;
     const wastePercentage = ((totalWaste / totalStockUsed) * 100).toFixed(2);
@@ -877,14 +907,14 @@ function displayResults(tabId) {
             <div class="collapsible-body">`;
 
     if (overlengthSplits && overlengthSplits.length > 0) {
-        // `s.length` on the remainder piece is padded with kerf/tolerance for fit calculations
+        // `s.length` on the remainder piece is padded with cut tolerance for fit calculations
         // (matches cutInfo.length in the diagrams) — subtract that back out for the true
         // physical segment length, same fix as the stick-diagram labels above.
         const cutTolerance = tab.cutTolerance || 0;
         html += '<div class="overlength-info"><h4>Overlength Cuts Split</h4>';
         overlengthSplits.forEach((split, splitIdx) => {
             const splitDesc = split.splits.map(s =>
-                s.isFullStick ? `${s.length}mm (full stick)` : `${Math.round(s.length - kerfWidth - cutTolerance)}mm`
+                s.isFullStick ? `${s.length}mm (full stick)` : `${Math.round(s.length - cutTolerance)}mm`
             ).join(' + ');
             html += `<p>${split.originalLength}mm → ${splitDesc}`;
             if (tabId) {
@@ -892,7 +922,7 @@ function displayResults(tabId) {
                 html += `
                     <span class="unsplit-control">
                         or
-                        <input type="number" id="${inputId}" min="${split.originalLength + cutTolerance}" step="1"
+                        <input type="number" id="${inputId}" min="${split.originalLength + cutTolerance + kerfWidth}" step="1"
                                placeholder="custom mm" class="unsplit-length-input">
                         <button type="button" class="btn-small"
                                 onclick="unsplitOverlengthCut('${tabId}', ${splitIdx}, parseInt(document.getElementById('${inputId}').value, 10))">
@@ -1011,7 +1041,7 @@ function generateCuttingDiagram(bin, stickNumber, kerfWidth, tabId) {
     }
 
     const totalNonKerfHeight = diagramHeight - ((cuts.length - 1) * kerfHeightPx);
-    const usableLength       = stockLength - ((cuts.length - 1) * kerfWidth) - remaining;
+    const usableLength       = stockLength - kerfLossForBin(bin, kerfWidth) - remaining;
 
     cuts.forEach((cutInfo, index) => {
         const cutLength     = typeof cutInfo === 'object' ? cutInfo.length      : cutInfo;
@@ -1170,8 +1200,7 @@ function openStickEditor(tabId, binId) {
     _stickEditBinId = binId;
 
     const kerfWidth  = project.jobDetails.kerfWidth;
-    const usedLength = bin.cuts.reduce((sum, cut) => sum + (typeof cut === 'object' ? cut.length : cut), 0)
-        + Math.max(0, bin.cuts.length - 1) * kerfWidth;
+    const usedLength = usedLengthForBin(bin, kerfWidth);
 
     const standardLengths = [...new Set(tab.stockLengths)].filter(l => l >= usedLength).sort((a, b) => a - b);
     const isCustomCurrent = !standardLengths.includes(bin.stockLength);
@@ -1217,8 +1246,7 @@ function saveStickEdit() {
     if (isNaN(newLength) || newLength < 1) { showToast('Please enter a valid length', 'error'); return; }
 
     const kerfWidth  = project.jobDetails.kerfWidth;
-    const usedLength = bin.cuts.reduce((sum, cut) => sum + (typeof cut === 'object' ? cut.length : cut), 0)
-        + Math.max(0, bin.cuts.length - 1) * kerfWidth;
+    const usedLength = usedLengthForBin(bin, kerfWidth);
 
     if (newLength < usedLength) {
         showToast(`That's too short — these pieces need at least ${usedLength}mm`, 'error');
@@ -1256,12 +1284,16 @@ function unsplitOverlengthCut(tabId, splitIdx, customLength) {
         return;
     }
 
-    const kerfWidth    = project.jobDetails.kerfWidth;
-    const cutTolerance = tab.cutTolerance || 0;
-    const neededLength = split.originalLength + cutTolerance;
+    const kerfWidth     = project.jobDetails.kerfWidth;
+    const cutTolerance  = tab.cutTolerance || 0;
+    const neededLength  = split.originalLength + cutTolerance;
+    // The real minimum stock length is one kerf more than the piece itself — replacing the
+    // split with "a single stick" still means cutting that stick down to size, which costs a
+    // kerf like any other cut.
+    const minStockLength = neededLength + kerfWidth;
 
-    if (isNaN(customLength) || customLength < neededLength) {
-        showToast(`Needs at least ${neededLength}mm to fit this piece`, 'error');
+    if (isNaN(customLength) || customLength < minStockLength) {
+        showToast(`Needs at least ${minStockLength}mm to fit this piece`, 'error');
         return;
     }
 
@@ -1284,9 +1316,7 @@ function unsplitOverlengthCut(tabId, splitIdx, customLength) {
     // Drop any bin left empty, recompute remaining for any bin left with cuts.
     tab.results.bins = tab.results.bins.filter(bin => {
         if (bin.cuts.length === 0) return false;
-        const usedLength = bin.cuts.reduce((sum, c) => sum + (typeof c === 'object' ? c.length : c), 0)
-            + Math.max(0, bin.cuts.length - 1) * kerfWidth;
-        bin.remaining = bin.stockLength - usedLength;
+        bin.remaining = bin.stockLength - usedLengthForBin(bin, kerfWidth);
         return true;
     });
 
@@ -1301,7 +1331,7 @@ function unsplitOverlengthCut(tabId, splitIdx, customLength) {
         id: binIdCounter++,
         stockLength: customLength,
         cuts: [wholeCut],
-        remaining: customLength - neededLength,
+        remaining: customLength - neededLength - kerfWidth,
         group: split.group,
         timberType,
         locked: true,
@@ -1356,7 +1386,7 @@ function canDropCutOnBin(source, tab, targetBin) {
     if (!cut) return false;
     const cutLength   = typeof cut === 'object' ? cut.length : cut;
     const kerfWidth   = project.jobDetails.kerfWidth;
-    const spaceNeeded = cutLength + (targetBin.cuts.length > 0 ? kerfWidth : 0);
+    const spaceNeeded = cutLength + kerfWidth;
     return targetBin.remaining >= spaceNeeded;
 }
 
@@ -1388,15 +1418,13 @@ function moveCutIntoBin(tab, source, targetBin) {
 
     sourceBin.cuts.splice(source.cutIndex, 1);
     targetBin.cuts.push(cut);
-    targetBin.remaining -= (cutLength + (targetBin.cuts.length > 1 ? kerfWidth : 0));
+    targetBin.remaining -= (cutLength + kerfWidth);
     targetBin.locked = true;
 
     if (sourceBin.cuts.length === 0) {
         tab.results.bins = tab.results.bins.filter(b => b.id !== sourceBin.id);
     } else {
-        const usedLength = sourceBin.cuts.reduce((sum, c) => sum + (typeof c === 'object' ? c.length : c), 0)
-            + Math.max(0, sourceBin.cuts.length - 1) * kerfWidth;
-        sourceBin.remaining = sourceBin.stockLength - usedLength;
+        sourceBin.remaining = sourceBin.stockLength - usedLengthForBin(sourceBin, kerfWidth);
         sourceBin.locked    = true;
     }
 
@@ -1554,7 +1582,7 @@ function runFFDRespectingLocks(tabId) {
     const lockedCutLength = lockedBins.reduce((sum, bin) =>
         sum + bin.cuts.reduce((s, c) => s + (typeof c === 'object' ? (c.displayLength ?? c.length) : c), 0), 0);
     tab.results.totalCutLength = (tab.results.totalCutLength || 0) + lockedCutLength;
-    const totalKerfLoss = tab.results.bins.reduce((sum, bin) => sum + Math.max(0, bin.cuts.length - 1) * kerfWidth, 0);
+    const totalKerfLoss = tab.results.bins.reduce((sum, bin) => sum + kerfLossForBin(bin, kerfWidth), 0);
     tab.results.totalKerfLoss   = totalKerfLoss;
     tab.results.totalWaste      = tab.results.totalStockUsed - tab.results.totalCutLength - totalKerfLoss;
     tab.results.wastePercentage = ((tab.results.totalWaste / tab.results.totalStockUsed) * 100).toFixed(2);
@@ -1670,7 +1698,7 @@ function advancedOptimizeAll(silent = false) {
         tab.results.stockCount     = tab.results.bins.length;
         const totalCutLength = tab.results.bins.reduce((sum, bin) =>
             sum + bin.cuts.reduce((s, cut) => s + (typeof cut === 'object' ? cut.length : cut), 0), 0);
-        const totalKerfLoss  = tab.results.bins.reduce((sum, bin) => sum + Math.max(0, bin.cuts.length - 1) * kerfWidth, 0);
+        const totalKerfLoss  = tab.results.bins.reduce((sum, bin) => sum + kerfLossForBin(bin, kerfWidth), 0);
         tab.results.totalWaste      = newMaterial - totalCutLength - totalKerfLoss;
         tab.results.wastePercentage = ((tab.results.totalWaste / newMaterial) * 100).toFixed(2);
     });
@@ -1756,10 +1784,10 @@ function tryPlaceCuts(cuts, targetLengths, kerfWidth) {
         return bLen - aLen;
     });
     for (const cut of sortedCuts) {
-        const cutLength = typeof cut === 'object' ? cut.length : cut;
+        const cutLength   = typeof cut === 'object' ? cut.length : cut;
+        const spaceNeeded = cutLength + kerfWidth; // every real cut costs one kerf, first or not
         let placed = false;
         for (const tb of targetBins) {
-            const spaceNeeded = cutLength + (tb.cuts.length > 0 ? kerfWidth : 0);
             if (tb.remaining >= spaceNeeded) {
                 tb.cuts.push(cut);
                 tb.remaining -= spaceNeeded;
@@ -1780,26 +1808,26 @@ function repackPoolBestFit(cuts, stockSorted, kerfWidth, newBinChoice, descendin
     });
     const bins = [];
     for (const cut of ordered) {
-        const cutLength = typeof cut === 'object' ? cut.length : cut;
-        let bestBin = null, bestSpaceNeeded = 0, bestLeftover = null;
+        const cutLength   = typeof cut === 'object' ? cut.length : cut;
+        const spaceNeeded = cutLength + kerfWidth; // every real cut costs one kerf, first or not
+        let bestBin = null, bestLeftover = null;
         for (const b of bins) {
-            const spaceNeeded = cutLength + (b.cuts.length > 0 ? kerfWidth : 0);
             if (b.remaining >= spaceNeeded) {
                 const leftover = b.remaining - spaceNeeded;
                 if (bestLeftover === null || leftover < bestLeftover) {
-                    bestLeftover = leftover; bestBin = b; bestSpaceNeeded = spaceNeeded;
+                    bestLeftover = leftover; bestBin = b;
                 }
             }
         }
         if (bestBin) {
             bestBin.cuts.push(cut);
-            bestBin.remaining -= bestSpaceNeeded;
+            bestBin.remaining -= spaceNeeded;
         } else {
             const suitable = newBinChoice === 'largest' && stockSorted.length && stockSorted[stockSorted.length - 1] >= cutLength
                 ? stockSorted[stockSorted.length - 1]
                 : stockSorted.find(s => s >= cutLength);
             if (suitable === undefined) return null;
-            bins.push({ stockLength: suitable, cuts: [cut], remaining: suitable - cutLength });
+            bins.push({ stockLength: suitable, cuts: [cut], remaining: suitable - spaceNeeded });
         }
     }
     return bins;

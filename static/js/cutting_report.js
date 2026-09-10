@@ -100,13 +100,24 @@ function letterFor(index) {
 }
 
 function buildCutLegend(cuts) {
-    const legend = new Map(); // key (mark|length) -> { letter, mark, length, qty }
+    const legend = new Map(); // key (mark|length) -> { letter, mark, length, tolerance, qty }
     cuts.forEach(cutInfo => {
-        const mark   = typeof cutInfo === 'object' ? (cutInfo.mark || '') : '';
-        const length = cutLengthOf(cutInfo);
-        const key    = `${mark}|${length}`;
+        const isObj          = typeof cutInfo === 'object';
+        const mark           = isObj ? (cutInfo.mark || '') : '';
+        const length         = cutLengthOf(cutInfo); // nominal, e.g. "cut to 5281mm"
+        const isSplitPiece   = isObj ? !!cutInfo.isSplitPiece : false;
+        const physicalLength = isObj ? cutInfo.length : cutInfo;
+        // `length` (physical) includes cutlist.js's per-tab cut-tolerance padding on top of
+        // the nominal size (see generateHorizontalDiagram) — surfacing it here as its own
+        // figure is what makes Length + Waste actually sum to the stock length; folding it
+        // silently into `length` instead just moves the same "doesn't add up" confusion here.
+        // Split pieces don't have a clean tolerance figure (their `length` reflects a stock/
+        // remainder split, not nominal-plus-padding), so leave those unadorned.
+        const tolerance = (!isSplitPiece && physicalLength > length)
+            ? Math.round(physicalLength - length) : 0;
+        const key = `${mark}|${length}`;
         if (!legend.has(key)) {
-            legend.set(key, { letter: letterFor(legend.size), mark, length, qty: 0 });
+            legend.set(key, { letter: letterFor(legend.size), mark, length, tolerance, qty: 0 });
         }
         legend.get(key).qty += 1;
     });
@@ -114,13 +125,15 @@ function buildCutLegend(cuts) {
 }
 
 function buildCutLegendTable(legend, remaining) {
-    const rows = Array.from(legend.values()).map(({ letter, mark, length, qty }) => `
-      <tr>
+    const rows = Array.from(legend.values()).map(({ letter, mark, length, tolerance, qty }) => {
+        const lengthText = tolerance > 0 ? `${length} + ${tolerance}mm` : `${length}mm`;
+        return `<tr>
         <td><strong>${letter}</strong></td>
-        <td class="num">${length}mm</td>
+        <td class="num">${lengthText}</td>
         <td>${mark ? escReportText(mark) : '&mdash;'}</td>
         <td class="num">${qty}</td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
 
     // Waste gets its own row instead of a letter — it's leftover material, not a piece
     // that was cut to a mark, so there's nothing to letter-tag on the diagram for it.
