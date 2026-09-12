@@ -358,6 +358,7 @@
     {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
     <a href="{% url 'jobs:job_breakdown' job.pk %}" class="btn btn-secondary">View Breakdown</a>
     {% endif %}
+    <a href="{% url 'jobs:estimate_report' job.pk %}" class="btn btn-primary">Report</a>
   </div>
 </div>
 
@@ -560,7 +561,6 @@
               </form>
             {% endif %}
           {% endif %}
-          <a href="{% url 'jobs:cladding_report' job.pk sj.pk %}" class="icon-btn" title="Report" aria-label="Report"><i class="bi bi-file-earmark-text"></i></a>
         {% endif %}
       </div>
     </div>

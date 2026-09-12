@@ -7,12 +7,16 @@ for merchant customers to generate wholesale timber framing estimates.
 
 Virtual environment: `venv/` (Windows). Always use `venv/Scripts/python` not bare `python`.
 
+Steve often already has a dev server running on port 8000 — check for that before starting a new
+`runserver` process, and reuse it rather than spinning up a second instance. Only start one if
+port 8000 isn't already bound.
+
 ---
 
 ## Commands
 
 ```bash
-# Run dev server
+# Run dev server (skip if one's already running on :8000 — see above)
 venv/Scripts/python manage.py runserver
 
 # After any model change
@@ -122,9 +126,11 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
 ### URLs (app_name = 'jobs')
 - `jobs:section_create`, `jobs:section_edit`, `jobs:section_delete`, `jobs:section_update_field`
 - `jobs:job_recalculate`
-- `jobs:cladding_generate_cutlist`, `jobs:cladding_import_cutlist`, `jobs:cladding_report` — all
-  nested `<job_pk>/sections/<pk>/cladding/...`, scoped to one cladding Part (a job can have more
-  than one).
+- `jobs:estimate_report` — `<job_pk>/report/`, Job-level (see "Cladding Estimator" below); not
+  scoped to a Part.
+- `jobs:cladding_generate_cutlist`, `jobs:cladding_import_cutlist` — nested
+  `<job_pk>/sections/<pk>/cladding/...`, scoped to one cladding Part (a job can have more than
+  one).
 
 ### Admin
 - `RoofPitch` and `SystemSettings` are in the **Core** admin section.
@@ -239,19 +245,28 @@ of needing two separate `Job`s via Duplicate).
   same as wastage/hardware). A "Return to Estimate" button in the cutlist editor
   (`templates/cutlist/project_edit.html`, shown when `cutlist.cladding_source_sections.exists()`)
   does the import and navigates back in one click.
-- **The report is a `jobs` page, not a `cutlist` one** (`jobs:cladding_report`,
-  `templates/jobs/cladding_report.html`). `cutlist` stays a pure, estimate-agnostic bin-packing
-  tool — its own print view (`cutlist:project_print`) never shows pricing or elevations, just
-  cutting diagrams/pattern summary/unpriced stock quantities, for any cutlist. The cladding
-  report reads a Part's already-priced `member_schedule` for every dollar figure (same data
-  `job_breakdown.html` shows — nothing recalculated on the report page) and its `CladdingArea`s
-  for the elevations table; it only reads the linked `CutlistProject.state` for raw cutting
-  geometry (bins/cuts), via the shared `static/js/cutting_report.js` module (repetition-grouped
-  horizontal stick diagrams + a per-pattern summary table — see "Consolidation algorithm" for why
-  physical sticks collapse into patterns). That module is deliberately standalone (plain
-  `(bins, kerfWidth)` functions, no dependency on `cutlist.js`'s globals) so both
-  `cutlist:project_print` and `jobs:cladding_report` can use it without either pulling in the
-  whole interactive editor.
+- **The report is a `jobs` page, not a `cutlist` one, and lives at the estimate level, not the
+  Part level** (`jobs:estimate_report`, `templates/jobs/estimate_report.html` — one "Report"
+  button in `job_detail.html`'s top toolbar, not a per-Part icon). It was originally a per-Part
+  report (`jobs:cladding_report`, one per cladding Part) but freight, hardware allowance, and
+  Estimate Uncertainty % are Job-level concepts (see "Models" above) — a report that applies them
+  has to be Job-level too. `estimate_report` loops every Part in the job (framing and cladding
+  alike), rendering each one's elevations (cladding only) and priced order sheet exactly as the
+  old per-Part report did, ahead of a whole-estimate summary card (materials/hardware/freight
+  totals + the indicative price range, using the same `_estimate_price_range()` helper
+  `job_detail`'s own summary card uses — kept in one place, in `jobs/views.py`, so the two never
+  disagree) and then, for every cladding Part with a generated cutlist, that Part's cutting
+  diagram pages. `cutlist` stays a pure, estimate-agnostic bin-packing tool — its own print view
+  (`cutlist:project_print`) never shows pricing or elevations, just cutting diagrams/pattern
+  summary/unpriced stock quantities, for any cutlist. The report reads each Part's already-priced
+  `member_schedule` for every dollar figure (same data `job_breakdown.html` shows — nothing
+  recalculated on the report page) and its `CladdingArea`s for the elevations table; it only
+  reads each linked `CutlistProject.state` for raw cutting geometry (bins/cuts), via the shared
+  `static/js/cutting_report.js` module (repetition-grouped horizontal stick diagrams + a
+  per-pattern summary table — see "Consolidation algorithm" for why physical sticks collapse into
+  patterns). That module is deliberately standalone (plain `(bins, kerfWidth)` functions, no
+  dependency on `cutlist.js`'s globals) so both `cutlist:project_print` and `jobs:estimate_report`
+  can use it without either pulling in the whole interactive editor.
 - Products: a `Cladding` `ProductType` (seeded via `products/migrations/0012_seed_
   cladding_producttype.py`, same `get_or_create` pattern as the original product-type seed).
   CSV bulk import (`products/admin_import.py`) supports `use_as_cladding`, `cover_mm`, and

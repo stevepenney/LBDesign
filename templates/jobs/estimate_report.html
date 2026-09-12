@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cladding Report — {{ section.label }}</title>
+  <title>Estimate Report — {{ job.project.lb_ref }}</title>
   <link rel="stylesheet" href="{% static 'css/base.css' %}">
   <link rel="stylesheet" href="{% static 'css/cutlist.css' %}">
   <style>
@@ -46,13 +46,28 @@
     .print-order-total__label { font-size: 0.9rem; font-weight: 700; color: var(--brown); text-transform: uppercase; letter-spacing: .04em; }
     .print-order-total__value { font-size: 1.3rem; font-weight: 700; color: var(--brown-dark); }
 
+    .summary-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .summary-table td { padding: .4rem .1rem; }
+    .summary-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .summary-table tr.summary-rule td { border-top: 1px solid var(--border); padding: 0; }
+    .summary-table tr.summary-range td { padding-top: .6rem; font-size: 1rem; font-weight: 700; color: var(--brown-dark); }
+    .summary-table tr.summary-range .num { font-size: 1.15rem; }
+    .summary-note { margin-top: .75rem; font-size: 0.75rem; color: #888; line-height: 1.5; font-style: italic; }
+
+    .print-part-header {
+      display: flex; align-items: baseline; gap: .6rem; border-bottom: 2px solid var(--brown);
+      padding-bottom: .5rem; margin-bottom: 1rem;
+    }
+    .print-part-header__label { font-size: 1rem; font-weight: 700; color: var(--brown); }
+    .print-part-header__type { font-size: 0.75rem; color: #999; text-transform: uppercase; letter-spacing: .04em; }
+
     .print-page-header {
       display: flex; align-items: baseline; gap: .75rem; border-bottom: 2px solid var(--brown);
       padding-bottom: .5rem; margin-bottom: 1rem;
     }
     .print-page-header__member { font-size: 1rem; font-weight: 700; color: var(--brown); }
     .print-page-header__group { font-size: 0.82rem; color: #666; }
-    .print-page-header__jobref { margin-left: auto; font-size: 0.75rem; color: #aaa; }
+    .print-page-header__part { margin-left: auto; font-size: 0.75rem; color: #aaa; }
 
     .print-pattern-table { margin-bottom: 1.25rem; }
     .print-cut-legend { margin: .4rem 0 .6rem 0; }
@@ -86,7 +101,7 @@
     @media print {
       body { background: white; padding: 0; margin: 0; }
       .print-page { box-shadow: none; margin: 0; padding: 0; width: 100%; min-height: 0; }
-      .print-page--diagram { break-before: page; }
+      .print-page--diagram, .print-page--part { break-before: page; }
       .h-diagram { page-break-inside: avoid; break-inside: avoid; }
       .h-diagrams-container { page-break-inside: auto; }
       .print-pattern-table tr { page-break-inside: avoid; }
@@ -103,20 +118,81 @@
     <button type="button" class="btn btn-primary" onclick="window.print()">Print</button>
   </div>
 
-  <!-- ── Summary page (elevations + priced order sheet) ────────── -->
+  <!-- ── Summary page (whole-estimate totals + range) ────────────── -->
   <div class="print-page">
     <div class="print-header">
-      <h1>Cladding Estimate Report</h1>
+      <h1>Estimate Report</h1>
       <div class="print-meta-grid">
         <span class="print-meta-label">Job:</span>       <span>{{ job.project.lb_ref }}</span>
         <span class="print-meta-label">Client:</span>     <span>{{ job.project.client_name }}</span>
         <span class="print-meta-label">Site:</span>       <span>{{ job.project.site_address }}</span>
-        <span class="print-meta-label">Part:</span>       <span>{{ section.label }}</span>
+        <span class="print-meta-label">Merchant:</span>   <span>{{ job.project.organisation.name }}</span>
         <span class="print-meta-label">Date:</span>       <span>{% now "d M Y" %}</span>
       </div>
     </div>
 
-    {% if areas %}
+    <div class="print-section-title">Estimate Summary</div>
+    <table class="summary-table">
+      {% for sj in sections %}
+      <tr>
+        <td>{{ sj.label }} <span style="color:#aaa;">({{ sj.get_system_type_display }})</span></td>
+        <td class="num">
+          {% if sj.calculated_subtotal is not None %}
+            ${{ sj.calculated_subtotal|floatformat:2 }}
+          {% else %}
+            &mdash;
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="2" style="color:#aaa;font-style:italic;">No parts in this estimate.</td></tr>
+      {% endfor %}
+
+      <tr class="summary-rule"><td colspan="2"></td></tr>
+      <tr>
+        <td>Materials subtotal</td>
+        <td class="num">${{ job.subtotal|floatformat:2 }}</td>
+      </tr>
+      <tr>
+        <td>Hardware allowance</td>
+        <td class="num">
+          {% if job.hardware_allowance_amount %}${{ job.hardware_allowance_amount|floatformat:2 }}{% else %}&mdash;{% endif %}
+        </td>
+      </tr>
+      {% if job.freight_charge %}
+      <tr>
+        <td>Freight</td>
+        <td class="num">${{ job.freight_charge|floatformat:2 }}</td>
+      </tr>
+      {% endif %}
+      {% if job.freight_surcharge %}
+      <tr>
+        <td>Freight surcharge</td>
+        <td class="num">${{ job.freight_surcharge|floatformat:2 }}</td>
+      </tr>
+      {% endif %}
+      <tr class="summary-rule"><td colspan="2"></td></tr>
+      <tr class="summary-range">
+        <td>Indicative range (excl. GST)</td>
+        <td class="num">${{ estimate_low }} &ndash; ${{ estimate_high }}</td>
+      </tr>
+    </table>
+    <div class="summary-note">
+      This is an indicative estimate based on information provided and is not a quotation. Actual
+      pricing is subject to final measurements, product availability, and market conditions. The
+      range above reflects an estimate uncertainty band of {{ effective_uncertainty_pct|floatformat:"-2" }}%.
+    </div>
+  </div>
+
+  <!-- ── Per-Part pages (elevations + priced order sheet) ───────── -->
+  {% for sj in sections %}
+  <div class="print-page print-page--part">
+    <div class="print-part-header">
+      <span class="print-part-header__label">{{ sj.label }}</span>
+      <span class="print-part-header__type">{{ sj.get_system_type_display }}</span>
+    </div>
+
+    {% if sj.is_cladding and sj.cladding_areas.all %}
     <div class="print-section-title">Elevations</div>
     <table class="print-table">
       <thead>
@@ -127,7 +203,7 @@
         </tr>
       </thead>
       <tbody>
-        {% for area in areas %}
+        {% for area in sj.cladding_areas.all %}
         <tr>
           <td>{{ area.area_label|default:"—" }}</td>
           <td>{{ area.get_orientation_display }}</td>
@@ -142,6 +218,7 @@
     {% endif %}
 
     <div class="print-section-title">Order Summary</div>
+    {% with schedule=sj.member_schedule %}
     {% if schedule.items %}
     <table class="print-table">
       <thead>
@@ -169,74 +246,81 @@
     <div class="print-order-total">
       {% if schedule.has_unpriced %}<span class="print-order-total__note">Some items have no price in the active price book and are excluded from this total.</span>{% endif %}
       <span class="print-order-total__label">Part Total</span>
-      <span class="print-order-total__value">${{ section.calculated_subtotal|default:"0.00"|floatformat:2 }}</span>
+      <span class="print-order-total__value">${{ sj.calculated_subtotal|default:"0.00"|floatformat:2 }}</span>
     </div>
+    {% endwith %}
   </div>
+  {% endfor %}
 
-  <!-- ── Diagram pages (read-only cutting geometry from the linked cutlist) ── -->
-  {{ cutlist_state|json_script:"cutlist-state-data" }}
+  <!-- ── Diagram pages (read-only cutting geometry from each Part's linked cutlist) ── -->
+  {{ report_cutlists|json_script:"report-cutlists-data" }}
   <div id="diagram-root"></div>
 
   <script src="{% static 'js/cutting_report.js' %}"></script>
   <script>
     document.addEventListener('DOMContentLoaded', function () {
-      const stateEl = document.getElementById('cutlist-state-data');
-      const state = stateEl ? JSON.parse(stateEl.textContent) : null;
-      if (!state || !state.tabs || !state.tabs.length) return;
+      const dataEl = document.getElementById('report-cutlists-data');
+      const reportCutlists = dataEl ? JSON.parse(dataEl.textContent) : [];
+      if (!reportCutlists.length) return;
 
       const root = document.getElementById('diagram-root');
-      const tabs = state.tabs.filter(t => t.results);
 
-      tabs.forEach(tab => {
-        const { bins, kerfWidth } = tab.results;
+      reportCutlists.forEach(({ label, state }) => {
+        if (!state || !state.tabs || !state.tabs.length) return;
+        const tabs = state.tabs.filter(t => t.results);
 
-        const groupOrder = [...new Set(bins.map(b => b.group || ''))].sort((a, b) => {
-          if (a === '') return 1;
-          if (b === '') return -1;
-          return a.localeCompare(b);
-        });
-        const hasNamedGroups = groupOrder.some(k => k !== '');
+        tabs.forEach(tab => {
+          const { bins, kerfWidth } = tab.results;
 
-        groupOrder.forEach(groupKey => {
-          const groupBins = bins
-            .filter(b => (b.group || '') === groupKey)
-            .sort((a, b) => b.stockLength - a.stockLength || a.remaining - b.remaining);
-          if (!groupBins.length) return;
-
-          const groupLabel = groupKey ? groupKey : (hasNamedGroups ? 'Ungrouped' : null);
-          const stockTotal = groupBins.reduce((s, b) => s + b.stockLength, 0);
-          const wasteTotal = groupBins.reduce((s, b) => s + (b.remaining || 0), 0);
-          const cutTotal   = groupBins.reduce((s, b) =>
-            s + b.cuts.reduce((cs, c) => cs + (typeof c === 'object' ? c.length : c), 0), 0);
-          const wastePct   = stockTotal > 0 ? ((wasteTotal / stockTotal) * 100).toFixed(1) : '0.0';
-
-          const page = document.createElement('div');
-          page.className = 'print-page print-page--diagram';
-          const groupSubtitle = groupLabel
-            ? `<span class="print-page-header__group">Group: ${escReportText(groupLabel)}</span>` : '';
-
-          const layouts = groupIdenticalLayouts(groupBins);
-
-          page.innerHTML = `
-            <div class="print-page-header">
-              <span class="print-page-header__member">${escReportText(tab.memberName)}</span>
-              ${groupSubtitle}
-            </div>
-            ${buildPatternSummaryTable(layouts, kerfWidth)}
-            <div class="h-diagrams-container"></div>
-            <div class="print-group-stats">
-              <div class="stat"><div class="stat-label">Sticks</div><div class="stat-value">${groupBins.length}</div></div>
-              <div class="stat"><div class="stat-label">Stock (lin. m)</div><div class="stat-value">${(stockTotal / 1000).toFixed(1)}</div></div>
-              <div class="stat"><div class="stat-label">Cut Length</div><div class="stat-value">${(cutTotal / 1000).toFixed(1)}m</div></div>
-              <div class="stat"><div class="stat-label">Waste</div><div class="stat-value">${wastePct}%</div></div>
-            </div>`;
-
-          const container = page.querySelector('.h-diagrams-container');
-          layouts.forEach((layout, i) => {
-            container.insertAdjacentHTML('beforeend', generateHorizontalDiagram(layout.representative, `Pattern ${i + 1}`, layout.count));
+          const groupOrder = [...new Set(bins.map(b => b.group || ''))].sort((a, b) => {
+            if (a === '') return 1;
+            if (b === '') return -1;
+            return a.localeCompare(b);
           });
+          const hasNamedGroups = groupOrder.some(k => k !== '');
 
-          root.appendChild(page);
+          groupOrder.forEach(groupKey => {
+            const groupBins = bins
+              .filter(b => (b.group || '') === groupKey)
+              .sort((a, b) => b.stockLength - a.stockLength || a.remaining - b.remaining);
+            if (!groupBins.length) return;
+
+            const groupLabel = groupKey ? groupKey : (hasNamedGroups ? 'Ungrouped' : null);
+            const stockTotal = groupBins.reduce((s, b) => s + b.stockLength, 0);
+            const wasteTotal = groupBins.reduce((s, b) => s + (b.remaining || 0), 0);
+            const cutTotal   = groupBins.reduce((s, b) =>
+              s + b.cuts.reduce((cs, c) => cs + (typeof c === 'object' ? c.length : c), 0), 0);
+            const wastePct   = stockTotal > 0 ? ((wasteTotal / stockTotal) * 100).toFixed(1) : '0.0';
+
+            const page = document.createElement('div');
+            page.className = 'print-page print-page--diagram';
+            const groupSubtitle = groupLabel
+              ? `<span class="print-page-header__group">Group: ${escReportText(groupLabel)}</span>` : '';
+
+            const layouts = groupIdenticalLayouts(groupBins);
+
+            page.innerHTML = `
+              <div class="print-page-header">
+                <span class="print-page-header__member">${escReportText(tab.memberName)}</span>
+                ${groupSubtitle}
+                <span class="print-page-header__part">${escReportText(label)}</span>
+              </div>
+              ${buildPatternSummaryTable(layouts, kerfWidth)}
+              <div class="h-diagrams-container"></div>
+              <div class="print-group-stats">
+                <div class="stat"><div class="stat-label">Sticks</div><div class="stat-value">${groupBins.length}</div></div>
+                <div class="stat"><div class="stat-label">Stock (lin. m)</div><div class="stat-value">${(stockTotal / 1000).toFixed(1)}</div></div>
+                <div class="stat"><div class="stat-label">Cut Length</div><div class="stat-value">${(cutTotal / 1000).toFixed(1)}m</div></div>
+                <div class="stat"><div class="stat-label">Waste</div><div class="stat-value">${wastePct}%</div></div>
+              </div>`;
+
+            const container = page.querySelector('.h-diagrams-container');
+            layouts.forEach((layout, i) => {
+              container.insertAdjacentHTML('beforeend', generateHorizontalDiagram(layout.representative, `Pattern ${i + 1}`, layout.count));
+            });
+
+            root.appendChild(page);
+          });
         });
       });
     });

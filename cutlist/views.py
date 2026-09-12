@@ -188,7 +188,7 @@ def project_print(request, pk):
     stock quantities. Deliberately estimate-agnostic: no pricing, no elevation
     data, works the same for any cutlist (framing or cladding, standalone or
     estimate-sourced). The priced, elevation-aware cladding report lives in
-    the jobs app instead (jobs:cladding_report) — see CLAUDE.md.
+    the jobs app instead (jobs:estimate_report) — see CLAUDE.md.
     """
     cutlist = get_object_or_404(CutlistProject, pk=pk)
     _assert_cutlist_access(request.user, cutlist)
@@ -200,5 +200,13 @@ def project_print(request, pk):
 def project_delete(request, pk):
     cutlist = get_object_or_404(CutlistProject, pk=pk)
     _assert_cutlist_access(request.user, cutlist)
+    project_pk = cutlist.project_id
     cutlist.delete()
+    messages.success(request, 'Cutlist deleted.')
+    # Reused from both the standalone cutlist list and a project's own detail page (where its
+    # cutlists are shown alongside its estimates) — mirrors jobs:job_delete's redirect back to
+    # the project rather than always bouncing to a list, but needs an explicit signal since,
+    # unlike job_delete, this view has more than one caller.
+    if request.POST.get('next') == 'project_detail':
+        return redirect('projects:project_detail', pk=project_pk)
     return redirect('cutlist:project_list')

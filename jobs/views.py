@@ -269,6 +269,26 @@ def cutlist_convert_to_estimate(request, cutlist_pk):
     return JsonResponse({'ok': True, 'redirect': reverse('jobs:job_detail', args=[job.pk])})
 
 
+def _estimate_price_range(job, system_settings):
+    """
+    Indicative low/high range around job.total, driven by Estimate Uncertainty %
+    (job override, else global default). Shared by job_detail's summary card and
+    estimate_report so the two never drift apart. Returns
+    (effective_uncertainty_pct, low_str, high_str), the low/high already
+    comma-formatted for display.
+    """
+    effective_uncertainty_pct = (
+        job.estimate_uncertainty_pct
+        if job.estimate_uncertainty_pct is not None
+        else system_settings.estimate_uncertainty_pct
+    )
+    total = float(job.total)
+    band  = float(effective_uncertainty_pct) / 100
+    low   = int(total * (1 - band * 0.30) // 50) * 50
+    high  = math.ceil(total * (1 + band * 0.70) / 50) * 50
+    return effective_uncertainty_pct, f'{low:,}', f'{high:,}'
+
+
 @login_required
 def job_detail(request, pk):
     job = get_object_or_404(Job, pk=pk)
@@ -300,11 +320,6 @@ def job_detail(request, pk):
         if job.hardware_allowance_pct is not None
         else system_settings.hardware_allowance_pct
     )
-    effective_uncertainty_pct = (
-        job.estimate_uncertainty_pct
-        if job.estimate_uncertainty_pct is not None
-        else system_settings.estimate_uncertainty_pct
-    )
     effective_wastage_pct = (
         job.wastage_pct
         if job.wastage_pct is not None
@@ -317,10 +332,7 @@ def job_detail(request, pk):
         sj.effective_hardware_pct = (
             sj.hardware_allowance_pct if sj.hardware_allowance_pct is not None else effective_hardware_pct
         )
-    total = float(job.total)
-    band  = float(effective_uncertainty_pct) / 100
-    estimate_low  = int(total * (1 - band * 0.30) // 50) * 50
-    estimate_high = math.ceil(total * (1 + band * 0.70) / 50) * 50
+    effective_uncertainty_pct, estimate_low, estimate_high = _estimate_price_range(job, system_settings)
     return render(request, 'jobs/job_detail.html', {
         'job': job,
         'sections': sections,
@@ -328,8 +340,8 @@ def job_detail(request, pk):
         'effective_hardware_pct':     effective_hardware_pct,
         'effective_wastage_pct':      effective_wastage_pct,
         'effective_uncertainty_pct':  effective_uncertainty_pct,
-        'estimate_low':  f'{estimate_low:,}',
-        'estimate_high': f'{estimate_high:,}',
+        'estimate_low':  estimate_low,
+        'estimate_high': estimate_high,
     })
 
 
@@ -631,32 +643,47 @@ def cladding_import_cutlist_results(request, job_pk, pk):
 
 
 @login_required
-def cladding_report(request, job_pk, pk):
+def estimate_report(request, pk):
     """
-    The client-facing cladding estimate report — elevations, priced order
-    sheet, and (if a cutlist has been generated) the optimised cutting
-    diagrams. Lives here, not in the cutlist app: every dollar figure comes
-    straight from this Part's already-computed member_schedule (the same data
-    job_breakdown.html shows) — nothing is recalculated on this page. The
-    cutlist's own state is only ever read for its raw cutting geometry
-    (bins/cuts), never for pricing; cutlist stays a pure, estimate-agnostic
-    bin-packing tool (see templates/cutlist/print_view.html).
+    The client-facing estimate report — every Part's priced order sheet (plus
+    elevations and, once a cutlist has been generated, optimised cutting
+    diagrams for any Cladding part), topped with a whole-estimate summary
+    (materials, hardware, freight, and the indicative price range from
+    Estimate Uncertainty %). Job-level rather than per-Part: freight and the
+    uncertainty band are already Job-level concepts (see CLAUDE.md), so a
+    report that applies them has to be too. Every dollar figure comes
+    straight from each Part's already-computed member_schedule (the same
+    data job_breakdown.html shows) — nothing is recalculated on this page.
+    Cutlist state is only ever read for its raw cutting geometry (bins/cuts),
+    never for pricing; cutlist stays a pure, estimate-agnostic bin-packing
+    tool (see templates/cutlist/print_view.html).
     """
-    job = get_object_or_404(Job, pk=job_pk)
-    section = get_object_or_404(Section, pk=pk, job=job)
+    job = get_object_or_404(Job, pk=pk)
     if not _assert_job_access(request.user, job):
         messages.error(request, 'You do not have access to that estimate.')
         return redirect('projects:project_list')
-    if not section.is_cladding:
-        messages.error(request, 'This report is only available for a Cladding part.')
-        return redirect('jobs:job_detail', pk=job.pk)
 
-    return render(request, 'jobs/cladding_report.html', {
+    sections = list(job.sections.select_related('cladding_cutlist').prefetch_related(
+        Prefetch('cladding_areas', queryset=CladdingArea.objects.select_related('cladding_product')),
+    ).all())
+
+    system_settings = SystemSettings.get()
+    effective_uncertainty_pct, estimate_low, estimate_high = _estimate_price_range(job, system_settings)
+
+    report_cutlists = [
+        {'label': s.label, 'state': s.cladding_cutlist.state}
+        for s in sections
+        if s.is_cladding and s.cladding_cutlist_id
+        and any(t.get('results') for t in (s.cladding_cutlist.state or {}).get('tabs', []))
+    ]
+
+    return render(request, 'jobs/estimate_report.html', {
         'job': job,
-        'section': section,
-        'areas': section.cladding_areas.select_related('cladding_product').all(),
-        'schedule': section.member_schedule,
-        'cutlist_state': section.cladding_cutlist.state if section.cladding_cutlist_id else None,
+        'sections': sections,
+        'report_cutlists': report_cutlists,
+        'effective_uncertainty_pct': effective_uncertainty_pct,
+        'estimate_low':  estimate_low,
+        'estimate_high': estimate_high,
     })
 
 
