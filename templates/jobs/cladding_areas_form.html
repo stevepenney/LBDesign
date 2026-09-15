@@ -146,6 +146,29 @@
     box-sizing: border-box;
   }
   .csv-import-box__actions { display: flex; align-items: center; gap: .75rem; margin-top: .5rem; }
+
+  /* ── Modal (mirrors cutlist.css's lock-guard modal look) ─── */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.45);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-box {
+    background: var(--white);
+    border-radius: 8px;
+    padding: 1.75rem;
+    min-width: 320px;
+    max-width: 420px;
+    width: 90%;
+    box-shadow: 0 8px 32px rgba(0,0,0,.2);
+  }
+  .modal-box h3 { font-size: 1rem; font-weight: 700; color: var(--brown-dark); margin-bottom: .35rem; }
+  .modal-hint { font-size: 0.82rem; color: #888; margin-bottom: 1rem; line-height: 1.4; }
+  .modal-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1.25rem; justify-content: flex-end; }
 </style>
 {% endblock %}
 
@@ -316,6 +339,21 @@
 </div>
 
 </form>
+
+<!-- ── Unit guardrail modal (CSV import) ────────────────────── -->
+<div id="unitGuardModal" class="modal-overlay" style="display:none;"
+     onclick="if(event.target===this)closeUnitGuardModal()">
+  <div class="modal-box">
+    <h3>Check Units</h3>
+    <p id="unitGuardHint" class="modal-hint"></p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-primary" onclick="resolveUnitGuard(true)">Convert mm &rarr; m</button>
+      <button type="button" class="btn btn-secondary" onclick="resolveUnitGuard(false)">Import as entered</button>
+      <button type="button" class="btn btn-secondary" onclick="closeUnitGuardModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 {{ cladding_products|json_script:"cladding-products-data" }}
 {% endblock %}
 
@@ -478,16 +516,41 @@
 
     const maxValue = Math.max(...rows.flatMap(r => [r.width, r.low, r.high]));
     if (maxValue > LIKELY_MM_THRESHOLD_M) {
-      const convert = window.confirm(
-        `Some values (e.g. ${maxValue}) look like millimetres, not metres — Width/Low Height/` +
-        `High Height are all expected in metres.\n\nDivide every Width/Low Height/High Height ` +
-        `value in this file by 1000 before importing?`
-      );
-      if (convert) {
-        rows.forEach(r => { r.width /= 1000; r.low /= 1000; r.high /= 1000; });
-      }
+      openUnitGuardModal(rows, maxValue);
+      return;
     }
+    finishAreaImport(rows);
+  }
 
+  // ── Unit guardrail modal — mirrors cutlist.js's lockGuardModal pattern
+  // (openLockGuardModal/closeLockGuardModal), a modal instead of a plain
+  // confirm() so it matches the rest of the app's guardrail UX.
+  let pendingImportRows = null;
+
+  function openUnitGuardModal(rows, maxValue) {
+    pendingImportRows = rows;
+    document.getElementById('unitGuardHint').textContent =
+      `Some values (e.g. ${maxValue}) look like millimetres, not metres — Width/Low Height/` +
+      `High Height are all expected in metres. Divide every Width/Low Height/High Height ` +
+      `value in this file by 1000 before importing, or import them exactly as entered?`;
+    document.getElementById('unitGuardModal').style.display = 'flex';
+  }
+
+  function closeUnitGuardModal() {
+    document.getElementById('unitGuardModal').style.display = 'none';
+    pendingImportRows = null;
+  }
+
+  function resolveUnitGuard(convert) {
+    const rows = pendingImportRows;
+    document.getElementById('unitGuardModal').style.display = 'none';
+    pendingImportRows = null;
+    if (!rows) return;
+    if (convert) rows.forEach(r => { r.width /= 1000; r.low /= 1000; r.high /= 1000; });
+    finishAreaImport(rows);
+  }
+
+  function finishAreaImport(rows) {
     let imported = 0;
     let unmatchedProducts = 0;
 
