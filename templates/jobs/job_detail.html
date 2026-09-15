@@ -573,8 +573,8 @@
             <tr>
               <td>{{ area.area_label|default:"—" }}</td>
               <td>{{ area.get_orientation_display }}</td>
-              <td>{{ area.width_m }} m</td>
-              <td>{% if area.low_height_m == area.high_height_m %}{{ area.low_height_m }} m{% else %}{{ area.low_height_m }} – {{ area.high_height_m }} m{% endif %}</td>
+              <td>{{ area.width_m|floatformat:"-3" }} m</td>
+              <td>{% if area.low_height_m == area.high_height_m %}{{ area.low_height_m|floatformat:"-3" }} m{% else %}{{ area.low_height_m|floatformat:"-3" }} – {{ area.high_height_m|floatformat:"-3" }} m{% endif %}</td>
               <td>{{ area.area_m2|floatformat:2 }}</td>
               <td>{{ area.cladding_product|default:"—" }}</td>
               <td>{% if area.cladding_product.cover_mm %}{{ area.cladding_product.cover_mm }} mm{% else %}—{% endif %}</td>

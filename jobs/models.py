@@ -309,9 +309,12 @@ class CladdingArea(models.Model):
     orientation = models.CharField(
         max_length=10, choices=Orientation.choices, default=Orientation.VERTICAL,
     )
-    width_m = models.DecimalField(max_digits=8, decimal_places=2)
-    low_height_m = models.DecimalField(max_digits=8, decimal_places=2)
-    high_height_m = models.DecimalField(max_digits=8, decimal_places=2)
+    # 3 decimal places (not 2) — a real board count off an exact mm-derived width (e.g. 0.777m
+    # over a 111mm cover = exactly 7 boards) needs that precision; rounding to 0.78 would push
+    # the same area to 8 boards.
+    width_m = models.DecimalField(max_digits=9, decimal_places=3)
+    low_height_m = models.DecimalField(max_digits=9, decimal_places=3)
+    high_height_m = models.DecimalField(max_digits=9, decimal_places=3)
     cladding_product = models.ForeignKey(
         'products.Product',
         on_delete=models.SET_NULL,

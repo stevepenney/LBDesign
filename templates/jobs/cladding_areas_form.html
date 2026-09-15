@@ -420,6 +420,11 @@
     return line.split(',').map(s => s.trim());
   }
 
+  // Above this, a Width/Low Height/High Height value is almost certainly millimetres, not
+  // metres, mistakenly pasted in — no real single elevation area is this many metres wide or
+  // tall, but it's exactly the range real mm dimensions (e.g. 2440, 3600) fall in.
+  const LIKELY_MM_THRESHOLD_M = 50;
+
   function importAreaCSV() {
     const csvText = document.getElementById('area-csv-input').value.trim();
     if (!csvText) {
@@ -446,9 +451,10 @@
       return;
     }
 
-    let imported = 0;
-    let unmatchedProducts = 0;
-
+    // First pass: parse every row into plain values without touching the formset yet, so the
+    // unit guardrail below can inspect (and if needed convert) all of them before anything is
+    // added to the page.
+    const rows = [];
     lines.slice(1).forEach(line => {
       const parts = splitCSVLine(line);
       const width = parseFloat(parts[col.width]);
@@ -458,24 +464,47 @@
       const high = isNaN(highRaw) ? low : highRaw;
       const orientationRaw = (col.orientation >= 0 ? parts[col.orientation] : '').toLowerCase();
       const orientation = orientationRaw === 'horizontal' ? 'horizontal' : 'vertical';
-      const productName = col.product >= 0 ? parts[col.product] : '';
-      const productId = findCladdingProductId(productName);
-      if (productName && !productId) unmatchedProducts++;
+      rows.push({
+        mark: col.mark >= 0 ? (parts[col.mark] || '') : '',
+        width, low, high, orientation,
+        product: col.product >= 0 ? parts[col.product] : '',
+      });
+    });
+
+    if (!rows.length) {
+      showToast('No valid rows found in that CSV', 'error');
+      return;
+    }
+
+    const maxValue = Math.max(...rows.flatMap(r => [r.width, r.low, r.high]));
+    if (maxValue > LIKELY_MM_THRESHOLD_M) {
+      const convert = window.confirm(
+        `Some values (e.g. ${maxValue}) look like millimetres, not metres — Width/Low Height/` +
+        `High Height are all expected in metres.\n\nDivide every Width/Low Height/High Height ` +
+        `value in this file by 1000 before importing?`
+      );
+      if (convert) {
+        rows.forEach(r => { r.width /= 1000; r.low /= 1000; r.high /= 1000; });
+      }
+    }
+
+    let imported = 0;
+    let unmatchedProducts = 0;
+
+    rows.forEach(r => {
+      const productId = findCladdingProductId(r.product);
+      if (r.product && !productId) unmatchedProducts++;
 
       const row = addRow('area', 'areas');
-      row.querySelector('[name$="-area_label"]').value = col.mark >= 0 ? (parts[col.mark] || '') : '';
-      row.querySelector('[name$="-orientation"]').value = orientation;
-      row.querySelector('[name$="-width_m"]').value = width;
-      row.querySelector('[name$="-low_height_m"]').value = low;
-      row.querySelector('[name$="-high_height_m"]').value = high;
+      row.querySelector('[name$="-area_label"]').value = r.mark;
+      row.querySelector('[name$="-orientation"]').value = r.orientation;
+      row.querySelector('[name$="-width_m"]').value = r.width;
+      row.querySelector('[name$="-low_height_m"]').value = r.low;
+      row.querySelector('[name$="-high_height_m"]').value = r.high;
       if (productId) row.querySelector('[name$="-cladding_product"]').value = productId;
       imported++;
     });
 
-    if (!imported) {
-      showToast('No valid rows found in that CSV', 'error');
-      return;
-    }
     document.getElementById('area-csv-input').value = '';
     let msg = `Imported ${imported} area${imported !== 1 ? 's' : ''}`;
     if (unmatchedProducts) msg += ` — ${unmatchedProducts} product${unmatchedProducts !== 1 ? 's' : ''} unmatched, pick manually`;
