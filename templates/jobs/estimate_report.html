@@ -208,7 +208,7 @@
           <td>{{ area.area_label|default:"—" }}</td>
           <td>{{ area.get_orientation_display }}</td>
           <td class="num">{{ area.width_m }}</td>
-          <td class="num">{{ area.height_m }}</td>
+          <td class="num">{% if area.low_height_m == area.high_height_m %}{{ area.low_height_m }}{% else %}{{ area.low_height_m }} – {{ area.high_height_m }}{% endif %}</td>
           <td class="num">{{ area.area_m2|floatformat:2 }}</td>
           <td>{{ area.cladding_product|default:"—" }}</td>
         </tr>

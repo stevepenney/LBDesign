@@ -1,3 +1,5 @@
+import math
+
 from django.db import models
 from django.conf import settings
 
@@ -267,23 +269,40 @@ class CladdingArea(models.Model):
     """
     One elevation/zone within a cladding part (e.g. North Elevation, Internal
     Stairway), each covered by a single product. Lineal metres are derived from
-    area_m2 (= width_m * height_m) and the product's cover_mm — there is no
-    user-entered spacing/cover, unlike FloorRoofArea's joist_spacing.
+    area_m2 and the product's cover_mm — there is no user-entered spacing/cover,
+    unlike FloorRoofArea's joist_spacing.
 
     Attaches to a Section whose system_type is CLADDING — cladding is a part type
     like Midfloor/Roof/Other, just one with no boundary-joist/stair-void settings
     to hold (those fields are simply unused on a cladding Section).
 
+    low_height_m/high_height_m model a mono-pitch raking top edge (e.g. a gable
+    rising to a barge) — a flat rectangular area is simply low_height_m ==
+    high_height_m, so area_m2 (a trapezoid) and a flat rectangle's area agree
+    with no separate shape flag needed. A symmetric gable peak is entered as two
+    mono-pitch areas rather than a dedicated peak shape — deliberately kept to
+    one rake shape.
+
     orientation matters beyond display: vertical-run boards can't have joins (a
     board must span the full height in one piece), so a vertical elevation can be
     broken down into discrete cut pieces (see cut_piece()) and fed to the cutlist
-    optimizer. Horizontal runs tolerate joins, so a course has no single fixed
-    piece length — it stays on the area-based lm estimate below instead of ever
-    producing discrete pieces.
+    optimizer — each board's own length interpolated along the rake. Horizontal
+    runs tolerate joins, so a course has no single fixed piece length — it stays
+    on the area-based lm estimate below instead of ever producing discrete
+    pieces (also true for a horizontal course on a raking gable — the angled
+    end-cuts that implies are a separate, not-yet-solved problem).
     """
     class Orientation(models.TextChoices):
         VERTICAL = 'vertical', 'Vertical'
         HORIZONTAL = 'horizontal', 'Horizontal'
+
+    # Board lengths on a raking area round up to this grid rather than the exact
+    # interpolated mm — a mono-pitch rake otherwise gives almost every board a
+    # slightly different, non-round length, which would defeat cut_piece()'s
+    # grouping of identical lengths into one cut line. Immaterial for pricing at
+    # this rounding scale; only applied when low_height_m != high_height_m (a
+    # flat area's exact length is unchanged, preserving existing behaviour).
+    RAKING_ROUNDING_GRID_MM = 50
 
     section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='cladding_areas')
     area_label = models.CharField(max_length=200, blank=True)
@@ -291,7 +310,8 @@ class CladdingArea(models.Model):
         max_length=10, choices=Orientation.choices, default=Orientation.VERTICAL,
     )
     width_m = models.DecimalField(max_digits=8, decimal_places=2)
-    height_m = models.DecimalField(max_digits=8, decimal_places=2)
+    low_height_m = models.DecimalField(max_digits=8, decimal_places=2)
+    high_height_m = models.DecimalField(max_digits=8, decimal_places=2)
     cladding_product = models.ForeignKey(
         'products.Product',
         on_delete=models.SET_NULL,
@@ -310,23 +330,46 @@ class CladdingArea(models.Model):
 
     @property
     def area_m2(self):
-        return self.width_m * self.height_m
+        return self.width_m * (self.low_height_m + self.high_height_m) / 2
 
     def cut_piece(self):
         """
-        Vertical boards only — (length_mm, qty) for the discrete boards this
-        elevation needs, or None if it can't be priced/cut yet. A horizontal
-        course tolerates joins, so it has no single fixed piece length; it stays
-        on the area-based lm estimate in jobs.calculations instead.
+        Vertical boards only — a list of per-board length_mm values for the
+        discrete boards this elevation needs, or None if it can't be
+        priced/cut yet. A horizontal course tolerates joins, so it has no
+        single fixed piece length; it stays on the area-based lm estimate in
+        jobs.calculations instead.
+
+        A flat area (low_height_m == high_height_m) returns N copies of the
+        same exact length, same as before this model supported raking areas.
+        A raking area samples each board's height at its high-side edge (the
+        edge nearer the high end of the rake) rather than its centre, which
+        guarantees the board is long enough to cover its whole width — this
+        is mathematically equivalent to adding cover_mm * tan(rake angle),
+        just read off the same interpolation used for board-to-board
+        variation instead of a separate trig term — then rounds up to
+        RAKING_ROUNDING_GRID_MM (see its docstring above).
         """
         if self.orientation != self.Orientation.VERTICAL:
             return None
         if not self.cladding_product or not self.cladding_product.cover_mm:
             return None
-        height_mm = int(self.height_m * 1000)
+        low_height_mm = int(self.low_height_m * 1000)
+        high_height_mm = int(self.high_height_m * 1000)
         width_mm = int(self.width_m * 1000)
-        qty = -(-width_mm // self.cladding_product.cover_mm)  # ceil division
-        return height_mm, qty
+        cover_mm = self.cladding_product.cover_mm
+        qty = -(-width_mm // cover_mm)  # ceil division
+
+        if low_height_mm == high_height_mm:
+            return [low_height_mm] * qty
+
+        grid = self.RAKING_ROUNDING_GRID_MM
+        lengths = []
+        for i in range(qty):
+            x_mm = min((i + 1) * cover_mm, width_mm)  # this board's high-side edge
+            raw_mm = low_height_mm + (high_height_mm - low_height_mm) * x_mm / width_mm
+            lengths.append(math.ceil(raw_mm / grid) * grid)
+        return lengths
 
 
 class CladdingExtraItem(models.Model):

@@ -1,5 +1,6 @@
 import json
 import math
+from collections import Counter
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
@@ -26,6 +27,16 @@ from .models import (
     Job, Section, FloorRoofArea, CladdingArea, CladdingExtraItem, AdditionalBeam,
     CutlistImportLine, CladdingCutlistLine,
 )
+
+
+def _cladding_products():
+    """
+    Active cladding products as plain dicts, for the CSV importer's client-side
+    best-effort name matching on cladding_areas_form.html (mirrors how
+    cutlist/views.py passes `products` for window.CUTLIST_PRODUCTS). Same
+    queryset CladdingAreaForm.__init__ uses for the per-row product dropdown.
+    """
+    return list(Product.objects.filter(use_as_cladding=True, is_active=True).values('id', 'name'))
 
 
 def _priced_cutlist_lines(section):
@@ -396,7 +407,7 @@ def section_create(request, job_pk):
                 return redirect('jobs:job_detail', pk=job.pk)
             return render(request, 'jobs/cladding_areas_form.html', {
                 'job': job, 'form': form, 'area_formset': area_fs, 'extra_formset': extra_fs,
-                'action': 'Add Part',
+                'action': 'Add Part', 'cladding_products': _cladding_products(),
             })
 
         form    = SectionForm(request.POST)
@@ -427,7 +438,7 @@ def section_create(request, job_pk):
         extra_fs = CladdingExtraItemFormSet(prefix='extras')
         return render(request, 'jobs/cladding_areas_form.html', {
             'job': job, 'form': form, 'area_formset': area_fs, 'extra_formset': extra_fs,
-            'action': 'Add Part',
+            'action': 'Add Part', 'cladding_products': _cladding_products(),
         })
 
     form    = SectionForm(initial={'system_type': requested_type})
@@ -463,6 +474,7 @@ def section_edit(request, job_pk, pk):
             return render(request, 'jobs/cladding_areas_form.html', {
                 'job': job, 'section': section, 'form': form,
                 'area_formset': area_fs, 'extra_formset': extra_fs, 'action': 'Edit Part',
+                'cladding_products': _cladding_products(),
             })
 
         form    = SectionForm(request.POST, instance=section)
@@ -489,6 +501,7 @@ def section_edit(request, job_pk, pk):
         return render(request, 'jobs/cladding_areas_form.html', {
             'job': job, 'section': section, 'form': form,
             'area_formset': area_fs, 'extra_formset': extra_fs, 'action': 'Edit Part',
+            'cladding_products': _cladding_products(),
         })
 
     form    = SectionForm(instance=section)
@@ -506,11 +519,14 @@ def section_edit(request, job_pk, pk):
 def cladding_generate_cutlist(request, job_pk, pk):
     """
     Build a cutlist from a cladding Part's vertical elevations — one tab per
-    product, one cut per area via CladdingArea.cut_piece(). Horizontal areas have
-    no fixed piece length (joins are acceptable) so they're never included; they
-    stay on the area-based estimate. Elevation labels go on each cut's `mark`,
-    not `group` — `group` is a hard packing partition in the optimizer, and we
-    want pieces from different elevations free to share a stick.
+    product, one cut line per distinct board length via CladdingArea.cut_piece()
+    (a flat area yields one length; a raking area yields a spread of lengths,
+    one per board, grouped back into a cut line per distinct length after
+    cut_piece()'s rounding). Horizontal areas have no fixed piece length (joins
+    are acceptable) so they're never included; they stay on the area-based
+    estimate. Elevation labels go on each cut's `mark`, not `group` — `group`
+    is a hard packing partition in the optimizer, and we want pieces from
+    different elevations free to share a stick.
     """
     job = get_object_or_404(Job, pk=job_pk)
     section = get_object_or_404(Section, pk=pk, job=job)
@@ -525,11 +541,10 @@ def cladding_generate_cutlist(request, job_pk, pk):
     tabs_by_product = {}
     skipped = 0
     for area in vertical_areas:
-        piece = area.cut_piece()
-        if piece is None:
+        lengths = area.cut_piece()
+        if not lengths:
             skipped += 1
             continue
-        length_mm, qty = piece
         product = area.cladding_product
         tab = tabs_by_product.get(product.id)
         if tab is None:
@@ -543,10 +558,11 @@ def cladding_generate_cutlist(request, job_pk, pk):
                 'results': None,
             }
             tabs_by_product[product.id] = tab
-        tab['cuts'].append({
-            'length': length_mm, 'quantity': qty,
-            'mark': area.area_label or '', 'group': '',
-        })
+        for length_mm, qty in Counter(lengths).items():
+            tab['cuts'].append({
+                'length': length_mm, 'quantity': qty,
+                'mark': area.area_label or '', 'group': '',
+            })
 
     if not tabs_by_product:
         messages.error(

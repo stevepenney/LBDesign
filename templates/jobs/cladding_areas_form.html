@@ -42,17 +42,17 @@
 
   .form-error { color: #b20000; font-size: 0.8rem; margin-top: .25rem; }
 
-  /* Formset grid — areas: label | orientation | width | height | product | × */
+  /* Formset grid — areas: label | orientation | width | low height | high height | product | × */
   .area-row {
     display: grid;
-    grid-template-columns: 1fr 130px 90px 90px 1.6fr 36px;
+    grid-template-columns: 1fr 130px 85px 85px 85px 1.5fr 36px;
     gap: .6rem;
     align-items: end;
     margin-bottom: .6rem;
   }
   .area-header {
     display: grid;
-    grid-template-columns: 1fr 130px 90px 90px 1.6fr 36px;
+    grid-template-columns: 1fr 130px 85px 85px 85px 1.5fr 36px;
     gap: .6rem;
     margin-bottom: .35rem;
   }
@@ -123,6 +123,29 @@
   @media (max-width: 640px) {
     .area-row, .area-header, .extra-row, .extra-header { grid-template-columns: 1fr 1fr; }
   }
+
+  /* ── CSV import (cladding areas) ─────────────────────────── */
+  .csv-import-box {
+    border: 1.5px dashed var(--brown-light);
+    border-radius: var(--radius);
+    padding: .9rem 1rem;
+    margin-bottom: 1rem;
+    background: var(--tan-bg);
+  }
+  .csv-import-box.drag-over { border-color: var(--brown); background: #fff; }
+  .csv-import-box__hint { font-size: 0.78rem; color: #888; margin: 0 0 .5rem 0; }
+  .csv-import-box textarea {
+    width: 100%;
+    min-height: 70px;
+    font-family: monospace;
+    font-size: 0.82rem;
+    padding: .5rem .6rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    resize: vertical;
+    box-sizing: border-box;
+  }
+  .csv-import-box__actions { display: flex; align-items: center; gap: .75rem; margin-top: .5rem; }
 </style>
 {% endblock %}
 
@@ -167,11 +190,28 @@
   </div>
   <div class="form-card__body">
 
+    <div class="csv-import-box" id="area-csv-import-box">
+      <p class="csv-import-box__hint">
+        Import from CSV (e.g. an area schedule exported from Revit) — paste below or drop a
+        file. Expected columns: <strong>Mark, Width, Low Height, High Height, Orientation,
+        Product</strong> (widths/heights in metres; <em>High Height</em> defaults to
+        <em>Low Height</em> if blank; <em>Product</em> is optional). Imported rows are added
+        below the areas already entered.
+      </p>
+      <textarea id="area-csv-input" placeholder="Mark,Width,Low Height,High Height,Orientation,Product"></textarea>
+      <div class="csv-import-box__actions">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('area-csv-file-input').click()">Choose File</button>
+        <input type="file" id="area-csv-file-input" accept=".csv,text/csv" style="display:none">
+        <button type="button" class="btn btn-primary" onclick="importAreaCSV()">Import Rows</button>
+      </div>
+    </div>
+
     <div class="area-header">
       <span class="col-label">Area label — e.g. North Elevation (optional)</span>
       <span class="col-label">Orientation</span>
       <span class="col-label">Width (m) <span class="required-star">*</span></span>
-      <span class="col-label">Height (m) <span class="required-star">*</span></span>
+      <span class="col-label">Low Height (m) <span class="required-star">*</span></span>
+      <span class="col-label">High Height (m) <span class="required-star">*</span></span>
       <span class="col-label">Cladding <span class="required-star">*</span></span>
       <span></span>
     </div>
@@ -183,7 +223,8 @@
           {% render_field af.area_label class="form-control" %}
           {% render_field af.orientation class="form-control" %}
           {% render_field af.width_m class="form-control" %}
-          {% render_field af.height_m class="form-control" %}
+          {% render_field af.low_height_m class="form-control" %}
+          {% render_field af.high_height_m class="form-control" %}
           {% render_field af.cladding_product class="form-control" %}
           <button type="button" class="btn-remove" title="Remove"
                   onclick="removeRow(this, '{{ af.DELETE.html_name }}', 'area')">&#215;</button>
@@ -204,7 +245,8 @@
         {% render_field area_formset.empty_form.area_label class="form-control" %}
         {% render_field area_formset.empty_form.orientation class="form-control" %}
         {% render_field area_formset.empty_form.width_m class="form-control" %}
-        {% render_field area_formset.empty_form.height_m class="form-control" %}
+        {% render_field area_formset.empty_form.low_height_m class="form-control" %}
+        {% render_field area_formset.empty_form.high_height_m class="form-control" %}
         {% render_field area_formset.empty_form.cladding_product class="form-control" %}
         <button type="button" class="btn-remove" title="Remove"
                 onclick="removeRow(this, null, 'area')">&#215;</button>
@@ -274,6 +316,7 @@
 </div>
 
 </form>
+{{ cladding_products|json_script:"cladding-products-data" }}
 {% endblock %}
 
 {% block extra_js %}
@@ -307,9 +350,11 @@
 
     const wrapper = document.createElement('div');
     wrapper.innerHTML = emptyHtml;
-    container.appendChild(wrapper.firstElementChild);
+    const row = wrapper.firstElementChild;
+    container.appendChild(row);
 
     totalForms.value = idx + 1;
+    return row;
   }
 
   // ── Remove a formset row ──────────────────────────────────
@@ -323,6 +368,118 @@
     } else {
       row.remove();
     }
+  }
+
+  // ── CSV import (cladding areas) ────────────────────────────
+  // Mirrors the cutlist wizard's paste/drop-file CSV import (static/js/cutlist.js's
+  // initCSVDropzone/loadCSVFile), scoped down to this one form. Imported rows are
+  // appended via the same addRow() used by "+ Add area" — nothing here bypasses
+  // normal formset validation on save.
+  (function () {
+    const box = document.getElementById('area-csv-import-box');
+    const fileInput = document.getElementById('area-csv-file-input');
+
+    box.addEventListener('dragover', e => { e.preventDefault(); box.classList.add('drag-over'); });
+    box.addEventListener('dragleave', () => box.classList.remove('drag-over'));
+    box.addEventListener('drop', e => {
+      e.preventDefault();
+      box.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) loadAreaCSVFile(file);
+    });
+    fileInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (file) loadAreaCSVFile(file);
+      e.target.value = '';
+    });
+  })();
+
+  function loadAreaCSVFile(file) {
+    const reader = new FileReader();
+    reader.onload = e => { document.getElementById('area-csv-input').value = e.target.result; };
+    reader.readAsText(file);
+  }
+
+  const CLADDING_PRODUCTS = (function () {
+    const el = document.getElementById('cladding-products-data');
+    return el ? JSON.parse(el.textContent) : [];
+  })();
+
+  // Best-effort, case-insensitive exact match — no fuzzy matching. A miss just
+  // leaves the row's product blank for manual selection via the row's own dropdown.
+  function findCladdingProductId(name) {
+    if (!name) return null;
+    const norm = name.trim().toLowerCase();
+    const match = CLADDING_PRODUCTS.find(p => p.name.trim().toLowerCase() === norm);
+    return match ? match.id : null;
+  }
+
+  // Plain comma split — good enough for the numeric/short-text columns this
+  // importer expects; no quoted-field/embedded-comma handling.
+  function splitCSVLine(line) {
+    return line.split(',').map(s => s.trim());
+  }
+
+  function importAreaCSV() {
+    const csvText = document.getElementById('area-csv-input').value.trim();
+    if (!csvText) {
+      showToast('Paste or drop a CSV first', 'warning');
+      return;
+    }
+    const lines = csvText.split('\n').map(l => l.trim()).filter(l => l);
+    if (lines.length < 2) {
+      showToast('CSV needs a header row plus at least one data row', 'error');
+      return;
+    }
+
+    const headers = splitCSVLine(lines[0]).map(h => h.toLowerCase());
+    const col = {
+      mark: headers.indexOf('mark'),
+      width: headers.indexOf('width'),
+      low: headers.indexOf('low height'),
+      high: headers.indexOf('high height'),
+      orientation: headers.indexOf('orientation'),
+      product: headers.indexOf('product'),
+    };
+    if (col.mark < 0 || col.width < 0 || col.low < 0) {
+      showToast('CSV header must include at least Mark, Width, Low Height', 'error');
+      return;
+    }
+
+    let imported = 0;
+    let unmatchedProducts = 0;
+
+    lines.slice(1).forEach(line => {
+      const parts = splitCSVLine(line);
+      const width = parseFloat(parts[col.width]);
+      const low   = parseFloat(parts[col.low]);
+      if (isNaN(width) || isNaN(low)) return;
+      const highRaw = col.high >= 0 ? parseFloat(parts[col.high]) : NaN;
+      const high = isNaN(highRaw) ? low : highRaw;
+      const orientationRaw = (col.orientation >= 0 ? parts[col.orientation] : '').toLowerCase();
+      const orientation = orientationRaw === 'horizontal' ? 'horizontal' : 'vertical';
+      const productName = col.product >= 0 ? parts[col.product] : '';
+      const productId = findCladdingProductId(productName);
+      if (productName && !productId) unmatchedProducts++;
+
+      const row = addRow('area', 'areas');
+      row.querySelector('[name$="-area_label"]').value = col.mark >= 0 ? (parts[col.mark] || '') : '';
+      row.querySelector('[name$="-orientation"]').value = orientation;
+      row.querySelector('[name$="-width_m"]').value = width;
+      row.querySelector('[name$="-low_height_m"]').value = low;
+      row.querySelector('[name$="-high_height_m"]').value = high;
+      if (productId) row.querySelector('[name$="-cladding_product"]').value = productId;
+      imported++;
+    });
+
+    if (!imported) {
+      showToast('No valid rows found in that CSV', 'error');
+      return;
+    }
+    document.getElementById('area-csv-input').value = '';
+    let msg = `Imported ${imported} area${imported !== 1 ? 's' : ''}`;
+    if (unmatchedProducts) msg += ` — ${unmatchedProducts} product${unmatchedProducts !== 1 ? 's' : ''} unmatched, pick manually`;
+    showToast(msg, unmatchedProducts ? 'warning' : 'success');
   }
 </script>
 {% endblock %}

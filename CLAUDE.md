@@ -213,7 +213,34 @@ of needing two separate `Job`s via Duplicate).
   vertical board can't have joins, so `CladdingArea.cut_piece()` can derive discrete cut pieces
   from it for the cutlist optimizer (see below); horizontal tolerates joins, so it has no single
   fixed piece length and never produces discrete pieces — it always stays on the area-based lm
-  estimate. `area_m2` is a computed property (`width_m * height_m`), not stored.
+  estimate (also true on a raking gable — the angled end-cuts that implies are a separate,
+  not-yet-solved problem). `area_m2` is a computed property (trapezoid:
+  `width_m * (low_height_m + high_height_m) / 2`), not stored.
+- **Raking (mono-pitch) top edges**: `low_height_m`/`high_height_m` (not a single `height_m`)
+  model an area whose top edge rises across its width — e.g. a gable rising to a barge. A flat
+  rectangular area is simply `low_height_m == high_height_m`; there's no separate shape flag. A
+  symmetric gable peak is entered as **two** mono-pitch areas rather than a dedicated peak shape
+  — deliberately kept to one rake shape. For a raking vertical area, `cut_piece()` returns one
+  length per board (not a single repeated length) — each board's length is sampled at its
+  high-side edge (not its centre), which is mathematically equivalent to adding
+  `cover_mm * tan(rake_angle)` but read off the same interpolation used for board-to-board
+  variation rather than a separate trig term, then rounded **up** to
+  `CladdingArea.RAKING_ROUNDING_GRID_MM` (50mm) — coarse enough that plain equality grouping
+  (`jobs:cladding_generate_cutlist`'s `Counter(lengths)`) actually collapses boards into shared
+  cut lines instead of needing fuzzy "close enough" matching; a flat area's exact length is
+  unchanged (grid only applies when the two heights differ). Board order/position is not
+  preserved anywhere — the estimate only needs a bag of lengths to stack into bins.
+- **Cladding areas CSV import** (`templates/jobs/cladding_areas_form.html`, self-contained JS,
+  not shared with `cutlist.js`): paste or drop a CSV with columns `Mark, Width, Low Height, High
+  Height, Orientation, Product` (metres; `High Height` defaults to `Low Height` if blank) to
+  append rows to the areas formset — mirrors the cutlist wizard's CSV import UX. Each row clones
+  `CladdingAreaFormSet.empty_form` via the same `addRow('area', 'areas')` used by "+ Add area",
+  so nothing bypasses normal form validation on save. `Product` is optional, best-effort exact
+  name match (case-insensitive) against `window.CLADDING_PRODUCTS` (new context var
+  `_cladding_products()` in `jobs/views.py`, same queryset `CladdingAreaForm` uses) — blank on no
+  match, fixed up via the row's own product dropdown afterward. Column headers are matched
+  exactly (case-insensitive) — no fuzzy header matching, since whoever exports the CSV (e.g. a
+  Revit area schedule) names their columns to match.
 - `jobs.CladdingExtraItem` FKs to `Section` too — mirrors `AdditionalBeam`'s shape (product +
   length + quantity) for flat, freely-added lines that aren't derived from an area (scribers,
   corner mouldings, flashings).

@@ -171,17 +171,19 @@ class CladdingAreaForm(forms.ModelForm):
 
     class Meta:
         model = CladdingArea
-        fields = ['area_label', 'orientation', 'width_m', 'height_m', 'cladding_product']
+        fields = ['area_label', 'orientation', 'width_m', 'low_height_m', 'high_height_m', 'cladding_product']
         widgets = {
             'area_label': forms.TextInput(attrs={'placeholder': 'e.g. North Elevation (optional)'}),
             'width_m': forms.NumberInput(attrs={'step': '0.1', 'placeholder': '0.0'}),
-            'height_m': forms.NumberInput(attrs={'step': '0.1', 'placeholder': '0.0'}),
+            'low_height_m': forms.NumberInput(attrs={'step': '0.1', 'placeholder': '0.0'}),
+            'high_height_m': forms.NumberInput(attrs={'step': '0.1', 'placeholder': '0.0'}),
         }
         labels = {
             'area_label': 'Area label (optional)',
             'orientation': 'Orientation',
             'width_m': 'Width (m)',
-            'height_m': 'Height (m)',
+            'low_height_m': 'Low Height (m)',
+            'high_height_m': 'High Height (m)',
             'cladding_product': 'Cladding',
         }
 

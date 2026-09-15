@@ -14,7 +14,7 @@ class FloorRoofAreaInline(admin.TabularInline):
 class CladdingAreaInline(admin.TabularInline):
     model = CladdingArea
     extra = 1
-    fields = ['area_label', 'orientation', 'width_m', 'height_m', 'cladding_product']
+    fields = ['area_label', 'orientation', 'width_m', 'low_height_m', 'high_height_m', 'cladding_product']
 
 
 class CladdingExtraItemInline(admin.TabularInline):
