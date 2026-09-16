@@ -21,6 +21,13 @@ class SystemSettingsAdmin(admin.ModelAdmin):
             'fields': ('hardware_allowance_pct', 'wastage_pct', 'estimate_uncertainty_pct', 'stair_void_allowance_lm'),
             'description': 'Global defaults applied to all estimates. Individual estimates can override wastage, hardware allowance, and uncertainty.',
         }),
+        ('Cladding Cutlist Defaults', {
+            'fields': ('stock_contingency_pct',),
+            'description': 'Extra stock ordered on top of a generated cutlist\'s real optimised '
+                            'quantity, to cover on-site mis-cuts/breakage during install — separate '
+                            'from Wastage %, which only applies before a cutlist exists. Individual '
+                            'cladding Parts can override this.',
+        }),
     )
 
     def has_add_permission(self, request):

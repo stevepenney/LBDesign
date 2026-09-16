@@ -39,6 +39,15 @@ def _d(value):
     return Decimal(str(value))
 
 
+def _fmt_pct(pct):
+    """
+    Trailing-zero-stripped percentage for display (10.00 -> '10', 9.50 -> '9.5') —
+    Decimal.normalize() does the same trimming but renders a round number like 10.00
+    in scientific notation (1E+1), which is why this doesn't just use that.
+    """
+    return format(pct, 'f').rstrip('0').rstrip('.')
+
+
 def _effective_pct(section, field):
     """
     Three-tier override resolution: the Part's own value, else the Job's
@@ -272,30 +281,59 @@ def _calc_cladding(section, wastage_factor):
         })
 
     for line in cutlist_lines:
-        lm = _d(line.length_m) * _d(line.quantity)
+        gross_lm = _d(line.length_m) * _d(line.quantity)
+        pct = _d(line.contingency_pct or 0)
+        # Split the gross (contingency-inflated) stock length back into the net amount the
+        # optimiser actually packed and the contingency padding on top of it, using the %
+        # recorded on the line at import time — not the Section's *current* setting, which
+        # may have changed since — so the split always reflects what was actually imported,
+        # never drifts, and degenerates to a single undivided line for pre-this-feature data
+        # (contingency_pct defaults to 0).
+        net_lm = (gross_lm / (Decimal('1') + pct / 100)).quantize(_CENT) if pct > 0 else gross_lm
+        contingency_lm = gross_lm - net_lm
+
         if not line.product:
             has_unpriced = True
             schedule.append({
                 'label': 'Cutlist output',
                 'description': line.product_description or 'Unmatched cutlist member',
-                'lineal_metres': str(lm),
+                'lineal_metres': str(net_lm),
                 'unit_price': None,
                 'line_total': '0.00',
             })
+            if contingency_lm > 0:
+                schedule.append({
+                    'label': 'Contingency',
+                    'description': f'Stock contingency ({_fmt_pct(pct)}%)',
+                    'lineal_metres': str(contingency_lm),
+                    'unit_price': None,
+                    'line_total': '0.00',
+                })
             continue
         price = get_product_price(line.product, organisation)
-        line_total = (lm * price).quantize(_CENT) if price else None
-        if line_total:
-            subtotal += line_total
+        net_total = (net_lm * price).quantize(_CENT) if price else None
+        if net_total:
+            subtotal += net_total
         else:
             has_unpriced = True
         schedule.append({
             'label': 'Cutlist output',
             'description': str(line.product),
-            'lineal_metres': str(lm),
+            'lineal_metres': str(net_lm),
             'unit_price': str(price) if price else None,
-            'line_total': str(line_total) if line_total else None,
+            'line_total': str(net_total) if net_total else None,
         })
+        if contingency_lm > 0:
+            contingency_total = (contingency_lm * price).quantize(_CENT) if price else None
+            if contingency_total:
+                subtotal += contingency_total
+            schedule.append({
+                'label': 'Contingency',
+                'description': f'Stock contingency ({_fmt_pct(pct)}%) on {line.product}',
+                'lineal_metres': str(contingency_lm),
+                'unit_price': str(price) if price else None,
+                'line_total': str(contingency_total) if contingency_total else None,
+            })
 
     for item in section.cladding_extra_items.select_related('product').all():
         if not item.product:

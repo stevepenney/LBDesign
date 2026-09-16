@@ -710,6 +710,19 @@
             <button type="button" class="est-reset" data-field="hardware_allowance_pct" data-update-url="{% url 'jobs:section_update_field' job.pk sj.pk %}" title="Reset to job default ({{ effective_hardware_pct|floatformat:'-2' }}%)">reset</button>
           {% endif %}
         </span>
+        {% if sj.is_cladding %}
+        <span style="font-size:.8rem;color:#999;" title="Extra stock ordered on top of a generated cutlist's real quantity, to cover on-site mis-cuts/breakage — applied when cutlist results are next imported, not retroactively.">
+          Stock Contingency:
+          <span class="est-value{% if sj.stock_contingency_pct is not None %} est-value--overridden{% endif %}"
+                data-field="stock_contingency_pct"
+                data-update-url="{% url 'jobs:section_update_field' job.pk sj.pk %}"
+                data-global="{{ system_settings.stock_contingency_pct|floatformat:'-2' }}"
+                title="Click to edit">{{ sj.effective_stock_contingency_pct|floatformat:"-2" }}%</span>
+          {% if sj.stock_contingency_pct is not None %}
+            <button type="button" class="est-reset" data-field="stock_contingency_pct" data-update-url="{% url 'jobs:section_update_field' job.pk sj.pk %}" title="Reset to global default ({{ system_settings.stock_contingency_pct|floatformat:'-2' }}%)">reset</button>
+          {% endif %}
+        </span>
+        {% endif %}
       </div>
     </div>
   </div>

@@ -32,6 +32,10 @@ venv/Scripts/python manage.py load_dummy_data --reset
 venv/Scripts/python manage.py shell
 ```
 
+Syncing a copy of production data to localhost: see `docs/sync_production_data.md` — the DB is a
+managed DO database (no direct connection from your laptop), so the dump has to run inside the
+App Platform Console and come back via DO Spaces, not a local `dumpdata` against `DATABASE_URL`.
+
 ---
 
 ## App Structure
@@ -246,7 +250,12 @@ of needing two separate `Job`s via Duplicate).
   corner mouldings, flashings).
 - `jobs.CladdingCutlistLine` FKs to `Section` — mirrors `CutlistImportLine`'s shape. Written by
   `jobs:cladding_import_cutlist` (see below) with the real optimized gross stock length once a
-  generated cutlist has been optimized, contingency % already applied.
+  generated cutlist has been optimized, contingency % already applied. Also stores
+  `contingency_pct` — the % actually used at import time, not read live from
+  `Section.stock_contingency_pct` (which may change afterwards) — so `_calc_cladding()` can split
+  this back into a "Cutlist output" (net) schedule line and a separate "Contingency" line without
+  the split drifting if the setting is edited later (0/no split for lines imported before this
+  field existed).
 - `jobs/views.py::section_create`/`section_edit` dispatch on `system_type` to render either the
   framing formsets/template or `CladdingAreaFormSet`/`CladdingExtraItemFormSet` +
   `cladding_areas_form.html` — one Part-creation flow, type chosen inside the form (see "Views"
@@ -268,10 +277,18 @@ of needing two separate `Job`s via Duplicate).
   (`CladdingArea.cut_piece()` per area; elevation labels go on each cut's `mark`, not `group` —
   `group` is a hard packing partition in the optimizer, and pieces from different elevations
   should be free to share a stick), then later pulls the optimized `totalStockUsed` back as
-  `CladdingCutlistLine`s (contingency % applied — `Section.stock_contingency_pct`, three-tier
-  same as wastage/hardware). A "Return to Estimate" button in the cutlist editor
-  (`templates/cutlist/project_edit.html`, shown when `cutlist.cladding_source_sections.exists()`)
-  does the import and navigates back in one click.
+  `CladdingCutlistLine`s (contingency % applied — `Section.stock_contingency_pct`, **two**-tier:
+  Section override → `SystemSettings.stock_contingency_pct` global default — no Job-level tier,
+  unlike wastage/hardware; exposed in `core/admin.py`'s "Cladding Cutlist Defaults" fieldset and,
+  per-Part, as a cladding-only row in `job_detail.html`'s per-Part settings, same `est-row`
+  pattern as Wastage/Hardware). This is a *separate* risk from `wastage_pct` — that only ever
+  covers the rough *pre-cutlist* area estimate and is fully discarded (not blended) once a
+  cutlist is imported for an area's product; `stock_contingency_pct` covers on-site
+  mis-cuts/breakage *after* the real cutting plan is known, padding the optimizer's own
+  (non-percentage, actually-computed) waste rather than duplicating it. Changing the % only
+  affects the *next* import — it doesn't retroactively touch already-imported lines. A "Return
+  to Estimate" button in the cutlist editor (`templates/cutlist/project_edit.html`, shown when
+  `cutlist.cladding_source_sections.exists()`) does the import and navigates back in one click.
 - **The report is a `jobs` page, not a `cutlist` one, and lives at the estimate level, not the
   Part level** (`jobs:estimate_report`, `templates/jobs/estimate_report.html` — one "Report"
   button in `job_detail.html`'s top toolbar, not a per-Part icon). It was originally a per-Part

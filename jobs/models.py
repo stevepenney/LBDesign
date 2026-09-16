@@ -485,6 +485,13 @@ class CladdingCutlistLine(models.Model):
     length_m is the real optimized gross stock length required for the product,
     with the part's stock contingency % already applied — see
     jobs.calculations._calc_cladding.
+
+    contingency_pct records the % actually applied when this line was imported (not
+    read live from Section.stock_contingency_pct, which may change afterwards) — this
+    is what lets _calc_cladding split length_m back into a "Cutlist output" (net)
+    line and a separate "Contingency" line for the report, without the split drifting
+    if the setting is edited later. 0 for lines imported before this field existed —
+    those just show as a single undivided line, same as before.
     """
     section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='cladding_cutlist_lines')
     product = models.ForeignKey(
@@ -500,6 +507,7 @@ class CladdingCutlistLine(models.Model):
     )
     length_m = models.DecimalField(max_digits=8, decimal_places=2)
     quantity = models.PositiveIntegerField(default=1)
+    contingency_pct = models.DecimalField(max_digits=5, decimal_places=2, default=0)
 
     class Meta:
         ordering = ['id']

@@ -162,7 +162,8 @@ def job_update_field(request, pk):
 @login_required
 @require_POST
 def section_update_field(request, job_pk, pk):
-    """Mirrors job_update_field, for a Part's own wastage_pct/hardware_allowance_pct override."""
+    """Mirrors job_update_field, for a Part's own wastage_pct/hardware_allowance_pct/
+    stock_contingency_pct override (the last one cladding-only)."""
     job = get_object_or_404(Job, pk=job_pk)
     section = get_object_or_404(Section, pk=pk, job=job)
     if not _assert_job_access(request.user, job):
@@ -170,7 +171,7 @@ def section_update_field(request, job_pk, pk):
     field = request.POST.get('field', '')
     value = request.POST.get('value', '').strip()
 
-    PCT_FIELDS = {'wastage_pct', 'hardware_allowance_pct'}
+    PCT_FIELDS = {'wastage_pct', 'hardware_allowance_pct', 'stock_contingency_pct'}
     if field not in PCT_FIELDS:
         return JsonResponse({'ok': False, 'error': 'Invalid field'}, status=400)
 
@@ -343,6 +344,11 @@ def job_detail(request, pk):
         sj.effective_hardware_pct = (
             sj.hardware_allowance_pct if sj.hardware_allowance_pct is not None else effective_hardware_pct
         )
+        if sj.is_cladding:
+            sj.effective_stock_contingency_pct = (
+                sj.stock_contingency_pct if sj.stock_contingency_pct is not None
+                else system_settings.stock_contingency_pct
+            )
     effective_uncertainty_pct, estimate_low, estimate_high = _estimate_price_range(job, system_settings)
     return render(request, 'jobs/job_detail.html', {
         'job': job,
@@ -645,6 +651,7 @@ def cladding_import_cutlist_results(request, job_pk, pk):
         lines.append(CladdingCutlistLine(
             section=section, product=product, length_m=length_m,
             product_description=tab.get('memberName', ''),
+            contingency_pct=contingency_pct,
         ))
 
     if not lines:
