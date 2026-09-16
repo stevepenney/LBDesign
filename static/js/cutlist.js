@@ -773,7 +773,11 @@ function calculateOptimization(tabId) {
     const tab = getTab(tabId);
 
     if (!tab.memberName)                                                        { showToast('Please enter a member size', 'error'); return; }
-    if (tab.cuts.length === 0 || tab.cuts.some(c => c.length <= 0 || c.quantity <= 0)) { showToast('Please enter valid cuts', 'error'); return; }
+    // quantity < 0 (not <= 0) — runFFDRespectingLocks legitimately drives a row's quantity down
+    // to exactly 0 when locked bins have already consumed every instance of that cut length; that
+    // row should just contribute zero pieces here, not abort (which would leave tab.results
+    // unreassigned and cause the locked bins concat'd back in by the caller to duplicate).
+    if (tab.cuts.length === 0 || tab.cuts.some(c => c.length <= 0 || c.quantity < 0)) { showToast('Please enter valid cuts', 'error'); return; }
     if (tab.stockLengths.length === 0 || tab.stockLengths.some(l => l <= 0))   { showToast('Please enter valid stock lengths', 'error'); return; }
 
     const kerfWidth            = project.jobDetails.kerfWidth;
