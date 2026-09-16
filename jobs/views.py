@@ -104,7 +104,7 @@ def estimate_quick(request):
         created_by   = request.user,
         status       = Project.Status.PRELIMINARY,
     )
-    job = Job.objects.create(project=project, created_by=request.user)
+    job = Job.objects.create(project=project, created_by=request.user, visible_to_merchant=not is_lb_staff)
     return redirect('jobs:job_detail', pk=job.pk)
 
 
@@ -114,12 +114,16 @@ def _get_jobs_for_user(user):
     if user.is_lb_admin or user.is_lb_detailing:
         return Job.objects.select_related('project__organisation').all()
     if user.organisation:
-        return Job.objects.filter(project__organisation=user.organisation)
+        return Job.objects.filter(project__organisation=user.organisation, visible_to_merchant=True)
     return Job.objects.none()
 
 
 def _assert_job_access(user, job):
-    return _assert_project_access(user, job.project)
+    if not _assert_project_access(user, job.project):
+        return False
+    if user.is_lb_admin or user.is_lb_detailing:
+        return True
+    return job.visible_to_merchant
 
 
 @login_required
@@ -135,8 +139,15 @@ def job_update_field(request, pk):
     # changing them here still recalculates the whole job, since any Part without its own
     # override picks up the new default automatically.
     PCT_FIELDS = {'hardware_allowance_pct', 'wastage_pct', 'estimate_uncertainty_pct'}
-    if field not in {'label'} | PCT_FIELDS:
+    if field not in {'label', 'visible_to_merchant'} | PCT_FIELDS:
         return JsonResponse({'ok': False, 'error': 'Invalid field'}, status=400)
+
+    if field == 'visible_to_merchant':
+        if not (request.user.is_lb_admin or request.user.is_lb_detailing):
+            return JsonResponse({'ok': False}, status=403)
+        job.visible_to_merchant = value == 'true'
+        job.save(update_fields=['visible_to_merchant', 'updated_at'])
+        return JsonResponse({'ok': True, 'value': job.visible_to_merchant})
 
     if field in PCT_FIELDS:
         if value == '':
@@ -200,7 +211,9 @@ def job_create(request, project_pk):
         messages.error(request, 'You do not have access to that project.')
         return redirect('projects:project_list')
 
-    job = Job.objects.create(project=project, created_by=request.user)
+    job = Job.objects.create(
+        project=project, created_by=request.user, visible_to_merchant=request.user.is_merchant_user,
+    )
     messages.success(request, 'Estimate created.')
     return redirect('jobs:job_detail', pk=job.pk)
 
@@ -262,6 +275,7 @@ def cutlist_convert_to_estimate(request, cutlist_pk):
         label=cutlist.name,
         estimate_uncertainty_pct=Decimal('0'),
         source_cutlist=cutlist,
+        visible_to_merchant=request.user.is_merchant_user,
     )
     section = Section.objects.create(
         job=job,
@@ -588,6 +602,7 @@ def cladding_generate_cutlist(request, job_pk, pk):
     cutlist = CutlistProject.objects.create(
         project=job.project,
         created_by=request.user,
+        visible_to_merchant=request.user.is_merchant_user,
         name=f'{section.label} — Cladding Cutlist'[:100],
         state={
             'jobDetails': {'systemType': 'cladding', 'preparedBy': '', 'kerfWidth': 3},
@@ -726,6 +741,7 @@ def job_duplicate(request, pk):
         label                  = f'Copy of {job.label}' if job.label else 'Copy',
         hardware_allowance_pct = job.hardware_allowance_pct,
         wastage_pct            = job.wastage_pct,
+        visible_to_merchant    = request.user.is_merchant_user,
     )
 
     for section in job.sections.prefetch_related(

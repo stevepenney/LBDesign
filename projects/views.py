@@ -193,8 +193,12 @@ def project_detail(request, pk):
         messages.error(request, 'You do not have access to that project.')
         return redirect('projects:project_list')
 
+    is_lb_staff = request.user.is_lb_admin or request.user.is_lb_detailing
+
     system_settings = SystemSettings.get()
     estimates_qs = project.estimates.prefetch_related('sections').order_by('-created_at')
+    if not is_lb_staff:
+        estimates_qs = estimates_qs.filter(visible_to_merchant=True)
     estimates = []
     for est in estimates_qs:
         if est.subtotal:
@@ -213,6 +217,8 @@ def project_detail(request, pk):
         estimates.append(est)
 
     cutlists  = project.cutlist_projects.order_by('-updated_at')
+    if not is_lb_staff:
+        cutlists = cutlists.filter(visible_to_merchant=True)
     documents = project.documents.select_related('uploaded_by').all()
     status_choices = [
         (v, l) for v, l in Project.Status.choices

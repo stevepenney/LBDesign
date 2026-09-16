@@ -322,6 +322,7 @@
           <th>Sections</th>
           <th style="text-align:right;">Indicative Range (excl. GST)</th>
           <th>Created</th>
+          {% if request.user.is_lb_admin or request.user.is_lb_detailing %}<th style="text-align:center;">Visible to Merchant</th>{% endif %}
           <th></th>
         </tr>
       </thead>
@@ -334,6 +335,13 @@
             {% if est.range_low %}${{ est.range_low }} – ${{ est.range_high }}{% else %}<span style="color:#bbb;">&mdash;</span>{% endif %}
           </td>
           <td style="color:#888; font-size:0.85rem;">{{ est.created_at|date:"d M Y" }}</td>
+          {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
+          <td style="text-align:center;">
+            <input type="checkbox" class="visibility-toggle"
+                   data-update-url="{% url 'jobs:job_update_field' est.pk %}"
+                   {% if est.visible_to_merchant %}checked{% endif %}>
+          </td>
+          {% endif %}
           <td class="actions">
             <div class="icon-actions">
               <form method="post" action="{% url 'jobs:job_duplicate' est.pk %}" style="display:inline;">
@@ -375,6 +383,7 @@
         <tr>
           <th>Name</th>
           <th>Last Updated</th>
+          {% if request.user.is_lb_admin or request.user.is_lb_detailing %}<th style="text-align:center;">Visible to Merchant</th>{% endif %}
           <th></th>
         </tr>
       </thead>
@@ -383,6 +392,13 @@
         <tr>
           <td><a href="{% url 'cutlist:project_edit' cl.pk %}"><strong>{{ cl.name }}</strong></a></td>
           <td style="color:#888; font-size:0.85rem;">{{ cl.updated_at|date:"d M Y H:i" }}</td>
+          {% if request.user.is_lb_admin or request.user.is_lb_detailing %}
+          <td style="text-align:center;">
+            <input type="checkbox" class="visibility-toggle"
+                   data-update-url="{% url 'cutlist:project_update_field' cl.pk %}"
+                   {% if cl.visible_to_merchant %}checked{% endif %}>
+          </td>
+          {% endif %}
           <td class="actions">
             <div class="icon-actions">
               <form method="post" action="{% url 'cutlist:project_duplicate' cl.pk %}" style="display:inline;">
@@ -621,6 +637,32 @@
   }
 
   document.querySelectorAll('.editable-field').forEach(makeEditable);
+
+  // ── Estimate / cutlist merchant-visibility toggles (LB staff only) ───────
+
+  document.querySelectorAll('.visibility-toggle').forEach(function (checkbox) {
+    checkbox.addEventListener('change', function () {
+      var url = checkbox.dataset.updateUrl;
+      var newValue = checkbox.checked;
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'csrfmiddlewaretoken=' + encodeURIComponent(CSRF) +
+              '&field=visible_to_merchant&value=' + (newValue ? 'true' : 'false'),
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok) {
+          checkbox.checked = !newValue;
+          window.showToast('Could not update visibility.', 'error');
+        }
+      })
+      .catch(function () {
+        checkbox.checked = !newValue;
+        window.showToast('Could not update visibility.', 'error');
+      });
+    });
+  });
 
   // ── Status selector (lb staff only) ──────────────────────────────────────
 

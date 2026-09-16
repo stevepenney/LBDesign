@@ -16,6 +16,12 @@ class CutlistProject(models.Model):
         related_name='cutlist_projects',
     )
     name       = models.CharField(max_length=100, default='Untitled Cutlist')
+    visible_to_merchant = models.BooleanField(
+        default=False,
+        help_text='LB staff always see every cutlist. Mirrors jobs.Job.visible_to_merchant — '
+                   'hidden by default when created by an LB user, visible by default when '
+                   'created by the merchant themselves.',
+    )
     state      = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -19,9 +19,12 @@ from .models import CutlistProject, MemberProductMapping
 
 
 def _assert_cutlist_access(user, cutlist):
+    if user.is_lb_admin or user.is_lb_detailing:
+        return
     if cutlist.project.organisation != user.organisation:
-        if not (user.is_lb_admin or user.is_lb_detailing):
-            raise PermissionDenied
+        raise PermissionDenied
+    if not cutlist.visible_to_merchant:
+        raise PermissionDenied
 
 
 def _normalize_member_name(name):
@@ -35,6 +38,8 @@ def project_list(request):
     cutlists = CutlistProject.objects.filter(
         project__in=projects
     ).select_related('project', 'created_by')
+    if not (request.user.is_lb_admin or request.user.is_lb_detailing):
+        cutlists = cutlists.filter(visible_to_merchant=True)
     return render(request, 'cutlist/project_list.html', {'cutlists': cutlists})
 
 
@@ -59,7 +64,9 @@ def project_new_quick(request):
         created_by   = request.user,
         status       = Project.Status.PRELIMINARY,
     )
-    cutlist = CutlistProject.objects.create(project=project, created_by=request.user)
+    cutlist = CutlistProject.objects.create(
+        project=project, created_by=request.user, visible_to_merchant=not is_lb_staff,
+    )
     return redirect('cutlist:project_edit', pk=cutlist.pk)
 
 
@@ -70,8 +77,9 @@ def project_new(request, project_pk):
     if not _assert_project_access(request.user, project):
         raise PermissionDenied
     cutlist = CutlistProject.objects.create(
-        project    = project,
-        created_by = request.user,
+        project             = project,
+        created_by          = request.user,
+        visible_to_merchant = request.user.is_merchant_user,
     )
     return redirect('cutlist:project_edit', pk=cutlist.pk)
 
@@ -157,10 +165,19 @@ def project_update_field(request, pk):
     cutlist = get_object_or_404(CutlistProject, pk=pk)
     _assert_cutlist_access(request.user, cutlist)
 
-    if request.POST.get('field') != 'name':
+    field = request.POST.get('field')
+    value = request.POST.get('value', '').strip()
+
+    if field == 'visible_to_merchant':
+        if not (request.user.is_lb_admin or request.user.is_lb_detailing):
+            return JsonResponse({'ok': False}, status=403)
+        cutlist.visible_to_merchant = value == 'true'
+        cutlist.save(update_fields=['visible_to_merchant', 'updated_at'])
+        return JsonResponse({'ok': True, 'value': cutlist.visible_to_merchant})
+
+    if field != 'name':
         return JsonResponse({'ok': False, 'error': 'Invalid field'}, status=400)
 
-    value = request.POST.get('value', '').strip()
     cutlist.name = value[:100] or 'Untitled Cutlist'
     cutlist.save(update_fields=['name', 'updated_at'])
     return JsonResponse({'ok': True, 'value': cutlist.name})
@@ -173,10 +190,11 @@ def project_duplicate(request, pk):
     _assert_cutlist_access(request.user, cutlist)
 
     new_cutlist = CutlistProject.objects.create(
-        project    = cutlist.project,
-        created_by = request.user,
-        name       = f'Copy of {cutlist.name}'[:100],
-        state      = cutlist.state,
+        project             = cutlist.project,
+        created_by          = request.user,
+        name                = f'Copy of {cutlist.name}'[:100],
+        state               = cutlist.state,
+        visible_to_merchant = request.user.is_merchant_user,
     )
     return redirect('cutlist:project_edit', pk=new_cutlist.pk)
 

@@ -34,6 +34,12 @@ class Job(models.Model):
         default='Untitled Estimate',
         help_text="Optional label to distinguish multiple estimates on the same project, e.g. 'Option A'.",
     )
+    visible_to_merchant = models.BooleanField(
+        default=False,
+        help_text='LB staff always see every estimate. An estimate an LB user creates stays '
+                   'hidden from the merchant until explicitly shown here; one the merchant '
+                   'creates themselves is visible by default.',
+    )
 
     # Per-job overrides — null means use the global SystemSettings value. Also the default a new
     # Part/Section starts from for wastage_pct/hardware_allowance_pct — see Section below, which
