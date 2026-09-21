@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load user_tags %}
 
 {% block title %}{{ project.lb_ref }}{% endblock %}
 
@@ -469,7 +470,7 @@
               data-update-url="{% url 'projects:document_update_field' project.pk doc.pk %}"
               data-input-type="select"
               data-edit-value="{{ doc.document_type }}"
-              data-choices='{% if request.user.is_lb_admin or request.user.is_lb_detailing %}[["drawing","Drawing"],["design","Design File"],["quote","Quote"],["other","Other"]]{% else %}[["drawing","Drawing"],["other","Other"]]{% endif %}'>{{ doc.get_document_type_display }}</td>
+              data-choices='{{ doc_type_choices_json|safe }}'>{{ doc.get_document_type_display }}</td>
           <td class="editable-field"
               data-field="notes"
               data-update-url="{% url 'projects:document_update_field' project.pk doc.pk %}"
@@ -484,7 +485,7 @@
               <span style="color:#bbb;">—</span>
             {% endif %}
           </td>
-          <td style="color:#888;font-size:0.85rem;">{{ doc.uploaded_by.get_full_name|default:doc.uploaded_by.username|default:"—" }}</td>
+          <td style="color:#888;font-size:0.85rem;">{{ doc.uploaded_by|user_label }}</td>
           <td style="color:#888;font-size:0.85rem;">{{ doc.uploaded_at|date:"j M Y" }}</td>
           <td class="actions">
             {% if doc.uploaded_by == request.user or request.user.is_lb_admin or request.user.is_lb_detailing %}
@@ -501,6 +502,22 @@
     </table>
   </div>
 </div>
+
+{% if report_docs and drawing_docs %}
+<form method="post" action="{% url 'projects:document_merge' project.pk %}"
+      style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;margin-top:1rem;">
+  {% csrf_token %}
+  <strong style="font-size:0.9rem;">Merge PDFs:</strong>
+  <select name="report" class="form-control" style="width:auto;" aria-label="Estimate report">
+    {% for d in report_docs %}<option value="{{ d.pk }}">{{ d.display_name }} ({{ d.uploaded_at|date:"j M Y" }})</option>{% endfor %}
+  </select>
+  <span style="color:#888;">+</span>
+  <select name="drawing" class="form-control" style="width:auto;" aria-label="Revit export">
+    {% for d in drawing_docs %}<option value="{{ d.pk }}">{{ d.display_name }} ({{ d.uploaded_at|date:"j M Y" }})</option>{% endfor %}
+  </select>
+  <button type="submit" class="btn btn-secondary">Merge into one PDF</button>
+</form>
+{% endif %}
 
 {% endblock %}
 
@@ -536,7 +553,7 @@
 (function () {
   const CSRF       = "{{ csrf_token }}";
   const UPLOAD_URL = "{% url 'projects:document_upload' project.pk %}";
-  const DOC_CHOICES = {% if request.user.is_lb_admin or request.user.is_lb_detailing %}[["drawing","Drawing"],["design","Design File"],["quote","Quote"],["other","Other"]]{% else %}[["drawing","Drawing"],["other","Other"]]{% endif %};
+  const DOC_CHOICES = {{ doc_type_choices_json|safe }};
 
   // ── Inline field editing ──────────────────────────────────────────────────
 

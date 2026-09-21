@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load user_tags %}
 
 {% block title %}Cutlists{% endblock %}
 
@@ -84,7 +85,7 @@
           </a>
         </td>
         <td style="color:#888;font-size:0.85rem;">{{ cl.project.client_name|default:"—" }}</td>
-        <td style="color:#888;font-size:0.85rem;">{{ cl.created_by.get_full_name|default:cl.created_by.username|default:"—" }}</td>
+        <td style="color:#888;font-size:0.85rem;">{{ cl.created_by|user_label }}</td>
         <td style="color:#888;font-size:0.85rem;">{{ cl.updated_at|date:"d M Y, g:ia" }}</td>
         <td style="text-align:right;white-space:nowrap;">
           <a href="{% url 'cutlist:project_edit' cl.pk %}" style="margin-right:.5rem;font-size:0.85rem;">Open</a>

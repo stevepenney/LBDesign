@@ -17,6 +17,7 @@ urlpatterns = [
     path('<int:pk>/request-quote/',     views.project_request_quote, name='request_quote'),
     path('<int:pk>/documents/add/',      views.document_add,          name='document_add'),
     path('<int:pk>/documents/upload/',   views.document_upload_ajax,  name='document_upload'),
+    path('<int:pk>/documents/merge/',    views.document_merge,        name='document_merge'),
     path('<int:pk>/documents/<int:doc_pk>/delete/',       views.document_delete,       name='document_delete'),
     path('<int:pk>/documents/<int:doc_pk>/update-field/', views.document_update_field, name='document_update_field'),
 ]

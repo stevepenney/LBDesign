@@ -62,10 +62,12 @@ class Project(models.Model):
 class ProjectDocument(models.Model):
 
     class DocumentType(models.TextChoices):
-        DRAWING = 'drawing', 'Drawing'
-        DESIGN  = 'design',  'Design File'
-        QUOTE   = 'quote',   'Quote'
-        OTHER   = 'other',   'Other'
+        DRAWING         = 'drawing',         'Drawing'
+        DESIGN          = 'design',          'Design File'
+        QUOTE           = 'quote',           'Quote'
+        REVIT_EXPORT    = 'revit_export',    'Revit Export'
+        ESTIMATE_REPORT = 'estimate_report', 'Estimate Report'
+        OTHER           = 'other',           'Other'
 
     project       = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='documents')
     uploaded_by   = models.ForeignKey(

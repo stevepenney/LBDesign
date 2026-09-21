@@ -1,13 +1,19 @@
+import io
+import json
 import math
 
 from django.conf import settings as django_settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.files.base import ContentFile
 from django.core.mail import send_mail
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.text import slugify
 from django.views.decorators.http import require_POST
+from pypdf import PdfWriter
+from pypdf.errors import PyPdfError
 
 from accounts.models import Organisation
 from core.models import SystemSettings
@@ -224,12 +230,25 @@ def project_detail(request, pk):
         (v, l) for v, l in Project.Status.choices
         if v != Project.Status.DISCARDED
     ]
+    DocType = ProjectDocument.DocumentType
+    if is_lb_staff:
+        doc_type_choices = [list(c) for c in DocType.choices]
+        pdf_docs = documents.filter(file__iendswith='.pdf')
+        report_docs  = pdf_docs.filter(document_type=DocType.ESTIMATE_REPORT)
+        drawing_docs = pdf_docs.filter(document_type=DocType.REVIT_EXPORT)
+    else:
+        doc_type_choices = [[DocType.DRAWING.value, DocType.DRAWING.label],
+                            [DocType.OTHER.value,   DocType.OTHER.label]]
+        report_docs = drawing_docs = ProjectDocument.objects.none()
     return render(request, 'projects/project_detail.html', {
-        'project':        project,
-        'estimates':      estimates,
-        'cutlists':       cutlists,
-        'documents':      documents,
-        'status_choices': status_choices,
+        'project':               project,
+        'estimates':             estimates,
+        'cutlists':              cutlists,
+        'documents':             documents,
+        'status_choices':        status_choices,
+        'doc_type_choices_json': json.dumps(doc_type_choices),
+        'report_docs':           report_docs,
+        'drawing_docs':          drawing_docs,
     })
 
 
@@ -412,6 +431,45 @@ def document_add(request, pk):
     return render(request, 'projects/document_form.html', {
         'form': form, 'project': project,
     })
+
+
+@login_required
+@require_POST
+def document_merge(request, pk):
+    """Concatenate an Estimate Report PDF and a Revit Export PDF into a new Quote document."""
+    project = get_object_or_404(Project, pk=pk)
+    if not (request.user.is_lb_admin or request.user.is_lb_detailing):
+        messages.error(request, 'You do not have permission to merge documents.')
+        return redirect('projects:project_detail', pk=project.pk)
+
+    DocType = ProjectDocument.DocumentType
+    try:
+        report  = project.documents.get(pk=request.POST.get('report'),  document_type=DocType.ESTIMATE_REPORT)
+        drawing = project.documents.get(pk=request.POST.get('drawing'), document_type=DocType.REVIT_EXPORT)
+    except (ProjectDocument.DoesNotExist, ValueError):
+        messages.error(request, 'Choose both an Estimate Report and a Revit Export to merge.')
+        return redirect('projects:project_detail', pk=project.pk)
+
+    writer = PdfWriter()
+    try:
+        for doc in (report, drawing):
+            with doc.file.open('rb') as f:
+                writer.append(io.BytesIO(f.read()))
+    except (PyPdfError, ValueError) as exc:
+        messages.error(request, f'Could not merge — "{doc.display_name}" is not a readable PDF ({exc}).')
+        return redirect('projects:project_detail', pk=project.pk)
+
+    buf = io.BytesIO()
+    writer.write(buf)
+    ProjectDocument.objects.create(
+        project=project,
+        uploaded_by=request.user,
+        document_type=DocType.QUOTE,
+        name=f'{project.display_ref} — Estimate with drawings',
+        file=ContentFile(buf.getvalue(), name=f'{slugify(project.display_ref) or "project"}-estimate-with-drawings.pdf'),
+    )
+    messages.success(request, 'Merged PDF saved to Documents as a Quote.')
+    return redirect('projects:project_detail', pk=project.pk)
 
 
 @login_required

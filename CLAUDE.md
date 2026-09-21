@@ -154,10 +154,30 @@ Static files: `static/css/base.css`, `static/css/admin.css`, `static/js/base.js`
     not left stale — this was a deliberate choice (a periodic price update is "here's the
     complete new list," not a patch).
 
+### Templates & nullable users
+- `created_by`/`uploaded_by` FKs are `SET_NULL`, so they're `None` once that user is deleted.
+  Show them with `{% load user_tags %}` + `{{ obj.created_by|user_label }}` (`core/templatetags/
+  user_tags.py`), never `{{ x.user.get_full_name|default:x.user.username }}` — filter arguments
+  don't resolve silently, so that raises `VariableDoesNotExist` on a `None` user and 500s the page.
+
 ### Migrations
 - Write migrations manually when the change is conceptual (rename, data migration, multi-step).
 - Run `manage.py check` after every migration.
 - After any model change always run `makemigrations` and check the generated file before applying.
+
+### Project documents & PDF merge
+- `ProjectDocument.DocumentType` includes LB-staff-only `revit_export` and `estimate_report`
+  (merchants can still only pick `drawing`/`other`; the allowed set is built once in
+  `project_detail` as `doc_type_choices_json` and reused by both the inline-edit `data-choices`
+  and the upload JS — don't re-hardcode it in the template).
+- `projects:document_merge` (POST, LB staff only) concatenates one `estimate_report` PDF then one
+  `revit_export` PDF with `pypdf` and saves the result as a new `quote`-type document. The
+  estimate report itself is still produced by the browser's Print → Save as PDF
+  (`estimate_report.html`, diagrams drawn client-side by `cutting_report.js`, so WeasyPrint can't
+  render it); the user uploads that PDF and tags it. Headless-Chromium generation would replace
+  that manual step if ever wanted.
+- `projects/tests.py` covers the merge; the local Postgres user can't create a test DB, so run
+  with a throwaway settings module overriding `DATABASES` to in-memory SQLite.
 
 ### Usage tracking
 - `core.UsageEvent` (`user`, `organisation`, `event_type`, `created_at`) — deliberately lightweight:

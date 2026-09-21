@@ -38,6 +38,7 @@ class ProjectDocumentForm(forms.ModelForm):
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         # Merchants can only add drawings and other; LB staff can add any type
+        # (including Revit Export / Estimate Report, which feed the PDF merge)
         if user and not (getattr(user, 'is_lb_admin', False) or getattr(user, 'is_lb_detailing', False)):
             self.fields['document_type'].choices = [
                 choice for choice in ProjectDocument.DocumentType.choices
