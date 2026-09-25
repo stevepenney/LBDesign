@@ -1,0 +1,26 @@
+{% load static %}
+<!-- Repeating print-page footer — logo + office details, matching
+     https://www.lumberbankarchitectural.co.nz/'s own footer. Included at the bottom of every
+     server-rendered .print-page (estimate_report.html, cladding_boards_report.html) and cloned
+     via the #print-footer-template <template> for estimate_report.html's JS-generated diagram
+     pages, so there's one source for it either way. -->
+<div class="print-footer">
+  <img src="{% static 'Lumberbank-Primary-Logo.png' %}" alt="LumberBank" class="print-footer__logo">
+  <div class="print-footer__offices">
+    <div class="print-footer__office">
+      <strong>Auckland Office</strong>
+      320 Neilson Street,<br>Onehunga, Auckland<br>
+      <a href="tel:0800458623">0800 458 623</a> | P +64 9 622 2050
+    </div>
+    <div class="print-footer__office">
+      <strong>Auckland Warehouse</strong>
+      322 Neilson Street,<br>Onehunga, Auckland<br>
+      <a href="tel:0800458623">0800 458 623</a> | P +64 9 622 2050
+    </div>
+    <div class="print-footer__office">
+      <strong>Christchurch</strong>
+      5-9 Hickory Place,<br>Islington, Christchurch<br>
+      <a href="tel:0508423267">0508 IBEAMS</a> | P +64 3 349 0515
+    </div>
+  </div>
+</div>

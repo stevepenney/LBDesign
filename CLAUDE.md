@@ -352,6 +352,17 @@ of needing two separate `Job`s via Duplicate).
     (`{% static 'Lumberbank-Primary-Logo.png' %}`, `.print-logo`, 110px tall — same height as
     `.site-header__logo img` in `base.html`) above the page title — same file `base.html`'s
     header/footer and `admin/base_site.html` already use.
+  - Both also repeat a footer (`templates/jobs/_print_footer.html`) at the bottom of every printed
+    page — the same logo plus the three office blocks (Auckland Office/Warehouse, Christchurch),
+    matching lumberbankarchitectural.co.nz's own footer content. Pinned to the bottom of each
+    `.print-page` via `display:flex;flex-direction:column` on `.print-page` + `margin-top:auto`
+    on `.print-footer` (each `.print-page` div is one physical page, so this is "sticks to page
+    bottom", not a true CSS running footer — fine as long as a Part's content never overflows a
+    single page, same assumption the rest of this report already makes). `estimate_report.html`'s
+    diagram pages are built client-side (see below), so the same partial is also embedded once as
+    `<template id="print-footer-template">` and cloned into each JS-generated `.print-page` via
+    `footerTemplate.content.cloneNode(true)` — one source either way, never a second copy of the
+    markup hand-written in JS.
   - Midfloor/Roof/Other Parts don't yet have their own detail report beyond the stripped Member
     Schedule table above — a fuller framing equivalent of the cladding board summary/cutlist
     treatment is a later phase, not yet built.
@@ -626,9 +637,6 @@ don't over-engineer now, but don't make choices that box out phase 2 expansion.
 - [ ] PDF estimate generation (WeasyPrint installed, not wired up)
 - [ ] Drawing upload → email notification to detailing team (`DETAILING_TEAM_EMAIL` setting exists)
 - [ ] Price book management UI (currently admin-only via Django admin)
-- [ ] Footer image on `estimate_report.html`/`cladding_boards_report.html`, every printed page —
-      waiting on the asset from Steve; header logo (`Lumberbank-Primary-Logo.png`, `.print-logo`,
-      110px, same size as the app header) is already in place on both.
 - [x] Member schedule display on job detail page (`job_breakdown.html`, LB-staff only)
 - [x] Cladding folded into `Section` as a Part type; per-Part wastage/hardware; cladding
       cutlist hand-off feeds back into the same Part; cladding report moved to `jobs`

@@ -156,6 +156,18 @@ class CladdingBoardsReportTests(TestCase):
 
         self.assertEqual(response.redirect_chain[-1][0], reverse('jobs:job_detail', args=[self.job.pk]))
 
+    def test_page_includes_footer(self):
+        CladdingArea.objects.create(
+            section=self.section, area_label='North', orientation=CladdingArea.Orientation.VERTICAL,
+            width_m='3.600', low_height_m='2.400', high_height_m='2.400', cladding_product=self.product,
+        )
+        self.client.force_login(self.staff)
+        response = self.client.get(self.url)
+
+        self.assertContains(response, 'class="print-footer"')
+        self.assertContains(response, 'Auckland Warehouse')
+        self.assertContains(response, 'Christchurch')
+
 
 @override_settings(STORAGES={
     'default':     {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
@@ -238,3 +250,15 @@ class EstimateReportTests(TestCase):
         response = self.client.get(self.url)
 
         self.assertNotContains(response, 'Elevations')
+
+    def test_footer_on_summary_page_and_diagram_template(self):
+        # Summary page always renders even with no Parts — one footer there, plus a second raw
+        # copy inert inside <template id="print-footer-template">, which estimate_report.html's
+        # JS clones into each cutting-diagram page it builds client-side (not exercised here,
+        # since that only happens in the browser).
+        self.client.force_login(self.staff)
+        response = self.client.get(self.url)
+
+        self.assertContains(response, 'class="print-footer"', count=2)
+        self.assertContains(response, 'id="print-footer-template"')
+        self.assertContains(response, 'Auckland Warehouse')
