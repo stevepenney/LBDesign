@@ -228,6 +228,10 @@ class EstimateReportTests(TestCase):
 
         self.assertNotContains(response, 'Board Summary')
         self.assertContains(response, f'id="diagram-root-{section.pk}"')
+        # No header page for this Part at all — its label already appears on its diagram pages,
+        # so a page just to say "see following" would render blank. (The CSS rule itself still
+        # legitimately mentions the class name, so check for the rendered element, not the string.)
+        self.assertNotContains(response, '<div class="print-part-header">')
 
     def test_elevations_section_removed(self):
         self.client.force_login(self.staff)

@@ -332,19 +332,26 @@ of needing two separate `Job`s via Duplicate).
     optimized results yet, the Part's page inlines the same simplified Product > Length > Pieces
     table as the standalone Board Report (`_cladding_board_report_groups()`, rendered via the
     shared `templates/jobs/_cladding_board_table.html` partial — one source, included by both
-    pages, so they can't disagree). Once a cutlist *has* been optimized, the board summary is
-    dropped entirely and that Part's cutting diagrams — read-only geometry from the linked
-    `CutlistProject.state`, via the shared `static/js/cutting_report.js` module (repetition-grouped
-    horizontal stick diagrams + a per-pattern summary table — see "Consolidation algorithm" for
-    why physical sticks collapse into patterns) — render as the page(s) immediately following that
-    Part's own page (`<div id="diagram-root-{{ sj.pk }}">`, one per Part, keyed on `partId` in the
-    `report_cutlists` JSON — not one shared root for the whole report, since the diagrams now have
-    to land next to their own Part rather than bunched at the end). That module is deliberately
-    standalone (plain `(bins, kerfWidth)` functions, no dependency on `cutlist.js`'s globals) so
-    both `cutlist:project_print` and `jobs:estimate_report` can use it without either pulling in
-    the whole interactive editor. `cutlist` stays a pure, estimate-agnostic bin-packing tool — its
-    own print view (`cutlist:project_print`) never shows pricing, just cutting diagrams/pattern
-    summary/unpriced stock quantities, for any cutlist.
+    pages, so they can't disagree). Once a cutlist *has* been optimized, **the Part's own header
+    page is skipped entirely** — not rendered with a "see following" note, since its label already
+    appears on each of its diagram pages (`print-page-header__part`), so a page holding nothing
+    else would just print blank — and that Part's cutting diagrams — read-only geometry from the
+    linked `CutlistProject.state`, via the shared `static/js/cutting_report.js` module
+    (repetition-grouped horizontal stick diagrams + a per-pattern summary table — see
+    "Consolidation algorithm" for why physical sticks collapse into patterns) — render as the
+    page(s) that Part's `<div id="diagram-root-{{ sj.pk }}">` would otherwise have sat inside
+    (one root per Part, keyed on `partId` in the `report_cutlists` JSON — not one shared root for
+    the whole report, since the diagrams now have to land next to their own Part rather than
+    bunched at the end). That module is deliberately standalone (plain `(bins, kerfWidth)`
+    functions, no dependency on `cutlist.js`'s globals) so both `cutlist:project_print` and
+    `jobs:estimate_report` can use it without either pulling in the whole interactive editor.
+    `cutlist` stays a pure, estimate-agnostic bin-packing tool — its own print view
+    (`cutlist:project_print`) never shows pricing, just cutting diagrams/pattern summary/unpriced
+    stock quantities, for any cutlist.
+  - Both `estimate_report.html` and `cladding_boards_report.html` open with the LumberBank logo
+    (`{% static 'Lumberbank-Primary-Logo.png' %}`, `.print-logo`, 40px tall) above the page title —
+    same file `base.html`'s header/footer and `admin/base_site.html` already use, just sized down
+    for a print header instead of the site nav.
   - Midfloor/Roof/Other Parts don't yet have their own detail report beyond the stripped Member
     Schedule table above — a fuller framing equivalent of the cladding board summary/cutlist
     treatment is a later phase, not yet built.
