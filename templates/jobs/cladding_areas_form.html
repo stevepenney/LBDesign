@@ -219,12 +219,12 @@
     <div class="csv-import-box" id="area-csv-import-box">
       <p class="csv-import-box__hint">
         Import from CSV (e.g. an area schedule exported from Revit) — paste below or drop a
-        file. Expected columns: <strong>Mark, Width, Low Height, High Height, Orientation,
+        file. Expected columns: <strong>Area, Width, Low Height, High Height, Orientation,
         Product</strong> (widths/heights in metres; <em>High Height</em> defaults to
         <em>Low Height</em> if blank; <em>Product</em> is optional). Imported rows are added
         below the areas already entered.
       </p>
-      <textarea id="area-csv-input" placeholder="Mark,Width,Low Height,High Height,Orientation,Product"></textarea>
+      <textarea id="area-csv-input" placeholder="Area,Width,Low Height,High Height,Orientation,Product"></textarea>
       <div class="csv-import-box__actions">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('area-csv-file-input').click()">Choose File</button>
         <input type="file" id="area-csv-file-input" accept=".csv,text/csv" style="display:none">
@@ -486,15 +486,15 @@
 
     const headers = splitCSVLine(lines[0]).map(h => h.toLowerCase());
     const col = {
-      mark: headers.indexOf('mark'),
+      area: headers.indexOf('area'),
       width: headers.indexOf('width'),
       low: headers.indexOf('low height'),
       high: headers.indexOf('high height'),
       orientation: headers.indexOf('orientation'),
       product: headers.indexOf('product'),
     };
-    if (col.mark < 0 || col.width < 0 || col.low < 0) {
-      showToast('CSV header must include at least Mark, Width, Low Height', 'error');
+    if (col.area < 0 || col.width < 0 || col.low < 0) {
+      showToast('CSV header must include at least Area, Width, Low Height', 'error');
       return;
     }
 
@@ -512,7 +512,7 @@
       const orientationRaw = (col.orientation >= 0 ? parts[col.orientation] : '').toLowerCase();
       const orientation = orientationRaw === 'horizontal' ? 'horizontal' : 'vertical';
       rows.push({
-        mark: col.mark >= 0 ? (parts[col.mark] || '') : '',
+        area: col.area >= 0 ? (parts[col.area] || '') : '',
         width, low, high, orientation,
         product: col.product >= 0 ? parts[col.product] : '',
       });
@@ -568,7 +568,7 @@
       if (r.product && !productId) unmatchedProducts++;
 
       const row = addRow('area', 'areas');
-      row.querySelector('[name$="-area_label"]').value = r.mark;
+      row.querySelector('[name$="-area_label"]').value = r.area;
       row.querySelector('[name$="-orientation"]').value = r.orientation;
       row.querySelector('[name$="-width_m"]').value = r.width;
       row.querySelector('[name$="-low_height_m"]').value = r.low;

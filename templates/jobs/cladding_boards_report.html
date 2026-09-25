@@ -29,6 +29,9 @@
       color: #999; margin: 1.5rem 0 .5rem 0; padding-bottom: .25rem; border-bottom: 1px solid var(--border);
     }
 
+    .board-columns { display: flex; gap: 1.5rem; }
+    .board-columns table { flex: 1; min-width: 0; }
+
     .print-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-bottom: 0.5rem; }
     .print-table thead th { background: var(--brown); color: white; font-weight: 600; padding: .35rem .65rem; text-align: left; }
     .print-table thead th.num { text-align: right; }
@@ -45,9 +48,6 @@
     .print-order-total__value:last-child { margin-right: 0; }
 
     .no-print { text-align: center; margin-bottom: 1rem; }
-    .view-toggle { display: inline-flex; gap: .25rem; }
-    .view-toggle a { padding: .4rem .9rem; border-radius: var(--radius); border: 1px solid var(--brown); color: var(--brown); text-decoration: none; font-size: 0.85rem; }
-    .view-toggle a.active { background: var(--brown); color: white; }
 
     @media print {
       body { background: white; padding: 0; margin: 0; }
@@ -62,16 +62,12 @@
 
   <div class="no-print" style="max-width:210mm;margin:0 auto 1rem auto;display:flex;justify-content:space-between;align-items:center;">
     <a href="{% url 'jobs:job_detail' job.pk %}">&larr; Back to estimate</a>
-    <div class="view-toggle">
-      <a href="?view=detailed" class="{% if view == 'detailed' %}active{% endif %}">Detailed cutlist</a>
-      <a href="?view=simple" class="{% if view == 'simple' %}active{% endif %}">Simplified summary</a>
-    </div>
     <button type="button" class="btn btn-primary" onclick="window.print()">Print</button>
   </div>
 
   <div class="print-page">
     <div class="print-header">
-      <h1>Board Report{% if view == 'simple' %} — Simplified Summary{% endif %}</h1>
+      <h1>Board Report</h1>
       <div class="print-meta-grid">
         <span class="print-meta-label">Job:</span>   <span>{{ job.project.lb_ref }}</span>
         <span class="print-meta-label">Part:</span>  <span>{{ section.label }}</span>
@@ -80,35 +76,7 @@
       </div>
     </div>
 
-    {% for group in product_groups %}
-    <div class="print-section-title">{{ group.product.name }}</div>
-    <table class="print-table">
-      <thead>
-        <tr>
-          {% if view == 'detailed' %}<th>Mark</th>{% endif %}
-          <th class="num">Length (mm)</th>
-          <th class="num">Pieces</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in group.rows %}
-        <tr>
-          {% if view == 'detailed' %}
-            {% if row.show_mark %}<td rowspan="{{ row.rowspan }}">{{ row.mark|default:"—" }}</td>{% endif %}
-          {% endif %}
-          <td class="num">{{ row.length_mm }}</td>
-          <td class="num">{{ row.quantity }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    <div class="print-order-total">
-      <span class="print-order-total__label">Total Pieces</span>
-      <span class="print-order-total__value">{{ group.total_pieces }}</span>
-      <span class="print-order-total__label">Total Lineal Metres</span>
-      <span class="print-order-total__value">{{ group.total_lm|floatformat:1 }}m</span>
-    </div>
-    {% endfor %}
+    {% include 'jobs/_cladding_board_table.html' %}
   </div>
 
 </body>

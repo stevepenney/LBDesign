@@ -2,7 +2,6 @@ import csv
 import json
 import math
 from collections import Counter
-from itertools import groupby
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
@@ -679,10 +678,59 @@ def cladding_export_cuts(request, job_pk, pk):
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'
     writer = csv.writer(response)
-    writer.writerow(['Product', 'Mark', 'Length (mm)', 'Quantity'])
+    writer.writerow(['Product', 'Area', 'Length (mm)', 'Quantity'])
     for line in sorted(board_lines, key=lambda l: (l['product'].name, l['mark'], l['length_mm'])):
         writer.writerow([line['product'].name, line['mark'], line['length_mm'], line['quantity']])
     return response
+
+
+# Below this many distinct lengths, a single column reads fine — splitting it in two would just
+# leave the second column sparse. Above it, splitting makes better use of the page width.
+BOARD_REPORT_SPLIT_ROWS = 6
+
+
+def _cladding_board_report_groups(section):
+    """
+    Simplified Product > Length > Pieces summary for a cladding Part — the
+    Mark/elevation a board came from is deliberately collapsed here (unlike
+    the raw CSV export), since order-time pack picking only cares about a
+    board's length and how many are needed, not which elevation it's for.
+    Shared by the standalone Board Report and estimate_report's inline
+    fallback for a Part with no optimized cutlist yet.
+
+    Returns (product_groups, skipped) — skipped as in
+    _cladding_vertical_board_lines. Each group's rows are pre-split into
+    `left`/`right` halves for a 2-column print layout (see
+    BOARD_REPORT_SPLIT_ROWS); `right` is empty for a short list, and the
+    template then renders a single full-width table.
+    """
+    board_lines, skipped = _cladding_vertical_board_lines(section)
+
+    lines_by_product = {}
+    for line in board_lines:
+        lines_by_product.setdefault(line['product'], []).append(line)
+
+    product_groups = []
+    for product, lines in sorted(lines_by_product.items(), key=lambda pl: pl[0].name):
+        counts = Counter()
+        for l in lines:
+            counts[l['length_mm']] += l['quantity']
+        rows = [{'length_mm': length_mm, 'quantity': qty} for length_mm, qty in sorted(counts.items())]
+
+        if len(rows) > BOARD_REPORT_SPLIT_ROWS:
+            half = math.ceil(len(rows) / 2)
+            left, right = rows[:half], rows[half:]
+        else:
+            left, right = rows, []
+
+        product_groups.append({
+            'product': product,
+            'left': left,
+            'right': right,
+            'total_pieces': sum(l['quantity'] for l in lines),
+            'total_lm': sum(l['length_mm'] * l['quantity'] for l in lines) / 1000,
+        })
+    return product_groups, skipped
 
 
 @login_required
@@ -690,14 +738,9 @@ def cladding_boards_report(request, job_pk, pk):
     """
     Printable board-count report for a cladding Part — a formatted table
     alternative to cladding_export_cuts' raw CSV, for handing to a customer or
-    a picker rather than importing into a spreadsheet. Same board_lines source
-    (_cladding_vertical_board_lines), so the CSV, this report, and the cutlist
-    hand-off can never disagree.
-
-    `?view=detailed` (default) summarises Product > Mark > Length, each with
-    a piece count. `?view=simple` collapses the Mark level into Product >
-    Length only — order-time pack picking doesn't care which elevation a
-    board came from, just its length and how many are needed.
+    a picker rather than importing into a spreadsheet. Same
+    _cladding_board_report_groups() data as estimate_report falls back to for
+    a Part with no optimized cutlist yet, so the two can never disagree.
     """
     job = get_object_or_404(Job, pk=job_pk)
     section = get_object_or_404(Section, pk=pk, job=job)
@@ -705,12 +748,8 @@ def cladding_boards_report(request, job_pk, pk):
         messages.error(request, 'You do not have access to that estimate.')
         return redirect('projects:project_list')
 
-    view = request.GET.get('view')
-    if view not in ('detailed', 'simple'):
-        view = 'detailed'
-
-    board_lines, skipped = _cladding_vertical_board_lines(section)
-    if not board_lines:
+    product_groups, skipped = _cladding_board_report_groups(section)
+    if not product_groups:
         messages.error(
             request,
             'No vertical elevations with a priced cladding product were found — '
@@ -724,53 +763,9 @@ def cladding_boards_report(request, job_pk, pk):
             f'cover width set) and are not included in this report.',
         )
 
-    lines_by_product = {}
-    for line in board_lines:
-        lines_by_product.setdefault(line['product'], []).append(line)
-
-    product_groups = []
-    for product, lines in sorted(lines_by_product.items(), key=lambda pl: pl[0].name):
-        total_pieces = sum(l['quantity'] for l in lines)
-        total_lm = sum(l['length_mm'] * l['quantity'] for l in lines) / 1000
-
-        if view == 'simple':
-            counts = Counter()
-            for l in lines:
-                counts[l['length_mm']] += l['quantity']
-            rows = [
-                {'mark': None, 'length_mm': length_mm, 'quantity': qty, 'show_mark': False}
-                for length_mm, qty in sorted(counts.items())
-            ]
-        else:
-            counts = Counter()
-            for l in lines:
-                counts[(l['mark'], l['length_mm'])] += l['quantity']
-            rows = []
-            # groupby needs its input pre-sorted by the same key it groups on — sorted() here
-            # gives it that, and doubles as the mark/length display order.
-            for mark, mark_items in groupby(sorted(counts.items()), key=lambda item: item[0][0]):
-                mark_rows = [
-                    {'mark': mark, 'length_mm': length_mm, 'quantity': qty}
-                    for (_, length_mm), qty in mark_items
-                ]
-                # Rowspan the Mark cell over its length rows instead of repeating it on each one.
-                mark_rows[0]['show_mark'] = True
-                mark_rows[0]['rowspan'] = len(mark_rows)
-                for row in mark_rows[1:]:
-                    row['show_mark'] = False
-                rows.extend(mark_rows)
-
-        product_groups.append({
-            'product': product,
-            'rows': rows,
-            'total_pieces': total_pieces,
-            'total_lm': total_lm,
-        })
-
     return render(request, 'jobs/cladding_boards_report.html', {
         'job': job,
         'section': section,
-        'view': view,
         'product_groups': product_groups,
     })
 
@@ -841,36 +836,48 @@ def cladding_import_cutlist_results(request, job_pk, pk):
 @login_required
 def estimate_report(request, pk):
     """
-    The client-facing estimate report — every Part's priced order sheet (plus
-    elevations and, once a cutlist has been generated, optimised cutting
-    diagrams for any Cladding part), topped with a whole-estimate summary
-    (materials, hardware, freight, and the indicative price range from
-    Estimate Uncertainty %). Job-level rather than per-Part: freight and the
+    The client-facing estimate report — a whole-estimate summary (materials,
+    hardware, freight, and the indicative price range from Estimate
+    Uncertainty %) followed by one page per Part, each showing the detail
+    behind that summary rather than dollar figures of its own — costs only
+    ever appear on the summary page, read from each Part's already-computed
+    member_schedule (same data job_breakdown.html shows); nothing is
+    recalculated here. Job-level rather than per-Part: freight and the
     uncertainty band are already Job-level concepts (see CLAUDE.md), so a
-    report that applies them has to be too. Every dollar figure comes
-    straight from each Part's already-computed member_schedule (the same
-    data job_breakdown.html shows) — nothing is recalculated on this page.
-    Cutlist state is only ever read for its raw cutting geometry (bins/cuts),
-    never for pricing; cutlist stays a pure, estimate-agnostic bin-packing
-    tool (see templates/cutlist/print_view.html).
+    report that applies them has to be too.
+
+    A Part's page shows:
+    - Framing (Midfloor/Roof/Other): its member schedule, quantities only.
+    - Cladding, cutlist optimized: nothing on its own page — its cutting
+      diagrams (read-only geometry from the linked CutlistProject.state, via
+      cutting_report.js) immediately follow as their own page(s).
+    - Cladding, not yet optimized: the same simplified Product > Length >
+      Pieces summary as the standalone Board Report
+      (_cladding_board_report_groups), inline.
     """
     job = get_object_or_404(Job, pk=pk)
     if not _assert_job_access(request.user, job):
         messages.error(request, 'You do not have access to that estimate.')
         return redirect('projects:project_list')
 
-    sections = list(job.sections.select_related('cladding_cutlist').prefetch_related(
-        Prefetch('cladding_areas', queryset=CladdingArea.objects.select_related('cladding_product')),
-    ).all())
+    sections = list(job.sections.select_related('cladding_cutlist').all())
+
+    for s in sections:
+        if s.is_cladding:
+            s.cladding_cutlist_has_results = bool(
+                s.cladding_cutlist_id
+                and any(t.get('results') for t in (s.cladding_cutlist.state or {}).get('tabs', []))
+            )
+            if not s.cladding_cutlist_has_results:
+                s.board_report_groups, _ = _cladding_board_report_groups(s)
 
     system_settings = SystemSettings.get()
     effective_uncertainty_pct, estimate_low, estimate_high = _estimate_price_range(job, system_settings)
 
     report_cutlists = [
-        {'label': s.label, 'state': s.cladding_cutlist.state}
+        {'label': s.label, 'partId': s.pk, 'state': s.cladding_cutlist.state}
         for s in sections
-        if s.is_cladding and s.cladding_cutlist_id
-        and any(t.get('results') for t in (s.cladding_cutlist.state or {}).get('tabs', []))
+        if s.is_cladding and s.cladding_cutlist_has_results
     ]
 
     return render(request, 'jobs/estimate_report.html', {

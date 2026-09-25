@@ -5,6 +5,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from accounts.models import Organisation, User
+from cutlist.models import CutlistProject
 from products.models import Product, ProductType
 from projects.models import Project
 from .models import CladdingArea, Job, Section
@@ -42,7 +43,7 @@ class CladdingExportCutsTests(TestCase):
 
         self.assertEqual(response['Content-Type'], 'text/csv')
         rows = self._rows(response)
-        self.assertEqual(rows[0], ['Product', 'Mark', 'Length (mm)', 'Quantity'])
+        self.assertEqual(rows[0], ['Product', 'Area', 'Length (mm)', 'Quantity'])
         self.assertEqual(rows[1], ['Weatherboard 180', 'North', '2400', '20'])  # 3600/180 = 20 boards
 
     @override_settings(STORAGES={
@@ -103,51 +104,133 @@ class CladdingBoardsReportTests(TestCase):
             job=self.job, label='Oak Option', system_type=Section.SystemType.CLADDING,
         )
         product_type, _ = ProductType.objects.get_or_create(name='Cladding')
-        product = Product.objects.create(
+        self.product = Product.objects.create(
             name='Weatherboard 180', product_type=product_type, use_as_cladding=True, cover_mm=180,
-        )
-        # North: 3.6m wide -> ceil(3600/180) = 20 boards @ 2400mm.
-        # East:  1.8m wide -> ceil(1800/180) = 10 boards @ 2400mm — same length, different Mark,
-        # so the simplified view has to collapse these two into one 30-piece row.
-        CladdingArea.objects.create(
-            section=self.section, area_label='North', orientation=CladdingArea.Orientation.VERTICAL,
-            width_m='3.600', low_height_m='2.400', high_height_m='2.400', cladding_product=product,
-        )
-        CladdingArea.objects.create(
-            section=self.section, area_label='East', orientation=CladdingArea.Orientation.VERTICAL,
-            width_m='1.800', low_height_m='2.400', high_height_m='2.400', cladding_product=product,
         )
         self.staff = User.objects.create_user('lb', password='x', role=User.Role.LB_ADMIN)
         self.url = reverse('jobs:cladding_boards_report', args=[self.job.pk, self.section.pk])
 
-    def test_detailed_view_breaks_down_by_mark(self):
-        self.client.force_login(self.staff)
-        response = self.client.get(self.url)  # default view
-
-        self.assertContains(response, 'North')
-        self.assertContains(response, 'East')
-        product_groups = response.context['product_groups']
-        self.assertEqual(len(product_groups), 1)
-        group = product_groups[0]
-        self.assertEqual(group['total_pieces'], 30)
-        self.assertEqual(group['total_lm'], 72.0)
-        self.assertEqual(
-            [(r['mark'], r['length_mm'], r['quantity']) for r in group['rows']],
-            [('East', 2400, 10), ('North', 2400, 20)],
+    def test_collapses_areas_with_the_same_length_into_one_row(self):
+        # North: 3.6m wide -> ceil(3600/180) = 20 boards @ 2400mm.
+        # East:  1.8m wide -> ceil(1800/180) = 10 boards @ 2400mm — same length, different Area,
+        # so the summary has to collapse these two into one 30-piece row.
+        CladdingArea.objects.create(
+            section=self.section, area_label='North', orientation=CladdingArea.Orientation.VERTICAL,
+            width_m='3.600', low_height_m='2.400', high_height_m='2.400', cladding_product=self.product,
         )
-
-    def test_simple_view_collapses_marks_by_length(self):
+        CladdingArea.objects.create(
+            section=self.section, area_label='East', orientation=CladdingArea.Orientation.VERTICAL,
+            width_m='1.800', low_height_m='2.400', high_height_m='2.400', cladding_product=self.product,
+        )
         self.client.force_login(self.staff)
-        response = self.client.get(self.url, {'view': 'simple'})
+        response = self.client.get(self.url)
 
         self.assertNotContains(response, 'North')
         self.assertNotContains(response, 'East')
         group = response.context['product_groups'][0]
-        self.assertEqual(group['rows'], [{'mark': None, 'length_mm': 2400, 'quantity': 30, 'show_mark': False}])
+        self.assertEqual(group['left'], [{'length_mm': 2400, 'quantity': 30}])
+        self.assertEqual(group['right'], [])
+        self.assertEqual(group['total_pieces'], 30)
+        self.assertEqual(group['total_lm'], 72.0)
+
+    def test_many_lengths_split_into_two_columns(self):
+        # 8 areas of increasing width -> 8 distinct board lengths (via distinct widths driving
+        # distinct raking boards would be more setup; simplest is 8 flat areas of different
+        # heights, each its own row) — enough to cross BOARD_REPORT_SPLIT_ROWS (6).
+        for i in range(8):
+            height = f'{2.400 + i / 10:.3f}'
+            CladdingArea.objects.create(
+                section=self.section, area_label=f'Area {i}', orientation=CladdingArea.Orientation.VERTICAL,
+                width_m='0.900', low_height_m=height, high_height_m=height, cladding_product=self.product,
+            )
+        self.client.force_login(self.staff)
+        response = self.client.get(self.url)
+
+        group = response.context['product_groups'][0]
+        self.assertEqual(len(group['left']), 4)
+        self.assertEqual(len(group['right']), 4)
 
     def test_no_boards_redirects_with_message(self):
-        self.section.cladding_areas.all().delete()
         self.client.force_login(self.staff)
         response = self.client.get(self.url, follow=True)
 
         self.assertEqual(response.redirect_chain[-1][0], reverse('jobs:job_detail', args=[self.job.pk]))
+
+
+@override_settings(STORAGES={
+    'default':     {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+})
+class EstimateReportTests(TestCase):
+
+    def setUp(self):
+        self.org = Organisation.objects.create(name='Test Merchant')
+        self.project = Project.objects.create(organisation=self.org)
+        self.job = Job.objects.create(project=self.project)
+        self.staff = User.objects.create_user('lb', password='x', role=User.Role.LB_ADMIN)
+        self.url = reverse('jobs:estimate_report', args=[self.job.pk])
+
+    def test_framing_part_shows_quantities_without_prices(self):
+        Section.objects.create(
+            job=self.job, label='Unit 1 Midfloor', system_type=Section.SystemType.MIDFLOOR,
+            member_schedule={
+                'items': [{
+                    'label': 'LIB240', 'description': '', 'lineal_metres': 45.5, 'unit': 'lm',
+                    'unit_price': 12.5, 'line_total': 568.75,
+                }],
+                'has_unpriced': False,
+            },
+            calculated_subtotal='568.75',
+        )
+        self.client.force_login(self.staff)
+        response = self.client.get(self.url)
+
+        self.assertContains(response, 'Member Schedule')
+        self.assertContains(response, 'LIB240')
+        self.assertContains(response, '45.50')
+        self.assertNotContains(response, 'Unit Price')
+        self.assertNotContains(response, 'Line Total')
+        # $568.75 legitimately appears once, in the overall summary (materials subtotal) — the
+        # unit price is what must never surface on the Part's own page.
+        self.assertNotContains(response, '$12.50')
+
+    def test_cladding_part_without_cutlist_shows_board_summary(self):
+        section = Section.objects.create(
+            job=self.job, label='Oak Option', system_type=Section.SystemType.CLADDING,
+        )
+        product_type, _ = ProductType.objects.get_or_create(name='Cladding')
+        product = Product.objects.create(
+            name='Weatherboard 180', product_type=product_type, use_as_cladding=True, cover_mm=180,
+        )
+        CladdingArea.objects.create(
+            section=section, area_label='North', orientation=CladdingArea.Orientation.VERTICAL,
+            width_m='3.600', low_height_m='2.400', high_height_m='2.400', cladding_product=product,
+        )
+        self.client.force_login(self.staff)
+        response = self.client.get(self.url)
+
+        self.assertContains(response, 'Board Summary')
+        self.assertContains(response, '2400')
+
+    def test_cladding_part_with_optimized_cutlist_shows_diagrams_not_board_summary(self):
+        section = Section.objects.create(
+            job=self.job, label='Oak Option', system_type=Section.SystemType.CLADDING,
+        )
+        cutlist = CutlistProject.objects.create(
+            project=self.project,
+            state={'tabs': [{'memberName': 'Weatherboard 180', 'results': {'bins': [], 'kerfWidth': 3}}]},
+        )
+        section.cladding_cutlist = cutlist
+        section.save(update_fields=['cladding_cutlist'])
+
+        self.client.force_login(self.staff)
+        response = self.client.get(self.url)
+
+        self.assertNotContains(response, 'Board Summary')
+        self.assertContains(response, f'id="diagram-root-{section.pk}"')
+
+    def test_elevations_section_removed(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(self.url)
+
+        self.assertNotContains(response, 'Elevations')

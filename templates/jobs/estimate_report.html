@@ -30,6 +30,9 @@
       color: #999; margin: 1.5rem 0 .5rem 0; padding-bottom: .25rem; border-bottom: 1px solid var(--border);
     }
 
+    .board-columns { display: flex; gap: 1.5rem; }
+    .board-columns table { flex: 1; min-width: 0; }
+
     .print-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-bottom: 1rem; }
     .print-table thead th { background: var(--brown); color: white; font-weight: 600; padding: .35rem .65rem; text-align: left; }
     .print-table thead th.num { text-align: right; }
@@ -184,7 +187,7 @@
     </div>
   </div>
 
-  <!-- ── Per-Part pages (elevations + priced order sheet) ───────── -->
+  <!-- ── Per-Part pages (detail behind the summary above — no dollar figures here) ── -->
   {% for sj in sections %}
   <div class="print-page print-page--part">
     <div class="print-part-header">
@@ -192,69 +195,47 @@
       <span class="print-part-header__type">{{ sj.get_system_type_display }}</span>
     </div>
 
-    {% if sj.is_cladding and sj.cladding_areas.all %}
-    <div class="print-section-title">Elevations</div>
-    <table class="print-table">
-      <thead>
-        <tr>
-          <th>Area</th><th>Orientation</th>
-          <th class="num">Width (m)</th><th class="num">Height (m)</th><th class="num">Area (m²)</th>
-          <th>Cladding</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for area in sj.cladding_areas.all %}
-        <tr>
-          <td>{{ area.area_label|default:"—" }}</td>
-          <td>{{ area.get_orientation_display }}</td>
-          <td class="num">{{ area.width_m|floatformat:"-3" }}</td>
-          <td class="num">{% if area.low_height_m == area.high_height_m %}{{ area.low_height_m|floatformat:"-3" }}{% else %}{{ area.low_height_m|floatformat:"-3" }} – {{ area.high_height_m|floatformat:"-3" }}{% endif %}</td>
-          <td class="num">{{ area.area_m2|floatformat:2 }}</td>
-          <td>{{ area.cladding_product|default:"—" }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% endif %}
-
-    <div class="print-section-title">Order Summary</div>
-    {% with schedule=sj.member_schedule %}
-    {% if schedule.items %}
-    <table class="print-table">
-      <thead>
-        <tr>
-          <th>Item</th><th>Description</th>
-          <th class="num">Qty</th><th class="num">Unit Price</th><th class="num">Line Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for item in schedule.items %}
-        <tr>
-          <td>{{ item.label }}</td>
-          <td>{{ item.description|default:"—" }}</td>
-          <td class="num">{{ item.lineal_metres|floatformat:2 }} {{ item.unit|default:"lm" }}</td>
-          <td class="num">{% if item.unit_price is not None %}${{ item.unit_price|floatformat:2 }}{% else %}—{% endif %}</td>
-          <td class="num">{% if item.line_total is not None %}${{ item.line_total|floatformat:2 }}{% else %}—{% endif %}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    {% if sj.is_cladding %}
+      {% if sj.cladding_cutlist_has_results %}
+        <p style="color:#aaa;font-style:italic;">See cutting diagrams, following.</p>
+      {% else %}
+        <div class="print-section-title">Board Summary</div>
+        {% if sj.board_report_groups %}
+          {% include 'jobs/_cladding_board_table.html' with product_groups=sj.board_report_groups %}
+        {% else %}
+          <p style="color:#aaa;font-style:italic;">No vertical elevations with a priced cladding product were found yet.</p>
+        {% endif %}
+      {% endif %}
     {% else %}
-    <p style="color:#aaa;font-style:italic;">No priced items yet.</p>
+      <div class="print-section-title">Member Schedule</div>
+      {% with schedule=sj.member_schedule %}
+      {% if schedule.items %}
+      <table class="print-table">
+        <thead>
+          <tr><th>Item</th><th>Description</th><th class="num">Qty</th></tr>
+        </thead>
+        <tbody>
+          {% for item in schedule.items %}
+          <tr>
+            <td>{{ item.label }}</td>
+            <td>{{ item.description|default:"—" }}</td>
+            <td class="num">{{ item.lineal_metres|floatformat:2 }} {{ item.unit|default:"lm" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p style="color:#aaa;font-style:italic;">No priced items yet.</p>
+      {% endif %}
+      {% endwith %}
     {% endif %}
-
-    <div class="print-order-total">
-      {% if schedule.has_unpriced %}<span class="print-order-total__note">Some items have no price in the active price book and are excluded from this total.</span>{% endif %}
-      <span class="print-order-total__label">Part Total</span>
-      <span class="print-order-total__value">${{ sj.calculated_subtotal|default:"0.00"|floatformat:2 }}</span>
-    </div>
-    {% endwith %}
   </div>
+  {% if sj.is_cladding and sj.cladding_cutlist_has_results %}
+  <div id="diagram-root-{{ sj.pk }}"></div>
+  {% endif %}
   {% endfor %}
 
-  <!-- ── Diagram pages (read-only cutting geometry from each Part's linked cutlist) ── -->
   {{ report_cutlists|json_script:"report-cutlists-data" }}
-  <div id="diagram-root"></div>
 
   <script src="{% static 'js/cutting_report.js' %}"></script>
   <script>
@@ -263,10 +244,9 @@
       const reportCutlists = dataEl ? JSON.parse(dataEl.textContent) : [];
       if (!reportCutlists.length) return;
 
-      const root = document.getElementById('diagram-root');
-
-      reportCutlists.forEach(({ label, state }) => {
-        if (!state || !state.tabs || !state.tabs.length) return;
+      reportCutlists.forEach(({ label, partId, state }) => {
+        const root = document.getElementById(`diagram-root-${partId}`);
+        if (!root || !state || !state.tabs || !state.tabs.length) return;
         const tabs = state.tabs.filter(t => t.results);
 
         tabs.forEach(tab => {

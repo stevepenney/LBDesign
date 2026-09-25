@@ -1,0 +1,32 @@
+<!-- Product > Length > Pieces summary table, shared by cladding_boards_report.html (its own
+     page) and estimate_report.html (inline, for a Part with no optimized cutlist yet). Expects
+     `product_groups` — see jobs.views._cladding_board_report_groups(). -->
+{% for group in product_groups %}
+<div class="print-section-title">{{ group.product.name }}</div>
+<div class="board-columns">
+  <table class="print-table">
+    <thead><tr><th class="num">Length (mm)</th><th class="num">Pieces</th></tr></thead>
+    <tbody>
+      {% for row in group.left %}
+      <tr><td class="num">{{ row.length_mm }}</td><td class="num">{{ row.quantity }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if group.right %}
+  <table class="print-table">
+    <thead><tr><th class="num">Length (mm)</th><th class="num">Pieces</th></tr></thead>
+    <tbody>
+      {% for row in group.right %}
+      <tr><td class="num">{{ row.length_mm }}</td><td class="num">{{ row.quantity }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+<div class="print-order-total">
+  <span class="print-order-total__label">Total Pieces</span>
+  <span class="print-order-total__value">{{ group.total_pieces }}</span>
+  <span class="print-order-total__label">Total Lineal Metres</span>
+  <span class="print-order-total__value">{{ group.total_lm|floatformat:1 }}m</span>
+</div>
+{% endfor %}

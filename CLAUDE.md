@@ -255,7 +255,7 @@ of needing two separate `Job`s via Duplicate).
   unchanged (grid only applies when the two heights differ). Board order/position is not
   preserved anywhere — the estimate only needs a bag of lengths to stack into bins.
 - **Cladding areas CSV import** (`templates/jobs/cladding_areas_form.html`, self-contained JS,
-  not shared with `cutlist.js`): paste or drop a CSV with columns `Mark, Width, Low Height, High
+  not shared with `cutlist.js`): paste or drop a CSV with columns `Area, Width, Low Height, High
   Height, Orientation, Product` (metres; `High Height` defaults to `Low Height` if blank) to
   append rows to the areas formset — mirrors the cutlist wizard's CSV import UX. Each row clones
   `CladdingAreaFormSet.empty_form` via the same `addRow('area', 'areas')` used by "+ Add area",
@@ -264,7 +264,11 @@ of needing two separate `Job`s via Duplicate).
   `_cladding_products()` in `jobs/views.py`, same queryset `CladdingAreaForm` uses) — blank on no
   match, fixed up via the row's own product dropdown afterward. Column headers are matched
   exactly (case-insensitive) — no fuzzy header matching, since whoever exports the CSV (e.g. a
-  Revit area schedule) names their columns to match.
+  Revit area schedule) names their columns to match. The column is `Area`, not `Mark` — consistently
+  the same term `CladdingArea.area_label` already used everywhere else user-facing (the areas
+  formset's own field label, the CSV/board reports below); no back-compat alias for the old `Mark`
+  header, since the only real user of this importer is LB staff, who control what the Revit
+  export names its columns.
 - `jobs.CladdingExtraItem` FKs to `Section` too — mirrors `AdditionalBeam`'s shape (product +
   length + quantity) for flat, freely-added lines that aren't derived from an area (scribers,
   corner mouldings, flashings).
@@ -314,29 +318,42 @@ of needing two separate `Job`s via Duplicate).
   button in `job_detail.html`'s top toolbar, not a per-Part icon). It was originally a per-Part
   report (`jobs:cladding_report`, one per cladding Part) but freight, hardware allowance, and
   Estimate Uncertainty % are Job-level concepts (see "Models" above) — a report that applies them
-  has to be Job-level too. `estimate_report` loops every Part in the job (framing and cladding
-  alike), rendering each one's elevations (cladding only) and priced order sheet exactly as the
-  old per-Part report did, ahead of a whole-estimate summary card (materials/hardware/freight
-  totals + the indicative price range, using the same `_estimate_price_range()` helper
-  `job_detail`'s own summary card uses — kept in one place, in `jobs/views.py`, so the two never
-  disagree) and then, for every cladding Part with a generated cutlist, that Part's cutting
-  diagram pages. `cutlist` stays a pure, estimate-agnostic bin-packing tool — its own print view
-  (`cutlist:project_print`) never shows pricing or elevations, just cutting diagrams/pattern
-  summary/unpriced stock quantities, for any cutlist. The report reads each Part's already-priced
-  `member_schedule` for every dollar figure (same data `job_breakdown.html` shows — nothing
-  recalculated on the report page) and its `CladdingArea`s for the elevations table; it only
-  reads each linked `CutlistProject.state` for raw cutting geometry (bins/cuts), via the shared
-  `static/js/cutting_report.js` module (repetition-grouped horizontal stick diagrams + a
-  per-pattern summary table — see "Consolidation algorithm" for why physical sticks collapse into
-  patterns). That module is deliberately standalone (plain `(bins, kerfWidth)` functions, no
-  dependency on `cutlist.js`'s globals) so both `cutlist:project_print` and `jobs:estimate_report`
-  can use it without either pulling in the whole interactive editor.
+  has to be Job-level too.
+  - **Costs only ever appear on the summary page** (materials/hardware/freight totals + the
+    indicative price range, using the same `_estimate_price_range()` helper `job_detail`'s own
+    summary card uses — kept in one place, in `jobs/views.py`, so the two never disagree). Every
+    Part page below it is detail behind that summary, with no dollar figures of its own — a
+    framing Part's Member Schedule table shows Item/Description/Qty only (no Unit Price/Line
+    Total columns, no Part Total footer), reading the same `member_schedule` `job_breakdown.html`
+    shows but stripped of price columns; nothing is recalculated on the report page.
+  - **A cladding Part's page shows either its board summary or its cutting diagrams, never
+    both, and never an Elevations table** (removed — Elevations plus the priced Order Summary
+    used to be this page's whole cladding section). If `Section.cladding_cutlist` has no
+    optimized results yet, the Part's page inlines the same simplified Product > Length > Pieces
+    table as the standalone Board Report (`_cladding_board_report_groups()`, rendered via the
+    shared `templates/jobs/_cladding_board_table.html` partial — one source, included by both
+    pages, so they can't disagree). Once a cutlist *has* been optimized, the board summary is
+    dropped entirely and that Part's cutting diagrams — read-only geometry from the linked
+    `CutlistProject.state`, via the shared `static/js/cutting_report.js` module (repetition-grouped
+    horizontal stick diagrams + a per-pattern summary table — see "Consolidation algorithm" for
+    why physical sticks collapse into patterns) — render as the page(s) immediately following that
+    Part's own page (`<div id="diagram-root-{{ sj.pk }}">`, one per Part, keyed on `partId` in the
+    `report_cutlists` JSON — not one shared root for the whole report, since the diagrams now have
+    to land next to their own Part rather than bunched at the end). That module is deliberately
+    standalone (plain `(bins, kerfWidth)` functions, no dependency on `cutlist.js`'s globals) so
+    both `cutlist:project_print` and `jobs:estimate_report` can use it without either pulling in
+    the whole interactive editor. `cutlist` stays a pure, estimate-agnostic bin-packing tool — its
+    own print view (`cutlist:project_print`) never shows pricing, just cutting diagrams/pattern
+    summary/unpriced stock quantities, for any cutlist.
+  - Midfloor/Roof/Other Parts don't yet have their own detail report beyond the stripped Member
+    Schedule table above — a fuller framing equivalent of the cladding board summary/cutlist
+    treatment is a later phase, not yet built.
 - Products: a `Cladding` `ProductType` (seeded via `products/migrations/0012_seed_
   cladding_producttype.py`, same `get_or_create` pattern as the original product-type seed).
   CSV bulk import (`products/admin_import.py`) supports `use_as_cladding`, `cover_mm`, and
   `unit_of_measure` columns.
 - **Export Cuts (CSV)** (`jobs:cladding_export_cuts`, scoped to one cladding Part): a plain CSV
-  of the exact board list `_cladding_vertical_board_lines()` produces — Product/Mark/Length (mm)/
+  of the exact board list `_cladding_vertical_board_lines()` produces — Product/Area/Length (mm)/
   Quantity, one row per (elevation, distinct board length) — with no cutlist created. Added
   because the cutlist optimizer's "unlimited stock" assumption doesn't hold for cladding, which
   is bought as fixed-manifest packs (long-length vs mixed-length pricing, order-time pack
@@ -344,19 +361,21 @@ of needing two separate `Job`s via Duplicate).
   still get a full board list without going through the optimizer. `_cladding_vertical_board_
   lines(section)` is shared with `cladding_generate_cutlist` (extracted from it) so the two piece
   lists can't drift apart; same horizontal-area exclusion and skipped-area semantics as the
-  cutlist hand-off.
+  cutlist hand-off. This is the one place a per-Area breakdown still exists — everywhere else
+  (Board Report, estimate_report's inline fallback) deliberately collapses Area away (see below).
 - **Board Report** (`jobs:cladding_boards_report`, `templates/jobs/cladding_boards_report.html`,
   scoped to one cladding Part) — a formatted, printable counterpart to the CSV export, for handing
-  to a customer or picker rather than a spreadsheet. Same `_cladding_vertical_board_lines()`
-  source as the CSV and the cutlist hand-off. Two views via `?view=`: `detailed` (default) groups
-  Product > Mark > Length with a piece count per length (Mark cell rowspan'd over its length
-  rows, computed server-side with `itertools.groupby` on the sorted rows — not client JS); `simple`
-  collapses the Mark level into Product > Length only, since order-time pack picking doesn't care
-  which elevation a board came from. Both show a Total Pieces / Total Lineal Metres line per
-  product — the same regardless of view, since it sums across all of that product's boards
-  either way. A standalone print document (own `<html>`, `window.print()`), same pattern as
-  `estimate_report.html`, not a `cutlist` print view — this is a Part-level board list, unrelated
-  to any generated cutlist's cutting diagrams.
+  to a customer or picker rather than a spreadsheet. Simplified summary only, no per-Area
+  breakdown (`_cladding_board_report_groups()`, sharing `_cladding_vertical_board_lines()` under
+  the hood) — Product > Length > Pieces, collapsing which elevation a board came from, since
+  order-time pack picking only cares about a board's length and how many are needed. Also used
+  inline by `jobs:estimate_report` for a cladding Part with no optimized cutlist yet, via the
+  shared `templates/jobs/_cladding_board_table.html` partial. Each product's Length/Pieces table
+  splits into two side-by-side columns (top half / bottom half) once it has more than
+  `BOARD_REPORT_SPLIT_ROWS` (6) distinct lengths, to use the page width better than one narrow
+  2-column table would — below that it stays a single table. Ends with a Total Pieces / Total
+  Lineal Metres line per product. A standalone print document (own `<html>`, `window.print()`),
+  same pattern as `estimate_report.html`, not a `cutlist` print view.
 
 ## Cutlist Optimizer
 
