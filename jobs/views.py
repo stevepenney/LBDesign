@@ -1,3 +1,4 @@
+import csv
 import json
 import math
 from collections import Counter
@@ -6,9 +7,10 @@ from decimal import Decimal, InvalidOperation
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Prefetch
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
 from accounts.models import Organisation
@@ -534,19 +536,51 @@ def section_edit(request, job_pk, pk):
     })
 
 
+def _cladding_vertical_board_lines(section):
+    """
+    Raw per-board breakdown of a cladding Part's vertical elevations — one
+    entry per (area, distinct board length) via CladdingArea.cut_piece() (a
+    flat area yields one length; a raking area yields a spread of lengths,
+    one per board, grouped back into a line per distinct length after
+    cut_piece()'s rounding). Horizontal areas have no fixed piece length
+    (joins are acceptable) so they're never included; they stay on the
+    area-based estimate. Shared by cladding_generate_cutlist and
+    cladding_export_cuts so the two piece lists can't drift apart.
+
+    Returns (lines, skipped) — lines is a list of dicts with product/mark/
+    length_mm/quantity; skipped counts vertical areas with no priced product
+    or cover width set (can't be turned into boards yet).
+    """
+    vertical_areas = section.cladding_areas.filter(
+        orientation=CladdingArea.Orientation.VERTICAL
+    ).select_related('cladding_product')
+
+    lines = []
+    skipped = 0
+    for area in vertical_areas:
+        lengths = area.cut_piece()
+        if not lengths:
+            skipped += 1
+            continue
+        for length_mm, qty in Counter(lengths).items():
+            lines.append({
+                'product': area.cladding_product,
+                'mark': area.area_label or '',
+                'length_mm': length_mm,
+                'quantity': qty,
+            })
+    return lines, skipped
+
+
 @login_required
 @require_POST
 def cladding_generate_cutlist(request, job_pk, pk):
     """
     Build a cutlist from a cladding Part's vertical elevations — one tab per
-    product, one cut line per distinct board length via CladdingArea.cut_piece()
-    (a flat area yields one length; a raking area yields a spread of lengths,
-    one per board, grouped back into a cut line per distinct length after
-    cut_piece()'s rounding). Horizontal areas have no fixed piece length (joins
-    are acceptable) so they're never included; they stay on the area-based
-    estimate. Elevation labels go on each cut's `mark`, not `group` — `group`
-    is a hard packing partition in the optimizer, and we want pieces from
-    different elevations free to share a stick.
+    product, one cut line per _cladding_vertical_board_lines() entry.
+    Elevation labels go on each cut's `mark`, not `group` — `group` is a hard
+    packing partition in the optimizer, and we want pieces from different
+    elevations free to share a stick.
     """
     job = get_object_or_404(Job, pk=job_pk)
     section = get_object_or_404(Section, pk=pk, job=job)
@@ -554,18 +588,11 @@ def cladding_generate_cutlist(request, job_pk, pk):
         messages.error(request, 'You do not have access to that estimate.')
         return redirect('projects:project_list')
 
-    vertical_areas = section.cladding_areas.filter(
-        orientation=CladdingArea.Orientation.VERTICAL
-    ).select_related('cladding_product')
+    board_lines, skipped = _cladding_vertical_board_lines(section)
 
     tabs_by_product = {}
-    skipped = 0
-    for area in vertical_areas:
-        lengths = area.cut_piece()
-        if not lengths:
-            skipped += 1
-            continue
-        product = area.cladding_product
+    for line in board_lines:
+        product = line['product']
         tab = tabs_by_product.get(product.id)
         if tab is None:
             tab = {
@@ -578,11 +605,10 @@ def cladding_generate_cutlist(request, job_pk, pk):
                 'results': None,
             }
             tabs_by_product[product.id] = tab
-        for length_mm, qty in Counter(lengths).items():
-            tab['cuts'].append({
-                'length': length_mm, 'quantity': qty,
-                'mark': area.area_label or '', 'group': '',
-            })
+        tab['cuts'].append({
+            'length': line['length_mm'], 'quantity': line['quantity'],
+            'mark': line['mark'], 'group': '',
+        })
 
     if not tabs_by_product:
         messages.error(
@@ -615,6 +641,47 @@ def cladding_generate_cutlist(request, job_pk, pk):
     section.save(update_fields=['cladding_cutlist', 'updated_at'])
 
     return redirect('cutlist:project_edit', pk=cutlist.pk)
+
+
+@login_required
+def cladding_export_cuts(request, job_pk, pk):
+    """
+    Plain CSV of the exact board list _cladding_vertical_board_lines() would
+    hand the cutlist optimizer — one row per (elevation, distinct board
+    length) — for while the pack-based order-time allocation approach is
+    still being worked out and the optimizer's "unlimited stock" assumption
+    doesn't apply to cladding yet. Horizontal areas aren't included, same as
+    the cutlist hand-off (no fixed board length to export).
+    """
+    job = get_object_or_404(Job, pk=job_pk)
+    section = get_object_or_404(Section, pk=pk, job=job)
+    if not _assert_job_access(request.user, job):
+        messages.error(request, 'You do not have access to that estimate.')
+        return redirect('projects:project_list')
+
+    board_lines, skipped = _cladding_vertical_board_lines(section)
+    if not board_lines:
+        messages.error(
+            request,
+            'No vertical elevations with a priced cladding product were found — '
+            'add at least one before exporting cuts.',
+        )
+        return redirect('jobs:job_detail', pk=job.pk)
+    if skipped:
+        messages.warning(
+            request,
+            f'{skipped} vertical area(s) were skipped (no cladding product or '
+            f'cover width set) and are not included in this export.',
+        )
+
+    filename = slugify(f'{section.label}-cladding-cuts') or 'cladding-cuts'
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'
+    writer = csv.writer(response)
+    writer.writerow(['Product', 'Mark', 'Length (mm)', 'Quantity'])
+    for line in sorted(board_lines, key=lambda l: (l['product'].name, l['mark'], l['length_mm'])):
+        writer.writerow([line['product'].name, line['mark'], line['length_mm'], line['quantity']])
+    return response
 
 
 @login_required

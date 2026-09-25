@@ -551,6 +551,7 @@
               {% csrf_token %}
               <button type="submit" class="icon-btn" title="{% if sj.cladding_cutlist_id %}Regenerate Cutlist{% else %}Generate Cutlist{% endif %}" aria-label="{% if sj.cladding_cutlist_id %}Regenerate Cutlist{% else %}Generate Cutlist{% endif %}"><i class="bi bi-scissors"></i></button>
             </form>
+            <a href="{% url 'jobs:cladding_export_cuts' job.pk sj.pk %}" class="icon-btn" title="Export Cuts (CSV)" aria-label="Export Cuts (CSV)"><i class="bi bi-filetype-csv"></i></a>
           {% endif %}
           {% if sj.cladding_cutlist_id %}
             <a href="{% url 'cutlist:project_edit' sj.cladding_cutlist_id %}" class="icon-btn" title="Open Cutlist" aria-label="Open Cutlist"><i class="bi bi-box-arrow-up-right"></i></a>

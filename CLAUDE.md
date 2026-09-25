@@ -335,6 +335,16 @@ of needing two separate `Job`s via Duplicate).
   cladding_producttype.py`, same `get_or_create` pattern as the original product-type seed).
   CSV bulk import (`products/admin_import.py`) supports `use_as_cladding`, `cover_mm`, and
   `unit_of_measure` columns.
+- **Export Cuts (CSV)** (`jobs:cladding_export_cuts`, scoped to one cladding Part): a plain CSV
+  of the exact board list `_cladding_vertical_board_lines()` produces — Product/Mark/Length (mm)/
+  Quantity, one row per (elevation, distinct board length) — with no cutlist created. Added
+  because the cutlist optimizer's "unlimited stock" assumption doesn't hold for cladding, which
+  is bought as fixed-manifest packs (long-length vs mixed-length pricing, order-time pack
+  selection) — this is a stopgap while that pack-based allocation is designed, so LB staff can
+  still get a full board list without going through the optimizer. `_cladding_vertical_board_
+  lines(section)` is shared with `cladding_generate_cutlist` (extracted from it) so the two piece
+  lists can't drift apart; same horizontal-area exclusion and skipped-area semantics as the
+  cutlist hand-off.
 
 ## Cutlist Optimizer
 
