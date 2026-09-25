@@ -349,9 +349,9 @@ of needing two separate `Job`s via Duplicate).
     (`cutlist:project_print`) never shows pricing, just cutting diagrams/pattern summary/unpriced
     stock quantities, for any cutlist.
   - Both `estimate_report.html` and `cladding_boards_report.html` open with the LumberBank logo
-    (`{% static 'Lumberbank-Primary-Logo.png' %}`, `.print-logo`, 40px tall) above the page title —
-    same file `base.html`'s header/footer and `admin/base_site.html` already use, just sized down
-    for a print header instead of the site nav.
+    (`{% static 'Lumberbank-Primary-Logo.png' %}`, `.print-logo`, 110px tall — same height as
+    `.site-header__logo img` in `base.html`) above the page title — same file `base.html`'s
+    header/footer and `admin/base_site.html` already use.
   - Midfloor/Roof/Other Parts don't yet have their own detail report beyond the stripped Member
     Schedule table above — a fuller framing equivalent of the cladding board summary/cutlist
     treatment is a later phase, not yet built.
@@ -626,6 +626,9 @@ don't over-engineer now, but don't make choices that box out phase 2 expansion.
 - [ ] PDF estimate generation (WeasyPrint installed, not wired up)
 - [ ] Drawing upload → email notification to detailing team (`DETAILING_TEAM_EMAIL` setting exists)
 - [ ] Price book management UI (currently admin-only via Django admin)
+- [ ] Footer image on `estimate_report.html`/`cladding_boards_report.html`, every printed page —
+      waiting on the asset from Steve; header logo (`Lumberbank-Primary-Logo.png`, `.print-logo`,
+      110px, same size as the app header) is already in place on both.
 - [x] Member schedule display on job detail page (`job_breakdown.html`, LB-staff only)
 - [x] Cladding folded into `Section` as a Part type; per-Part wastage/hardware; cladding
       cutlist hand-off feeds back into the same Part; cladding report moved to `jobs`
