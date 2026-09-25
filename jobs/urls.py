@@ -28,4 +28,5 @@ urlpatterns = [
     path('<int:job_pk>/sections/<int:pk>/cladding/generate-cutlist/', views.cladding_generate_cutlist, name='cladding_generate_cutlist'),
     path('<int:job_pk>/sections/<int:pk>/cladding/import-cutlist/',   views.cladding_import_cutlist_results, name='cladding_import_cutlist'),
     path('<int:job_pk>/sections/<int:pk>/cladding/export-cuts/',      views.cladding_export_cuts, name='cladding_export_cuts'),
+    path('<int:job_pk>/sections/<int:pk>/cladding/boards-report/',    views.cladding_boards_report, name='cladding_boards_report'),
 ]

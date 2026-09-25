@@ -345,6 +345,18 @@ of needing two separate `Job`s via Duplicate).
   lines(section)` is shared with `cladding_generate_cutlist` (extracted from it) so the two piece
   lists can't drift apart; same horizontal-area exclusion and skipped-area semantics as the
   cutlist hand-off.
+- **Board Report** (`jobs:cladding_boards_report`, `templates/jobs/cladding_boards_report.html`,
+  scoped to one cladding Part) — a formatted, printable counterpart to the CSV export, for handing
+  to a customer or picker rather than a spreadsheet. Same `_cladding_vertical_board_lines()`
+  source as the CSV and the cutlist hand-off. Two views via `?view=`: `detailed` (default) groups
+  Product > Mark > Length with a piece count per length (Mark cell rowspan'd over its length
+  rows, computed server-side with `itertools.groupby` on the sorted rows — not client JS); `simple`
+  collapses the Mark level into Product > Length only, since order-time pack picking doesn't care
+  which elevation a board came from. Both show a Total Pieces / Total Lineal Metres line per
+  product — the same regardless of view, since it sums across all of that product's boards
+  either way. A standalone print document (own `<html>`, `window.print()`), same pattern as
+  `estimate_report.html`, not a `cutlist` print view — this is a Part-level board list, unrelated
+  to any generated cutlist's cutting diagrams.
 
 ## Cutlist Optimizer
 

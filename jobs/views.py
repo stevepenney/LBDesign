@@ -2,6 +2,7 @@ import csv
 import json
 import math
 from collections import Counter
+from itertools import groupby
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
@@ -682,6 +683,96 @@ def cladding_export_cuts(request, job_pk, pk):
     for line in sorted(board_lines, key=lambda l: (l['product'].name, l['mark'], l['length_mm'])):
         writer.writerow([line['product'].name, line['mark'], line['length_mm'], line['quantity']])
     return response
+
+
+@login_required
+def cladding_boards_report(request, job_pk, pk):
+    """
+    Printable board-count report for a cladding Part — a formatted table
+    alternative to cladding_export_cuts' raw CSV, for handing to a customer or
+    a picker rather than importing into a spreadsheet. Same board_lines source
+    (_cladding_vertical_board_lines), so the CSV, this report, and the cutlist
+    hand-off can never disagree.
+
+    `?view=detailed` (default) summarises Product > Mark > Length, each with
+    a piece count. `?view=simple` collapses the Mark level into Product >
+    Length only — order-time pack picking doesn't care which elevation a
+    board came from, just its length and how many are needed.
+    """
+    job = get_object_or_404(Job, pk=job_pk)
+    section = get_object_or_404(Section, pk=pk, job=job)
+    if not _assert_job_access(request.user, job):
+        messages.error(request, 'You do not have access to that estimate.')
+        return redirect('projects:project_list')
+
+    view = request.GET.get('view')
+    if view not in ('detailed', 'simple'):
+        view = 'detailed'
+
+    board_lines, skipped = _cladding_vertical_board_lines(section)
+    if not board_lines:
+        messages.error(
+            request,
+            'No vertical elevations with a priced cladding product were found — '
+            'add at least one before viewing the board report.',
+        )
+        return redirect('jobs:job_detail', pk=job.pk)
+    if skipped:
+        messages.warning(
+            request,
+            f'{skipped} vertical area(s) were skipped (no cladding product or '
+            f'cover width set) and are not included in this report.',
+        )
+
+    lines_by_product = {}
+    for line in board_lines:
+        lines_by_product.setdefault(line['product'], []).append(line)
+
+    product_groups = []
+    for product, lines in sorted(lines_by_product.items(), key=lambda pl: pl[0].name):
+        total_pieces = sum(l['quantity'] for l in lines)
+        total_lm = sum(l['length_mm'] * l['quantity'] for l in lines) / 1000
+
+        if view == 'simple':
+            counts = Counter()
+            for l in lines:
+                counts[l['length_mm']] += l['quantity']
+            rows = [
+                {'mark': None, 'length_mm': length_mm, 'quantity': qty, 'show_mark': False}
+                for length_mm, qty in sorted(counts.items())
+            ]
+        else:
+            counts = Counter()
+            for l in lines:
+                counts[(l['mark'], l['length_mm'])] += l['quantity']
+            rows = []
+            # groupby needs its input pre-sorted by the same key it groups on — sorted() here
+            # gives it that, and doubles as the mark/length display order.
+            for mark, mark_items in groupby(sorted(counts.items()), key=lambda item: item[0][0]):
+                mark_rows = [
+                    {'mark': mark, 'length_mm': length_mm, 'quantity': qty}
+                    for (_, length_mm), qty in mark_items
+                ]
+                # Rowspan the Mark cell over its length rows instead of repeating it on each one.
+                mark_rows[0]['show_mark'] = True
+                mark_rows[0]['rowspan'] = len(mark_rows)
+                for row in mark_rows[1:]:
+                    row['show_mark'] = False
+                rows.extend(mark_rows)
+
+        product_groups.append({
+            'product': product,
+            'rows': rows,
+            'total_pieces': total_pieces,
+            'total_lm': total_lm,
+        })
+
+    return render(request, 'jobs/cladding_boards_report.html', {
+        'job': job,
+        'section': section,
+        'view': view,
+        'product_groups': product_groups,
+    })
 
 
 @login_required
